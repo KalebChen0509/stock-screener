@@ -50,7 +50,8 @@ jobs:
           print("progress", d, "fire", fire)
           open(os.environ["GITHUB_OUTPUT"], "a").write(f"fire={'1' if fire else '0'}\n")
           PY
-      - if: steps.busy.outputs.busy == '0'
+      - name: 儲存進度（就算中途出錯也存）
+        if: always() && steps.busy.outputs.busy == '0'
         run: bash scripts/data_branch.sh push-tw
       - if: steps.done.outputs.fire == '1'
         run: gh workflow run backtest.yml -R "$GITHUB_REPOSITORY"

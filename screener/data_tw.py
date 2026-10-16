@@ -277,6 +277,22 @@ def expected_latest_quarter(today: date, lag: dict) -> pd.Timestamp:
     return qe
 
 
+def _liquidity_rank(universe: pd.DataFrame) -> dict:
+    """依近 3 個月成交值排序（需要已有價格快取；沒有就用代號順序）。"""
+    p = CACHE_DIR / "prices_monthly.csv.gz"
+    if not p.exists():
+        return {}
+    try:
+        m = pd.read_csv(p, usecols=["ticker", "month", "close", "volume"], parse_dates=["month"])
+        m = m[m["month"] >= m["month"].max() - pd.DateOffset(months=3)]
+        tv = (m["close"] * m["volume"]).groupby(m["ticker"]).mean()
+        y2id = dict(zip(universe["yahoo"], universe["stock_id"]))
+        ranked = tv.sort_values(ascending=False)
+        return {y2id[t]: i for i, t in enumerate(ranked.index) if t in y2id}
+    except Exception:  # noqa
+        return {}
+
+
 def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
                         start: str = "2011-01-01", recheck_days: int = 3) -> int:
     """增量更新台股財報快取。回傳本次成功更新的公司數。"""
@@ -301,7 +317,9 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
             todo.append((2, sid))
         elif stale >= 120:  # 偶爾全面刷新，抓到更正後數字
             todo.append((3, sid))
-    todo.sort()
+    # 同一優先級內，成交值大的先抓（網站上常用的股票先完成）
+    liq = _liquidity_rank(universe)
+    todo.sort(key=lambda x: (x[0], liq.get(x[1], 10**9)))
     log.info("TW fundamentals: %d stocks need update (expected latest %s)", len(todo), exp_q.date())
 
     done = 0

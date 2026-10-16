@@ -1,0 +1,36 @@
+name: 部署網站
+# 程式或設定一推上來就重新部署網站（約 1 分鐘），沿用 data 分支裡最新的資料，不重新抓資料
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "config/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 取用最新資料
+        run: |
+          mkdir -p site/data
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch data "https://github.com/${GITHUB_REPOSITORY}.git" /tmp/databr
+            cp -r /tmp/databr/site_data/. site/data/ 2>/dev/null || true
+          fi
+          # 設定檔一律用最新版（網站上的條件說明與篩選門檻）
+          python3 -c "import yaml,json,re;c=yaml.safe_load(open('config/strategy.yaml'));f=lambda o:{k:f(v) for k,v in o.items()} if isinstance(o,dict) else [f(v) for v in o] if isinstance(o,list) else (float(o) if isinstance(o,str) and re.fullmatch(r'[-+]?\d+(\.\d+)?[eE][-+]?\d+',o) else o);json.dump(f(c),open('site/data/config.json','w'),ensure_ascii=False)"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: deploy
+        uses: actions/deploy-pages@v4

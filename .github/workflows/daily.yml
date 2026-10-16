@@ -7,6 +7,9 @@ on:
       skip_us:
         description: "略過美股財報下載（測試用）"
         default: "false"
+      force_us:
+        description: "強制重抓美股財報"
+        default: "false"
 concurrency:
   group: data-branch
   cancel-in-progress: false
@@ -44,9 +47,14 @@ jobs:
       - name: 台股財報（增量）
         run: python scripts/fetch_tw.py --max-calls 500
         continue-on-error: true
-      - name: 美股財報（SEC）
+      - name: 美股財報（SEC，每週一或尚無資料時才重抓，平日省 10～15 分鐘）
         if: ${{ github.event.inputs.skip_us != 'true' }}
-        run: python scripts/fetch_us.py
+        run: |
+          if [ "$(date -u +%u)" = "1" ] || [ ! -f databr/cache/us_fundamentals.csv.gz ] || [ "${{ github.event.inputs.force_us }}" = "true" ]; then
+            python scripts/fetch_us.py
+          else
+            echo "略過（非週一）"
+          fi
         continue-on-error: true
       - name: 價格
         run: python scripts/fetch_prices.py
