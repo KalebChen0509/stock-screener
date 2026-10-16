@@ -227,6 +227,10 @@ def main():
         from screener.data_tw import FinMind
         fm = FinMind(max_calls=80)
     news = evmod.fetch_news(news_items, days=3, finmind=fm)
+    wsj = evmod.fetch_wsj()
+    comp = [(m, i, infos[m].at[i, "name"]) for m, i, _ in news_items if m in infos and i in infos[m].index]
+    comp += [("etf", e["ticker"], e["name"]) for e in etfs if e["ticker"] in {i for m, i, _ in news_items if m == "etf"}]
+    news += evmod.match_wsj(wsj, comp)
     flags = []
     for m in results:
         df = results[m][0]
@@ -234,7 +238,8 @@ def main():
         sub_df = df[df["id"].isin(ids) & df["event_flags"].notna()]
         for r in sub_df.itertuples():
             flags.append({"market": m, "id": r.id, "name": r.name, "veto": bool(r.event_veto), "text": r.event_flags})
-    write_json(SITE_DATA / "news.json", {"updated": meta["updated"], "news": news, "events": flags})
+    write_json(SITE_DATA / "news.json", {"updated": meta["updated"], "news": news, "events": flags,
+                                        "wsj_headlines": wsj[:30]})
     neg = [n for n in news if n["negative"]]
     if flags or neg:
         ev_lines.append("⚠️ 持股／追蹤清單的事件與負面新聞：")

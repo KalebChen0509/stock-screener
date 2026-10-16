@@ -230,3 +230,53 @@ def fetch_news(items: list[tuple[str, str, str]], days: int = 3, finmind=None) -
         except Exception as e:  # noqa
             log.debug("news %s %s: %s", mkt, sid, e)
     return out
+
+
+# ---------------------------------------------------------------- 華爾街日報 RSS（公開標題＋一句摘要）
+WSJ_FEEDS = {
+    "市場": "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
+    "美國企業": "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness",
+    "科技": "https://feeds.content.dowjones.io/public/rss/RSSWSJD",
+    "經濟": "https://feeds.content.dowjones.io/public/rss/socialeconomyfeed",
+    "國際": "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
+}
+_SUFFIX = re.compile(r"\b(inc|corp|corporation|co|company|ltd|plc|holdings?|group|class [a-z]|the|n\.?v\.?|s\.?a\.?|lp|llc)\b\.?", re.I)
+
+
+def fetch_wsj() -> list[dict]:
+    import xml.etree.ElementTree as ET
+    out = []
+    for cat, url in WSJ_FEEDS.items():
+        try:
+            r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0 stock-screener"})
+            root = ET.fromstring(r.content)
+        except Exception as e:  # noqa
+            log.warning("WSJ feed %s: %s", cat, e)
+            continue
+        for it in root.iter("item"):
+            title = (it.findtext("title") or "").strip()
+            out.append({"category": cat, "title": title, "summary": (it.findtext("description") or "").strip()[:300],
+                        "url": (it.findtext("link") or "").strip(), "date": (it.findtext("pubDate") or "")[:25],
+                        "negative": bool(NEWS_NEG.search(title))})
+    seen, uniq = set(), []
+    for n in out:
+        if n["url"] not in seen:
+            seen.add(n["url"])
+            uniq.append(n)
+    return uniq
+
+
+def match_wsj(articles: list[dict], companies: list[tuple[str, str, str]]) -> list[dict]:
+    """companies：[(market, id, name)]，用公司名稱（去掉 Inc. 等字尾）比對標題與摘要。"""
+    res = []
+    for mkt, sid, name in companies:
+        core = _SUFFIX.sub("", str(name)).replace(",", " ").strip()
+        core = re.sub(r"\s+", " ", core)
+        if len(core) < 4:
+            continue
+        pat = re.compile(r"\b" + re.escape(core) + r"\b", re.I)
+        for a in articles:
+            if pat.search(a["title"]) or pat.search(a["summary"]):
+                res.append({"market": mkt, "id": sid, "date": a["date"], "title": a["title"], "url": a["url"],
+                            "negative": a["negative"], "source": "WSJ"})
+    return res

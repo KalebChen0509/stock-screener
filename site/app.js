@@ -269,8 +269,9 @@ function renderOverview() {
   const N = S.news || { news: [], events: [] };
   const ev = (N.events || []).map((e) => `<li>${e.veto ? "⛔" : "⚠️"} <b>${esc(e.id)}</b> ${esc(e.name || "")}：${esc(e.text)}</li>`).join("");
   const nw = (N.news || []).slice().sort((a, b) => (b.negative - a.negative) || String(b.date).localeCompare(String(a.date))).slice(0, 40)
-    .map((n) => `<li>${n.negative ? "⚠️ " : ""}<b>${esc(n.id)}</b> <span class="hint">${esc(n.date)}</span> ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join("");
-  $("#ovNews").innerHTML = (ev ? `<h3>重大事件</h3><ul>${ev}</ul>` : "") + (nw ? `<h3>近 3 天新聞</h3><ul>${nw}</ul>` : "") || `<p class="hint">目前沒有資料</p>`;
+    .map((n) => `<li>${n.negative ? "⚠️ " : ""}<b>${esc(n.id)}</b> ${n.source ? `<span class="pill">${esc(n.source)}</span> ` : ""}<span class="hint">${esc(n.date)}</span> ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join("");
+  const wsj = (N.wsj_headlines || []).slice(0, 15).map((n) => `<li>${n.negative ? "⚠️ " : ""}<span class="pill">${esc(n.category)}</span> <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a></li>`).join("");
+  $("#ovNews").innerHTML = ((ev ? `<h3>重大事件</h3><ul>${ev}</ul>` : "") + (nw ? `<h3>近 3 天新聞（含華爾街日報提及持股的報導）</h3><ul>${nw}</ul>` : "") + (wsj ? `<h3>華爾街日報頭條（由上而下參考）</h3><ul>${wsj}</ul><p class="hint">標題與連結來自 WSJ 公開 RSS；點開後用你的訂閱帳號閱讀全文。</p>` : "")) || `<p class="hint">目前沒有資料</p>`;
 }
 function renderSectors() {
   const sec = (S.meta.sectors || {})[S.secMkt] || [];
