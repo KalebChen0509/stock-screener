@@ -25,7 +25,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SCREENER_CACHE: ${{ github.workspace }}/databr/cache
-      SEC_RAW_DIR: ${{ runner.temp }}/sec
+      SEC_RAW_DIR: /tmp/sec
       SEC_USER_AGENT: "${{ github.repository_owner }} stock-screener ${{ github.repository_owner }}@users.noreply.github.com"
     steps:
       - uses: actions/checkout@v4

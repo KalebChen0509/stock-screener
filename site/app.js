@@ -23,12 +23,19 @@ const METRICS = {
   market_cap: ["市值", "money"], avg_traded_value: ["日均成交值", "money"], n_quarters: ["財報季數", "int"],
   earnings_yield: ["EBIT/EV", "pct"], fcf_yield: ["FCF殖利率", "pct"], book_to_price: ["淨值/市值", "pct"],
   is_financial: ["金融業", "bool"], profitable_3y: ["近3年皆獲利", "bool"],
-  cfo_positive_3y: ["近3年營業CF皆正", "bool"], cf_type_ok: ["現金流類型甲/乙", "bool"], cf_type: ["現金流類型", "text"],
+  cfo_positive_3y: ["近3年營業CF皆正", "bool"],
+  gross_margin_min3y: ["毛利率（近3年最低）", "pct"], gross_margin_avg3y: ["毛利率（近3年平均）", "pct"],
+  op_margin_min3y: ["營益率（近3年最低）", "pct"], op_margin_avg3y: ["營益率（近3年平均）", "pct"],
+  rd_to_revenue: ["研發費用率", "pct"], revenue_cagr_3y: ["營收3年年化成長", "pct"],
+  mom_12m_pct: ["12月動能百分位", "pctile"], ret_12m: ["近12月報酬", "pct"], pledge_ratio: ["董監質押比", "pct"],
+  event_veto: ["重大負面事件", "bool"], cf_type_ok: ["現金流類型甲/乙", "bool"], cf_type: ["現金流類型", "text"],
   expense_ratio: ["費用率", "pct2"], aum_usd: ["規模(USD)", "usd"], avg_traded_value_usd: ["日均成交值(USD)", "usd"],
   age_years: ["成立年數", "x"], top10_weight: ["前十大占比", "pct"], is_value: ["價值型指數", "bool"],
   tracking_vol: ["追蹤波動", "pct"], value_tilt: ["價值傾向", "pctile"], div_yield_ttm: ["近12月殖利率", "pct"],
 };
 const mlabel = (m) => (METRICS[m] ? METRICS[m][0] : m);
+const GROUP_SHORT = { rd_heavy: "研發密集", cyclicals: "循環股", discretionary: "非必需消費", staples: "必需消費", healthcare: "醫療", utilities_telecom: "公用/電信" };
+const groupTags = (r) => (r.groups || []).map((g) => `<span class="pill" title="${esc((S.cfg.groups[g] || {}).label || g)}">${GROUP_SHORT[g] || g}</span>`).join(" ");
 
 const fmt = {
   pct: (v, d = 1) => (v == null || !isFinite(v) ? "–" : (v * 100).toFixed(d) + "%"),
@@ -88,6 +95,7 @@ async function init() {
     return;
   }
   S.bt = await getJSON("data/backtest.json", true);
+  S.news = await getJSON("data/news.json", true);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   $("#updated").textContent = `資料更新：${S.meta.updated}（台北時間）　USD/TWD ${(+S.meta.fx_usdtwd).toFixed(2)}`;
   bindUI();
@@ -148,11 +156,26 @@ function pctRank(vals) {
   return out;
 }
 
+function resolveRule(f, r, mkt) {
+  // 預設門檻（可在網站調整）＋景氣循環但書覆寫（依群組，後者優先）
+  const st = S.settings.filters[f.id] || { enabled: f.enabled !== false, value: f.value };
+  let metric = f.metric, t = thr(st.value, mkt), enabled = !!st.enabled;
+  if (S.settings.useOverrides !== false && r.groups && r.groups.length) {
+    for (const [g, ov] of Object.entries(S.cfg.overrides || {})) {
+      if (!r.groups.includes(g) || !ov[f.id]) continue;
+      const o = ov[f.id];
+      if ("metric" in o) metric = o.metric;
+      if ("value" in o) t = thr(o.value, mkt);
+      if ("enabled" in o) enabled = !!o.enabled && !!st.enabled;
+    }
+  }
+  return { metric, t, enabled };
+}
+
 function runScreen(mkt) {
   const rows = S.stocks[mkt].map((r) => ({ ...r }));
   const fs = S.cfg.hard_filters.filter((f) => S.settings.filters[f.id]?.enabled);
   for (const f of fs) {
-    const val = S.settings.filters[f.id].value;
     if (f.op === "<=peer") {
       const k = f.peer_k_std ?? 1, minG = f.peer_min_group ?? 5;
       const by = {};
@@ -167,10 +190,13 @@ function runScreen(mkt) {
         r["f_" + f.id] = r[f.metric] != null && r[f.metric] <= L;
       }
     } else {
-      const t = thr(val, mkt);
       for (const r of rows) {
-        const x = r[f.metric];
-        r["f_" + f.id] = typeof t === "boolean" ? x != null && !!x === t : x != null && OPS[f.op](+x, t);
+        const { metric, t, enabled } = resolveRule(f, r, mkt);
+        r["_m_" + f.id] = metric; r["_t_" + f.id] = t;
+        if (!enabled || t == null) { r["f_" + f.id] = true; r["_off_" + f.id] = !enabled; continue; }
+        const x = r[metric];
+        if (x == null) { r["f_" + f.id] = !!f.na_pass; continue; }
+        r["f_" + f.id] = typeof t === "boolean" ? !!x === t : OPS[f.op](+x, t);
       }
     }
   }
@@ -238,6 +264,11 @@ function renderOverview() {
   };
   $("#ovRegime").innerHTML = rtxt("tw", "台股加權") + rtxt("us", "美股 S&P 500") + `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
   renderSectors();
+  const N = S.news || { news: [], events: [] };
+  const ev = (N.events || []).map((e) => `<li>${e.veto ? "⛔" : "⚠️"} <b>${esc(e.id)}</b> ${esc(e.name || "")}：${esc(e.text)}</li>`).join("");
+  const nw = (N.news || []).slice().sort((a, b) => (b.negative - a.negative) || String(b.date).localeCompare(String(a.date))).slice(0, 40)
+    .map((n) => `<li>${n.negative ? "⚠️ " : ""}<b>${esc(n.id)}</b> <span class="hint">${esc(n.date)}</span> ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join("");
+  $("#ovNews").innerHTML = (ev ? `<h3>重大事件</h3><ul>${ev}</ul>` : "") + (nw ? `<h3>近 3 天新聞</h3><ul>${nw}</ul>` : "") || `<p class="hint">目前沒有資料</p>`;
 }
 function renderSectors() {
   const sec = (S.meta.sectors || {})[S.secMkt] || [];
@@ -251,7 +282,7 @@ function renderSectors() {
 // ---------------------------------------------------------------- 個股篩選
 const STOCK_COLS = [
   ["rank", "#", (r, i) => i + 1, "num"], ["id", "代號", (r) => `<b>${esc(r.id)}</b>`],
-  ["name", "名稱", (r) => esc(r.name)], ["industry", "產業", (r) => `<span class="hint">${esc(r.industry)}</span>`],
+  ["name", "名稱", (r) => esc(r.name)], ["industry", "產業", (r) => `<span class="hint">${esc(r.industry)}</span> ${groupTags(r)}`],
   ["score", "綜合分數", (r) => (r.score == null ? "–" : (r.cross ? "⭐ " : "") + r.score.toFixed(1)), "num"],
   ["close", "收盤", (r) => fmt.price(r.close), "num"], ["market_cap", "市值", (r, i, m) => fmt.money(r.market_cap, m), "num"],
   ["pe", "本益比", (r) => fmt.x(r.pe), "num"], ["pb", "P/B", (r) => fmt.x(r.pb, 2), "num"],
@@ -312,7 +343,8 @@ function buildFilterPanel() {
     }
     return `<div class="frow"><input type="checkbox" data-en="${f.id}" ${st.enabled ? "checked" : ""}><span class="lbl">${esc(f.label)}</span><span class="tag ${f.source}">${f.source === "user" ? "你的" : "補充"}</span>${input}</div>`;
   }).join("");
-  $("#filterList").innerHTML = fl;
+  $("#filterList").innerHTML = `<div class="frow" style="grid-column:1/-1"><input type="checkbox" id="useOv" ${S.settings.useOverrides !== false ? "checked" : ""}><span class="lbl"><b>套用景氣循環但書</b>（循環股、非必需消費、必需消費、醫療、公用／電信、研發密集公司改用調整後門檻，詳見「條件說明」）</span></div>` + fl;
+  $("#useOv").onchange = (e) => { S.settings.useOverrides = e.target.checked; saveSettings(); };
   const W = S.settings.weights;
   $("#weightList").innerHTML = Object.keys(W).map((k) => `<div class="frow"><span class="lbl">${k === "top_down" ? "由上而下（產業分數）" : mlabel(k)}</span><input type="number" step="0.01" min="0" data-w="${k}" value="${W[k]}"></div>`).join("");
   $$("#filterList [data-en]").forEach((el) => (el.onchange = () => { S.settings.filters[el.dataset.en].enabled = el.checked; saveSettings(); }));
@@ -374,10 +406,15 @@ async function openDetail(mkt, id) {
     html += `<div class="tiles">${[["綜合分數", row.score != null ? row.score.toFixed(1) : "未通過"], ["本益比", fmt.x(row.pe)], ["P/B", fmt.x(row.pb, 2)], ["FCF 殖利率", fmt.pct(row.fcf_yield)], ["市值", fmt.money(row.market_cap, mkt)], ["產業", esc(row.industry)]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("")}</div>`;
     html += `<div class="card"><h2>條件檢查</h2><div class="checklist">${S.cfg.hard_filters.filter((f) => S.settings.filters[f.id]?.enabled).map((f) => {
       const ok = row["f_" + f.id];
-      let val = fmtMetric(f.metric, row[f.metric], mkt);
+      const m = row["_m_" + f.id] || f.metric;
+      let val = fmtMetric(m, row[m], mkt);
       if (f.op === "<=peer") val += ` ≤ ${fmt.pct(row._peer)}`;
-      return `<div><span class="${ok ? "ok" : "ng"}">${ok ? "✔" : "✘"}</span><span>${esc(f.label)}</span><span class="val">${val}</span></div>`;
-    }).join("")}</div><p class="hint">財報期別：${esc(row.period_end || "")}（流量為近四季合計）</p></div>`;
+      const t = row["_t_" + f.id], dflt = thr((S.settings.filters[f.id] || {}).value, mkt);
+      let note = "";
+      if (row["_off_" + f.id]) note = `<span class="hint">（但書：不適用）</span>`;
+      else if (f.op !== "<=peer" && (t !== dflt || m !== f.metric)) note = `<span class="hint">（但書：${esc(mlabel(m))} ${f.op} ${fmtMetric(m, t, mkt)}）</span>`;
+      return `<div><span class="${ok ? "ok" : "ng"}">${ok ? "✔" : "✘"}</span><span>${esc(f.label)} ${note}</span><span class="val">${val}</span></div>`;
+    }).join("")}</div><p class="hint">財報期別：${esc(row.period_end || "")}（流量為近四季合計）${row.groups && row.groups.length ? "　但書群組：" + groupTags(row) : ""}${row.event_flags ? "<br>⚠️ 事件：" + esc(row.event_flags) : ""}</p></div>`;
   } else if (row) {
     html += `<div class="card"><h2>ETF 條件檢查</h2><div class="checklist">${S.cfg.etf.hard_filters.map((f) => {
       const ok = !(row.failed || []).includes(f.id);
@@ -483,6 +520,19 @@ function renderBacktest() {
     const t = c === "final_amount" ? fmt.ntd(v) : c === "sharpe" ? fmt.x(v, 2) : fmt.pct(v, c === "total_return" ? 0 : 1);
     return `<td class="num">${t}</td>`;
   }).join("")}</tr>`).join("")}</tbody>`;
+  // 各部位
+  const sl = (S.btPeriod === "5y" ? bt.sleeves_5y : bt.sleeves_full) || {};
+  $("#btSleeves").innerHTML = `<thead><tr><th>部位</th><th class="num">年化</th><th class="num">對照</th><th class="num">對照年化</th><th class="num">差距</th><th class="num">最大回撤</th></tr></thead><tbody>${Object.entries(sl).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.cagr)}</td><td class="num">${esc(v.bench || "")}</td><td class="num">${fmt.pct(v.bench_cagr)}</td><td class="num ${v.cagr - v.bench_cagr >= 0 ? "pos" : "neg"}">${v.bench_cagr != null ? fmt.pct(v.cagr - v.bench_cagr) : "–"}</td><td class="num">${fmt.pct(v.max_drawdown)}</td></tr>`).join("")}</tbody>`;
+  const rg = (S.btPeriod === "5y" ? bt.regimes_5y : bt.regimes_full) || {};
+  if (rg.up_capture != null) {
+    const per = Object.entries(rg.periods || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.strategy_net)}</td><td class="num">${fmt.pct(v.bench)}</td><td class="num ${v.strategy_net >= v.bench ? "pos" : "neg"}">${fmt.pct(v.strategy_net - v.bench)}</td></tr>`).join("");
+    $("#btRegime").innerHTML = `<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+      <div class="tile"><div class="k">上漲月參與率</div><div class="v">${fmt.pct(rg.up_capture, 0)}</div><div class="d">${rg.up_months} 個月</div></div>
+      <div class="tile"><div class="k">下跌月參與率</div><div class="v">${fmt.pct(rg.down_capture, 0)}</div><div class="d">越低越抗跌</div></div>
+      <div class="tile"><div class="k">滾動一年勝率</div><div class="v">${fmt.pct(rg.rolling12_beat_rate, 0)}</div><div class="d">空頭年 ${fmt.pct(rg.rolling12_beat_rate_bear, 0)}／多頭年 ${fmt.pct(rg.rolling12_beat_rate_bull, 0)}</div></div></div>
+      <div class="table-wrap"><table class="data compact"><thead><tr><th>期間</th><th class="num">策略</th><th class="num">混合基準</th><th class="num">差距</th></tr></thead><tbody>${per}</tbody></table></div>
+      <p class="hint">滾動一年勝率 = 任選一個 12 個月區間，策略報酬 ≥ 基準的比例。你的目標「任何景氣下都持平或擊敗大盤」對應的是空頭年與多頭年兩個勝率都要高。</p>`;
+  } else $("#btRegime").innerHTML = `<p class="hint">無資料</p>`;
   // 逐年
   const years = [...new Set(keys.flatMap((k) => Object.keys(st[k].yearly || {})))].sort();
   $("#btYearly").innerHTML = `<thead><tr><th>年度</th>${keys.map((k) => `<th class="num">${esc(k.replace("策略", "").replace(/[（）]/g, "") || k)}</th>`).join("")}</tr></thead><tbody>${years.map((y) => `<tr><td>${y}</td>${keys.map((k) => { const v = (st[k].yearly || {})[y]; return `<td class="num ${v >= 0 ? "pos" : "neg"}">${fmt.pct(v)}</td>`; }).join("")}</tr>`).join("")}</tbody>`;
@@ -562,7 +612,7 @@ function renderRules() {
   </ol>
   <h2>一、個股硬性條件</h2>
   <div class="table-wrap"><table class="data compact"><thead><tr><th>條件</th><th>來源</th><th>計算方式／門檻</th></tr></thead><tbody>${c.hard_filters.map(fr).join("")}</tbody></table></div>
-  <p class="hint">說明：第 2 條「資產太多太雜」量化為商譽＋無形資產 ≤ 15% 與長期投資 ≤ 20%；第 5 條「短期負債太多」量化為流動比率 ≥ 150% 與速動比率 ≥ 100%；第 4 條「股東出資佔比」解讀為股東權益占總資產（權益比率）。第 7、8 條同時成立時，毛利率其實至少 15%，所以第 6 條（毛利 ≥ 10%）實務上不會單獨卡掉股票。現金比率高的公司利息收入多，第 9 條（業外 ≤ 5%）在高利率年度可能偏嚴。</p>
+  <p class="hint">說明：第 2 條「資產太多太雜」量化為商譽＋無形資產 ≤ 15% 與長期投資 ≤ 20%；第 4 條「股東出資佔比」解讀為股東權益占總資產；第 5 條「短期負債太多」量化為流動比率 ≥ 150% 與速動比率 ≥ 100%；第 6、7 條改為近 3 年每年都要達標；第 9 條由 5% 放寬到 10%，避免誤殺利息收入高的現金充裕公司。</p>
   <h2>現金流量與公司類型（近 3 年合計）</h2>
   <div class="table-wrap"><table class="data compact"><thead><tr><th>類型</th><th>營業</th><th>投資</th><th>籌資</th><th>處理</th></tr></thead><tbody>
   <tr><td>甲．營運成長及財務穩健</td><td>＋</td><td>－</td><td>－</td><td class="ok">首選（加分）</td></tr>
@@ -571,6 +621,20 @@ function renderRules() {
   <tr><td>丁．本業趨緩及投資保守</td><td>－</td><td>＋</td><td>平</td><td class="ng">不要碰</td></tr>
   <tr><td>戊．本業惡化及投資停頓</td><td>－</td><td>＋</td><td>＋</td><td class="ng">不要碰</td></tr></tbody></table></div>
   <p class="hint">另外要求近 3 年「每年」營業現金流都是正數。營業為正但投資也為正（處分資產）的公司不屬於甲、乙，一併排除。</p>
+  <h2>景氣循環檢查與但書</h2>
+  <p>你的目標是「任何景氣下都持平或擊敗大盤」。下表列出各景氣階段通常領先的產業，以及原始條件會不會把它們刷掉。被刷掉的，改用調整後門檻（網站「調整條件」可以關掉但書做比較）。</p>
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>景氣階段</th><th>常見強勢產業</th><th>原始條件的問題</th><th>但書</th></tr></thead><tbody>
+  <tr><td>復甦期</td><td>景氣循環（鋼鐵、塑化、航運、化工、機械、汽車）、非必需消費、金融</td><td>谷底那年利潤率低、甚至虧損 → 「近 3 年每年」條件全滅；谷底時本益比偏高</td><td>循環股：毛利率、營益率改看 3 年平均，營益率 ≥ 10%；不要求每年獲利；改用股價淨值比 ≤ 1.5 取代本益比</td></tr>
+  <tr><td>擴張期</td><td>科技、半導體、軟體、工業</td><td>研發費用高 → 營益／毛利常低於 65%</td><td>研發費用 ≥ 營收 5%：營益／毛利 ≥ 55%</td></tr>
+  <tr><td>過熱期</td><td>能源、原物料</td><td>同循環股</td><td>同循環股</td></tr>
+  <tr><td>衰退期</td><td>必需消費（食品、日用品）、醫療保健、公用事業、電信</td><td>品牌行銷費用高 → 營益／毛利低；藥廠併購的商譽多；公用事業負債高、流動比低、自由現金流常為負</td><td>必需消費：營益率 ≥ 10%、營益／毛利 ≥ 40%、現金比 ≥ 8%。醫療：無形資產 ≤ 40%、營益／毛利 ≥ 55%。公用／電信：權益比 ≥ 25%、流動比 ≥ 60%、現金比 ≥ 2%，不要求自由現金流與營收成長</td></tr>
+  <tr><td>全階段</td><td>金融（銀行、保險）</td><td>財報結構不同，所有比率都不適用</td><td>維持排除；60% ETF 部位裡的價值型 ETF 已含約 2 成金融股</td></tr>
+  </tbody></table></div>
+  <p class="hint">提醒：任何篩選都無法保證每個景氣都贏大盤。回測頁的「滾動一年勝率」會告訴你實際上做到幾成。</p>
+  <h2>換股緩衝區與事件否決</h2>
+  <ul><li>新買進要通過全部條件；已持有的股票只要門檻放寬 ${fmt.pct(c.buffer.tolerance, 0)} 仍通過、而且排名在前 ${c.buffer.rank_multiple} 倍內就續抱，避免在門檻邊緣來回買賣。</li>
+  <li>重大事件否決：美股 8-K 4.02（財報不可信賴，12 個月）、1.03（破產，24 個月）、3.01（下市警告，12 個月）、4.01（更換會計師，6 個月）；台股重大訊息出現「財報重編、會計師保留意見、跳票、重整、掏空…」等字眼排除 12 個月。台股重大訊息從系統上線後每天累積，過去 10 年無法回測。</li>
+  <li>台股董監質押比 ≤ 30%（只有最新資料，回測時不套用）。</li></ul>
   <h2>二、排名權重</h2>
   <ul><li><b>價值 40%</b><ul>${wrow("value")}</ul></li><li><b>品質 30%</b><ul>${wrow("quality")}</ul></li><li><b>安全 10%</b><ul>${wrow("safety")}</ul></li>
   <li><b>由上而下（產業分數）${fmt.pct(c.ranking.top_down, 0)}</b></li>

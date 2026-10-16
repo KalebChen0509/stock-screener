@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .common import log
-from .engine import px_frame_monthly, ret_n_months, screen_market
+from .engine import px_frame_monthly, ret_n_months, screen_market, select_with_buffer
 from .etf import point_in_time_metrics, screen_and_rank
 from .screen import market_regime
 
@@ -27,7 +27,7 @@ def _asset_class(ticker: str, kind: str) -> str:
 
 def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                  etf_static: pd.DataFrame, start: str | None = None, end: str | None = None,
-                 progress=None) -> dict:
+                 progress=None, events: dict | None = None) -> dict:
     close, adj, vol = wide(prices, "close"), wide(prices, "adj_close"), wide(prices, "volume")
     fx = close["TWD=X"].dropna() if "TWD=X" in close else pd.Series(dtype=float)
     months = close.index
@@ -52,6 +52,9 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     records, holdings_log = [], []
     total_cost = 0.0
     total_wht = 0.0
+    buf = cfg.get("buffer", {})
+    mult = buf.get("rank_multiple", 2)
+    held = {"tw": [], "us": [], "etf": []}
 
     for i, t in enumerate(rebal[:-1]):
         t1 = rebal[i + 1]
@@ -64,8 +67,11 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             ym = y_maps[mkt]
             px = px_frame_monthly(close, vol, t, ym)
             r6 = ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym)
-            res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt)
-            ids = list(res["ranked"].head(max_n)["id"]) if len(res["ranked"]) else []
+            r12 = ret_n_months(adj, t, 11, ym, skip=1)
+            res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
+                                events=(events or {}).get(mkt))
+            ids = select_with_buffer(res["ranked"], held[mkt], max_n, mult)
+            held[mkt] = ids
             weight = pw[sleeve]
             if td.get("regime_defensive"):
                 idx_t = td["regime_indices"][mkt]
@@ -78,8 +84,11 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 targets[("stock", ym[sid])] = weight / len(ids)
         em = point_in_time_metrics(etf_static, etf_prices, fx, t)
         er = screen_and_rank(em, cfg["etf"])
-        er = er[er["pass_all"]]
-        etf_ids = list(er.head(k_etf)["ticker"])
+        er = er[er["pass_all"]].copy()
+        er["rank"] = np.arange(1, len(er) + 1)
+        er["id"] = er["ticker"]
+        etf_ids = select_with_buffer(er, held["etf"], k_etf, mult)
+        held["etf"] = etf_ids
         picks["etf"] = etf_ids
         for tk in etf_ids:
             targets[("etf", tk)] = pw["etf"] / len(etf_ids)
@@ -103,6 +112,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                         rate += costs.get("fx_spread", 0.0)
                     cost += abs(d) * rate
             port_r = 0.0
+            sleeve_r = {"tw": [0.0, 0.0], "us": [0.0, 0.0], "etf": [0.0, 0.0]}
             new_w = {}
             wht = 0.0
             for k, w in targets.items():
@@ -123,6 +133,9 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                     wht += w * costs.get("us_dividend_withholding", 0.0) * div
                 r = (1 + r_loc) * (fx_r if us else 1.0) - 1
                 port_r += w * r
+                sl = "etf" if k[0] == "etf" else ("us" if us else "tw")
+                sleeve_r[sl][0] += w * r
+                sleeve_r[sl][1] += w
                 new_w[k] = w * (1 + r)
             cash_w = max(0.0, 1.0 - sum(targets.values()))
             gross_val = port_r + 1.0  # 現金報酬 0
@@ -132,6 +145,9 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             w_prev[scen] = {k: v / tot for k, v in new_w.items()} if tot > 0 else {}
             rec[f"ret_{scen}"] = (1 - cost) * gross_val - 1
             rec[f"nav_{scen}"] = nav[scen]
+            if scen == "gross":
+                for sl, (a, b) in sleeve_r.items():
+                    rec[f"sleeve_{sl}"] = a / b if b > 0 else 0.0
             if scen == "net":
                 rec["cost"] = cost
                 rec["withholding"] = wht

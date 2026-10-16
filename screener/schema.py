@@ -8,7 +8,7 @@
 """
 
 FLOW_FIELDS = ["revenue", "gross_profit", "op_income", "nonop", "pretax",
-               "net_income", "cfo", "capex", "cfi", "cff"]
+               "net_income", "rd", "cfo", "capex", "cfi", "cff"]
 STOCK_FIELDS = ["cash", "st_inv", "receivables", "inventory", "current_assets",
                 "total_assets", "current_liab", "total_liab", "equity",
                 "goodwill", "intangibles", "lt_inv", "debt", "shares"]

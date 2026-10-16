@@ -6,7 +6,14 @@ import os
 import sys
 import time
 import urllib.error
+import ssl
 import urllib.request
+
+try:  # python.org 版的 Python 沒有內建憑證，改用 certifi
+    import certifi
+    CTX = ssl.create_default_context(cafile=certifi.where())
+except Exception:  # noqa
+    CTX = None
 
 TOKEN = os.environ["GH_PAT"]
 REPO = os.environ["GH_REPO"]
@@ -19,7 +26,7 @@ def gh(path, method="GET", body=None):
         headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json",
                  "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "stock-screener-setup"})
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, context=CTX) as r:
             t = r.read().decode()
             return r.status, (json.loads(t) if t else {})
     except urllib.error.HTTPError as e:

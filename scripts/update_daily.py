@@ -13,7 +13,8 @@ from screener import prices  # noqa: E402
 from screener.backtest import wide  # noqa: E402
 from screener.common import (CACHE_DIR, SITE_DATA, load_etf_universe, load_strategy,  # noqa: E402
                              load_watchlist, log, write_json)
-from screener.engine import ret_n_months, screen_market  # noqa: E402
+from screener.engine import ret_n_months, screen_market, select_with_buffer  # noqa: E402
+from screener import events as evmod  # noqa: E402
 from screener.etf import enrich_live, point_in_time_metrics, screen_and_rank, static_frame  # noqa: E402
 from screener.loaders import load_infos, load_panels  # noqa: E402
 from screener.notify import notify  # noqa: E402
@@ -24,7 +25,9 @@ STOCK_COLS = ["id", "name", "industry", "close", "market_cap", "pe", "pb", "earn
               "inventory_ratio", "peer_limit_inventory_ratio", "equity_ratio", "current_ratio",
               "quick_ratio", "gross_margin", "op_margin", "op_to_gross", "nonop_share", "revenue",
               "net_income", "cfo", "fcf", "cff", "cfo_to_ni", "fcf_to_ni", "roe", "profitable_3y",
-              "share_growth", "cf_type", "cf_type_ok", "cfo_3y", "cfi_3y", "cff_3y", "cfo_positive_3y", "avg_traded_value", "n_quarters", "is_financial", "period_end",
+              "share_growth", "cf_type", "cf_type_ok", "cfo_3y", "cfi_3y", "cff_3y", "cfo_positive_3y", "gross_margin_min3y", "gross_margin_avg3y", "op_margin_min3y",
+              "op_margin_avg3y", "rd_to_revenue", "revenue_cagr_3y", "ret_12m", "mom_12m_pct", "pledge_ratio",
+              "event_veto", "event_flags", "groups", "avg_traded_value", "n_quarters", "is_financial", "period_end",
               "top_down_score", "score", "pass_all", "failed"]
 ETF_COLS = ["ticker", "name", "market", "style", "expense_ratio", "aum_usd", "avg_traded_value_usd",
             "age_years", "top10_weight", "div_yield_ttm", "pe", "pb", "tracking_vol", "value_tilt",
@@ -87,6 +90,25 @@ def main():
 
     meta = {"repo": os.environ.get("GITHUB_REPOSITORY", ""), "updated": pd.Timestamp.now(tz="Asia/Taipei").strftime("%Y-%m-%d %H:%M"),
             "fx_usdtwd": fx_now, "regime": {}, "sectors": {}, "counts": {}}
+    state_p = CACHE_DIR / "notify_state.json"
+    state = json.loads(state_p.read_text()) if state_p.exists() else {}
+    # 重大事件與質押
+    ev_all = {}
+    try:
+        from screener.data_us import load_universe
+        ev_all["us"] = evmod.load_us_events(load_universe())
+    except Exception as e:  # noqa
+        log.warning("US events: %s", e)
+    try:
+        ev_all["tw"] = evmod.update_tw_events()
+    except Exception as e:  # noqa
+        log.warning("TW events: %s", e)
+    try:
+        pl = evmod.update_tw_pledge()
+        pledge = pl.set_index("id")["pledge_ratio"] if len(pl) else None
+    except Exception as e:  # noqa
+        log.warning("TW pledge: %s", e)
+        pledge = None
     results = {}
     for mkt in ("tw", "us"):
         if mkt not in panels:
@@ -94,7 +116,9 @@ def main():
         ymap = dict(zip(infos[mkt].index, infos[mkt]["yahoo"]))
         px = px_now(close, vol, ymap)
         r6 = ret_n_months(adj, last_month, cfg["top_down"]["sector_momentum_months"], ymap)
-        res = screen_market(panels[mkt], infos[mkt], px, r6, today, cfg, mkt)
+        r12 = ret_n_months(adj, last_month, 11, ymap, skip=1)
+        res = screen_market(panels[mkt], infos[mkt], px, r6, today, cfg, mkt, ret12=r12,
+                            events=ev_all.get(mkt), pledge=pledge if mkt == "tw" else None)
         df = res["all"]
         rk = res["ranked"]
         df["top_down_score"] = df["industry"].map(res["sectors"]["score"]).fillna(50.0) \
@@ -123,13 +147,24 @@ def main():
     pw = cfg["portfolio"]["weights"]
     max_n = cfg["portfolio"]["max_holdings_per_stock_sleeve"]
     port = []
+    mult = cfg.get("buffer", {}).get("rank_multiple", 2)
+    held_prev = state.get("held", {})
+    new_held = {}
     for mkt, sleeve in (("tw", "tw_stock"), ("us", "us_stock")):
         if mkt in results:
-            top = results[mkt][1].head(max_n)
+            rk = results[mkt][1]
+            ids = select_with_buffer(rk, held_prev.get(mkt, []), max_n, mult)
+            new_held[mkt] = ids
+            top = rk.set_index("id").loc[ids].reset_index() if ids else rk.iloc[0:0]
             for r in top.itertuples():
                 port.append({"sleeve": mkt, "id": r.id, "name": r.name, "weight": pw[sleeve] / len(top),
                              "score": r.score, "cross_ok": bool(r.cross_ok), "industry": r.industry})
-    top_etf = er[er["pass_all"]].head(cfg["portfolio"]["etf_holdings"])
+    erp = er[er["pass_all"]].copy()
+    erp["rank"] = np.arange(1, len(erp) + 1)
+    erp["id"] = erp["ticker"]
+    etf_ids = select_with_buffer(erp, held_prev.get("etf", []), cfg["portfolio"]["etf_holdings"], mult)
+    new_held["etf"] = etf_ids
+    top_etf = erp.set_index("id").loc[etf_ids].reset_index() if etf_ids else erp.iloc[0:0]
     for r in top_etf.itertuples():
         port.append({"sleeve": "etf", "id": r.ticker, "name": r.name, "weight": pw["etf"] / len(top_etf),
                      "score": r.score, "cross_ok": None, "industry": r.style})
@@ -178,9 +213,37 @@ def main():
     cfg_out = dict(cfg)
     write_json(SITE_DATA / "config.json", cfg_out)
 
+    # ---------- 新聞與重大事件（持股＋追蹤清單） ----------
+    news_items, ev_lines = [], []
+    for h in port:
+        yt = h["id"] if h["sleeve"] == "etf" else infos[h["sleeve"]].at[h["id"], "yahoo"]
+        news_items.append((h["sleeve"], h["id"], yt))
+    for m in ("tw", "us"):
+        for sid in wl.get(m, []):
+            if m in infos and sid in infos[m].index and (m, sid) not in {(a, b) for a, b, _ in news_items}:
+                news_items.append((m, sid, infos[m].at[sid, "yahoo"]))
+    fm = None
+    if os.environ.get("FINMIND_TOKEN"):
+        from screener.data_tw import FinMind
+        fm = FinMind(max_calls=80)
+    news = evmod.fetch_news(news_items, days=3, finmind=fm)
+    flags = []
+    for m in results:
+        df = results[m][0]
+        ids = {b for a, b, _ in news_items if a == m}
+        sub_df = df[df["id"].isin(ids) & df["event_flags"].notna()]
+        for r in sub_df.itertuples():
+            flags.append({"market": m, "id": r.id, "name": r.name, "veto": bool(r.event_veto), "text": r.event_flags})
+    write_json(SITE_DATA / "news.json", {"updated": meta["updated"], "news": news, "events": flags})
+    neg = [n for n in news if n["negative"]]
+    if flags or neg:
+        ev_lines.append("⚠️ 持股／追蹤清單的事件與負面新聞：")
+        for f_ in flags[:10]:
+            ev_lines.append(f"  {'⛔' if f_['veto'] else '•'} {f_['id']} {f_['name']}：{f_['text']}")
+        for n in neg[:10]:
+            ev_lines.append(f"  • {n['id']}：{n['title'][:60]}")
+
     # ---------- 通知 ----------
-    state_p = CACHE_DIR / "notify_state.json"
-    state = json.loads(state_p.read_text()) if state_p.exists() else {}
     cur = {m: sorted(results[m][0][results[m][0]["pass_all"]]["id"]) for m in results}
     cur["etf"] = list(top_etf["ticker"])
     lines = []
@@ -212,6 +275,9 @@ def main():
     if wl_lines:
         lines.append("追蹤清單：")
         lines += wl_lines
+    if ev_lines:
+        lines += ev_lines
+        changed = True
     month_key = today.strftime("%Y-%m")
     rebalance = state.get("last_rebalance_month") != month_key
     if rebalance:
@@ -234,6 +300,8 @@ def main():
     else:
         log.info("no notification (changed=%s rebalance=%s)", changed, rebalance)
     state["passed"] = cur
+    if rebalance or not held_prev:
+        state["held"] = new_held
     state_p.write_text(json.dumps(state, ensure_ascii=False))
     print("\n".join(lines))
 

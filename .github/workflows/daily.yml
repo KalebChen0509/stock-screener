@@ -24,7 +24,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SCREENER_CACHE: ${{ github.workspace }}/databr/cache
-      SEC_RAW_DIR: ${{ runner.temp }}/sec
+      SEC_RAW_DIR: /tmp/sec
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
       SEC_USER_AGENT: "${{ github.repository_owner }} stock-screener ${{ github.repository_owner }}@users.noreply.github.com"
       LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}

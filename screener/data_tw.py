@@ -31,6 +31,8 @@ INCOME_MAP = {
     "op_income": ["OperatingIncome", "NetOperatingIncomeLoss", "OperatingIncomeLoss"],
     "nonop": ["TotalNonoperatingIncomeAndExpense", "NonoperatingIncomeAndExpenses"],
     "pretax": ["PreTaxIncome", "ProfitLossBeforeTax", "IncomeBeforeIncomeTax"],
+    "rd": ["ResearchAndDevelopmentExpenses", "ResearchAndDevelopmentExpense",
+           "ResearchAndDevelopmentExpenditure"],
     "net_income": ["IncomeAfterTaxes", "TotalConsolidatedProfitForThePeriod",
                    "ProfitLoss", "IncomeFromContinuingOperations",
                    "EquityAttributableToOwnersOfParent"],
@@ -41,7 +43,10 @@ BALANCE_MAP = {
                        "CurrentFinancialAssetsAtFairValueThroughProfitOrLoss",
                        "CurrentFinancialAssetsAtFairValueThroughOtherComprehensiveIncome",
                        "CurrentFinancialAssetsAtAmortizedCost",
-                       "CurrentFinancialAssetsAtAmortisedCost"]),
+                       "CurrentFinancialAssetsAtAmortisedCost",
+                       # FinMind 實際使用的名稱（無 NonCurrent 字尾者為流動）
+                       "FinancialAssetsAtFairvalueThroughOtherComprehensiveIncome",
+                       "FinancialAssetsAtAmortizedCost"]),
     "receivables": ("sum", ["AccountsReceivableNet", "NotesReceivableNet",
                             "AccountsReceivableDuefromRelatedPartiesNet"]),
     "inventory": ["Inventories", "Inventory"],
@@ -55,7 +60,9 @@ BALANCE_MAP = {
     "lt_inv": ("sum", ["InvestmentAccountedForUsingEquityMethod",
                        "NoncurrentFinancialAssetsAtFairValueThroughOtherComprehensiveIncome",
                        "NoncurrentFinancialAssetsAtFairvalueThroughProfitOrLoss",
-                       "NoncurrentFinancialAssetsAtFairValueThroughProfitOrLoss"]),
+                       "NoncurrentFinancialAssetsAtFairValueThroughProfitOrLoss",
+                       "NonCurrentFinancialAssetsAtFairvalueThroughProfitOrLoss",
+                       "FinancialAssetsAtFairvalueThroughOtherComprehensiveIncomeNonCurrent"]),
     "debt": ("sum", ["ShorttermBorrowings", "ShortTermBorrowings",
                      "ShorttermNotesAndBillsPayable", "ShortTermNotesAndBillsPayable",
                      "LongtermBorrowingsCurrentPortion", "CurrentPortionOfLongtermBorrowings",
@@ -79,6 +86,9 @@ NON_STOCK_CATEGORIES = {"ETF", "ETN", "受益證券", "存託憑證", "Index", "
                         "創新版股票", "臺灣存託憑證", "指數投資證券(ETN)", "上櫃指數股票型基金(ETF)",
                         "上市指數股票型基金", "上櫃ETF", "上市ETF", "受益憑證", "其他"}
 FINANCIAL_CATEGORIES = {"金融保險業", "金融保險", "金融業", "證券業", "保險業", "銀行業"}
+
+
+SCHEMA_VERSION = 2   # 標準欄位有變動時加 1，舊快取會自動重抓
 
 
 class FinMindLimit(Exception):
@@ -225,7 +235,7 @@ def standardize(inc: pd.DataFrame, bal: pd.DataFrame, cf: pd.DataFrame, lag: dic
     for k, spec in BALANCE_MAP.items():
         out[k] = _pick(wb, spec)
 
-    inc_cols = ["revenue", "gross_profit", "op_income", "nonop", "pretax", "net_income"]
+    inc_cols = ["revenue", "gross_profit", "op_income", "nonop", "pretax", "net_income", "rd"]
     if _is_cumulative(out["revenue"]):
         out = _decumulate(out, inc_cols)
     cf_cols = ["cfo", "capex", "cfi", "cff"]
@@ -279,7 +289,7 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
     todo = []
     for sid in universe["stock_id"]:
         m = meta.get(sid)
-        if not m:
+        if not m or m.get("v", 1) < SCHEMA_VERSION:
             todo.append((0, sid))
             continue
         last_q = pd.Timestamp(m.get("last_period", "1900-01-01"))
@@ -301,7 +311,7 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
             old = pd.read_csv(path, parse_dates=["period_end", "available_date"],
                               dtype={"id": str}) if path.exists() else pd.DataFrame()
             s = start
-            if not old.empty:
+            if not old.empty and "rd" in old.columns:
                 s = f"{old['period_end'].max().year - 1}-01-01"
             inc = fm.get("TaiwanStockFinancialStatements", sid, s)
             bal = fm.get("TaiwanStockBalanceSheet", sid, s)
@@ -317,7 +327,7 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
             else:
                 last = old["period_end"].max() if not old.empty else pd.Timestamp("1900-01-01")
             meta[sid] = {"last_period": str(pd.Timestamp(last).date()),
-                         "checked": today.isoformat()}
+                         "checked": today.isoformat(), "v": SCHEMA_VERSION}
             done += 1
             if done % 50 == 0:
                 _save_meta(meta)
@@ -344,5 +354,5 @@ def load_fundamentals() -> pd.DataFrame:
 
 def backfill_progress(universe: pd.DataFrame) -> dict:
     meta = _load_meta()
-    have = sum(1 for s in universe["stock_id"] if s in meta)
+    have = sum(1 for s in universe["stock_id"] if s in meta and meta[s].get("v", 1) >= SCHEMA_VERSION)
     return {"have": have, "total": int(len(universe))}

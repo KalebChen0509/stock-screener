@@ -19,47 +19,119 @@ def _threshold(v, market):
     return v
 
 
+def assign_groups(df: pd.DataFrame, groups_cfg: dict, market: str,
+                  industry_col: str = "industry") -> pd.Series:
+    """依產業／代號／規則，把每檔股票歸入一或多個「但書群組」。回傳每列的群組清單。"""
+    out = [[] for _ in range(len(df))]
+    for name, g in (groups_cfg or {}).items():
+        mask = pd.Series(False, index=df.index)
+        inds = (g.get("industries") or {}).get(market) or []
+        if inds:
+            mask |= df[industry_col].isin(inds)
+        ids = (g.get("ids") or {}).get(market) or []
+        if ids:
+            mask |= df["id"].astype(str).isin([str(i) for i in ids])
+        rule = g.get("rule")
+        if rule and rule["metric"] in df:
+            mask |= OPS[rule["op"]](pd.to_numeric(df[rule["metric"]], errors="coerce"), rule["value"]).fillna(False)
+        for i, m in enumerate(mask.values):
+            if m:
+                out[i].append(name)
+    return pd.Series(out, index=df.index)
+
+
+def _relax(op: str, v, tol: float):
+    if tol <= 0 or isinstance(v, bool) or v is None or v == 0:
+        return v
+    if op in (">=", ">"):
+        return v * (1 - tol) if v > 0 else v * (1 + tol)
+    if op in ("<=", "<"):
+        return v * (1 + tol) if v > 0 else v * (1 - tol)
+    return v
+
+
 def apply_hard_filters(df: pd.DataFrame, filters: list[dict], market: str,
-                       industry_col: str = "industry") -> pd.DataFrame:
-    """在 df 加上 f_<id>（是否通過）、pass_all、fail_count、failed（未通過清單）。"""
+                       industry_col: str = "industry", overrides: dict | None = None,
+                       tol: float = 0.0, prefix: str = "f_") -> pd.DataFrame:
+    """在 df 加上 f_<id>（是否通過）、pass_all、fail_count、failed（未通過清單）。
+    overrides：{群組: {filter_id: {value / metric / enabled}}}，需要 df 有 groups 欄位。
+    tol：放寬比例（換股緩衝區用），例如 0.1 = 門檻放寬 10%。"""
     df = df.copy()
     fcols = []
+    groups = df["groups"] if "groups" in df else pd.Series([[] for _ in range(len(df))], index=df.index)
     for f in filters:
-        if not f.get("enabled", True):
+        col = f"{prefix}{f['id']}"
+        # 每列各自的 metric、門檻、是否啟用（但書覆寫）
+        metric = pd.Series(f["metric"], index=df.index)
+        enabled = pd.Series(bool(f.get("enabled", True)), index=df.index)
+        v0 = _threshold(f.get("value"), market)
+        thr = pd.Series([v0] * len(df), index=df.index, dtype=object)
+        for gname, ov in (overrides or {}).items():
+            o = ov.get(f["id"])
+            if not o:
+                continue
+            m = groups.map(lambda gs: gname in gs)
+            if not m.any():
+                continue
+            if "metric" in o:
+                metric[m] = o["metric"]
+            if "value" in o:
+                vv = _threshold(o["value"], market)
+                thr[m] = pd.Series([vv] * int(m.sum()), index=m[m].index, dtype=object)
+            if "enabled" in o:
+                enabled[m] = bool(o["enabled"])
+        if not enabled.any():
             continue
-        col = f"f_{f['id']}"
-        m = f["metric"]
-        s = df[m] if m in df else pd.Series(np.nan, index=df.index)
+        vals = pd.Series(np.nan, index=df.index, dtype=object)
+        for mname in metric.unique():
+            sel = metric == mname
+            vals[sel] = df.loc[sel, mname] if mname in df else np.nan
         if f["op"] == "<=peer":
+            s = pd.to_numeric(vals, errors="coerce")
             k = f.get("peer_k_std", 1.0)
             min_g = f.get("peer_min_group", 5)
-            grp = df.groupby(industry_col)[m]
+            grp = s.groupby(df[industry_col])
             med, std, cnt = grp.transform("median"), grp.transform("std"), grp.transform("count")
             lim = med + k * std.fillna(0)
             all_lim = s.median() + k * s.std()
             lim = lim.where(cnt >= min_g, all_lim)
-            df[f"peer_limit_{m}"] = lim
+            if tol:
+                lim = lim * (1 + tol)
+            df[f"peer_limit_{f['metric']}"] = lim
             ok = s <= lim
         else:
-            v = _threshold(f["value"], market)
-            if v is None:
-                continue
-            if isinstance(v, bool):
-                ok = s.map(lambda x: (bool(x) == v) if pd.notna(x) else False)
-            else:
-                ok = OPS[f["op"]](pd.to_numeric(s, errors="coerce"), v)
-        df[col] = ok.fillna(False).astype(bool)
+            res = []
+            for x, v in zip(vals.values, thr.values):
+                if v is None:
+                    res.append(True)
+                    continue
+                if x is None or (isinstance(x, float) and np.isnan(x)):
+                    res.append(bool(f.get("na_pass", False)))
+                    continue
+                if isinstance(v, bool):
+                    res.append(bool(x) == v)
+                else:
+                    try:
+                        res.append(bool(OPS[f["op"]](float(x), _relax(f["op"], float(v), tol))))
+                    except (TypeError, ValueError):
+                        res.append(False)
+            ok = pd.Series(res, index=df.index)
+        ok = ok.fillna(False).astype(bool) | ~enabled
+        df[col] = ok
         fcols.append(col)
+    pass_col = "pass_all" if prefix == "f_" else prefix + "pass"
     if fcols:
         passed = df[fcols]
-        df["pass_all"] = passed.all(axis=1)
-        df["fail_count"] = (~passed).sum(axis=1)
-        names = np.array([c[2:] for c in fcols])
-        df["failed"] = [list(names[~row]) for row in passed.values]
+        df[pass_col] = passed.all(axis=1)
+        if prefix == "f_":
+            df["fail_count"] = (~passed).sum(axis=1)
+            names = np.array([c[len(prefix):] for c in fcols])
+            df["failed"] = [list(names[~row]) for row in passed.values]
     else:
-        df["pass_all"] = True
-        df["fail_count"] = 0
-        df["failed"] = [[] for _ in range(len(df))]
+        df[pass_col] = True
+        if prefix == "f_":
+            df["fail_count"] = 0
+            df["failed"] = [[] for _ in range(len(df))]
     return df
 
 

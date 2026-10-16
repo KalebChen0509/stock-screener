@@ -28,7 +28,7 @@ echo "  推送完成（token 已存進 macOS 鑰匙圈，之後更新只要執�
 echo "▶ 安裝加密套件（只用在這次設定）…"
 VENV="${TMPDIR:-/tmp}/screener-setup-venv"
 python3 -m venv "$VENV"
-"$VENV/bin/pip" -q install pynacl
+"$VENV/bin/pip" -q install pynacl certifi
 echo "▶ 設定 Secrets、Pages、啟動工作…"
 "$VENV/bin/python" scripts/gh_setup.py
 unset GH_PAT FINMIND_TOKEN

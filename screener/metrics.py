@@ -7,7 +7,7 @@ import pandas as pd
 from .prices import future_split_factor
 
 TTM_FIELDS = ["revenue", "gross_profit", "op_income", "nonop", "pretax", "net_income",
-              "cfo", "capex", "cfi", "cff"]
+              "rd", "cfo", "capex", "cfi", "cff"]
 
 
 def _div(a, b, pos_den=True):
@@ -48,6 +48,10 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     df["ni_ttm_lag4"] = lag("net_income_ttm", 4)
     df["ni_ttm_lag8"] = lag("net_income_ttm", 8)
     df["equity_lag4"] = lag("equity", 4)
+    for f in ("revenue", "gross_profit", "op_income"):
+        df[f"{f}_ttm_lag4"] = lag(f"{f}_ttm", 4)
+        df[f"{f}_ttm_lag8"] = lag(f"{f}_ttm", 8)
+    df["revenue_ttm_lag12"] = lag("revenue_ttm", 12)
     for f in ("cfo", "cfi", "cff"):
         df[f"{f}_ttm_lag4"] = lag(f"{f}_ttm", 4)
         df[f"{f}_ttm_lag8"] = lag(f"{f}_ttm", 8)
@@ -79,6 +83,19 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     out["gross_margin"] = _div(df["gross_profit_ttm"], df["revenue_ttm"])
     out["op_margin"] = _div(df["op_income_ttm"], df["revenue_ttm"])
     out["op_to_gross"] = _div(df["op_income_ttm"], df["gross_profit_ttm"])
+    # 近 3 年（每段近四季）毛利率、營益率：取最低值（每年都要達標）與平均值（景氣循環股用）
+    gms = [_div(df[f"gross_profit_ttm{s}"], df[f"revenue_ttm{s}"]) for s in ("", "_lag4", "_lag8")]
+    oms = [_div(df[f"op_income_ttm{s}"], df[f"revenue_ttm{s}"]) for s in ("", "_lag4", "_lag8")]
+    g3, o3 = pd.concat(gms, axis=1), pd.concat(oms, axis=1)
+    full = g3.notna().all(axis=1)
+    out["gross_margin_min3y"] = g3.min(axis=1).where(full)
+    out["gross_margin_avg3y"] = g3.mean(axis=1).where(full)
+    full = o3.notna().all(axis=1)
+    out["op_margin_min3y"] = o3.min(axis=1).where(full)
+    out["op_margin_avg3y"] = o3.mean(axis=1).where(full)
+    out["rd_to_revenue"] = _div(df["rd_ttm"].fillna(0), df["revenue_ttm"])
+    r12 = df["revenue_ttm_lag12"]
+    out["revenue_cagr_3y"] = (_div(df["revenue_ttm"], r12) ** (1 / 3) - 1).where(r12 > 0)
     out["nonop_share"] = _div(df["nonop_ttm"], df["pretax_ttm"])
     out["net_income"] = df["net_income_ttm"]
     out["op_income"] = df["op_income_ttm"]

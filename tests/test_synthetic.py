@@ -30,7 +30,7 @@ def synth_fund(market, ids, quarters):
             avail = q + pd.Timedelta(days=45 if q.quarter != 4 else 85)
             rows.append(dict(market=market, id=sid, period_end=q, available_date=avail,
                              revenue=rev, gross_profit=gp, op_income=oi, nonop=nonop, pretax=pre,
-                             net_income=ni, cfo=cfo, capex=capex, cfi=-capex * 1.1, cff=-cfo * (0.3 if good else -0.1),
+                             net_income=ni, rd=rev * (0.06 if rng.random() < 0.3 else 0.01), cfo=cfo, capex=capex, cfi=-capex * 1.1, cff=-cfo * (0.3 if good else -0.1),
                              cash=ta * (0.25 if good else 0.08), st_inv=0, receivables=ta * .1,
                              inventory=ta * .1, current_assets=ta * .5, total_assets=ta,
                              current_liab=ta * (.15 if good else .4), total_liab=ta * (.3 if good else .7),

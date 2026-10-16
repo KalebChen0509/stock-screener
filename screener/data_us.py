@@ -26,6 +26,7 @@ SUBS_URL = "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.
 RAW_DIR = Path(os.environ.get("SEC_RAW_DIR", CACHE_DIR.parent / "sec_raw"))
 US_FUND_PATH = CACHE_DIR / "us_fundamentals.csv.gz"
 US_UNIVERSE_PATH = CACHE_DIR / "us_universe.csv"
+US_EVENTS_PATH = CACHE_DIR / "us_events.csv.gz"
 
 FORMS = {"10-Q", "10-K", "10-Q/A", "10-K/A", "10-KT"}
 
@@ -41,6 +42,8 @@ FLOW_CONCEPTS = {
     "pretax": ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
                "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
                "IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign"],
+    "rd": ["ResearchAndDevelopmentExpense",
+           "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost"],
     "net_income": ["NetIncomeLoss", "ProfitLoss", "NetIncomeLossAvailableToCommonStockholdersBasic"],
     "cfo": ["NetCashProvidedByUsedInOperatingActivities",
             "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"],
@@ -128,21 +131,47 @@ def build_universe(download: bool = True) -> pd.DataFrame:
     if download or not subs_path.exists():
         _download(SUBS_URL, subs_path)
     sic = {}
-    want = {f"CIK{int(c):010d}.json": int(c) for c in df["cik"]}
+    events = []
+    want = {f"CIK{int(c):010d}": int(c) for c in df["cik"]}
+
+    def _collect(cik, block):
+        forms, dates, items = block.get("form", []), block.get("filingDate", []), block.get("items", [])
+        for f_, d_, i_ in zip(forms, dates, items):
+            if f_ in ("8-K", "8-K/A") and i_:
+                events.append((cik, d_, i_))
+
     with zipfile.ZipFile(subs_path) as z:
         for name in z.namelist():
-            if name in want:
-                try:
-                    d = json.loads(z.read(name))
-                    sic[want[name]] = (str(d.get("sic") or ""), d.get("sicDescription") or "",
-                                       d.get("entityType") or "")
-                except Exception:  # noqa
-                    pass
+            base = name.split(".json")[0]
+            key = base.split("-submissions")[0]
+            if key not in want:
+                continue
+            try:
+                d = json.loads(z.read(name))
+            except Exception:  # noqa
+                continue
+            cik = want[key]
+            if "-submissions-" in base:      # 較舊的申報資料分頁
+                _collect(cik, d)
+            else:
+                sic[cik] = (str(d.get("sic") or ""), d.get("sicDescription") or "", d.get("entityType") or "")
+                _collect(cik, d.get("filings", {}).get("recent", {}))
+    if events:
+        ev = pd.DataFrame(events, columns=["cik", "date", "items"]).drop_duplicates()
+        ev.to_csv(US_EVENTS_PATH, index=False, compression="gzip")
+        log.info("US 8-K events: %d", len(ev))
     df["sic"] = df["cik"].map(lambda c: sic.get(int(c), ("", "", ""))[0])
     df["sic_desc"] = df["cik"].map(lambda c: sic.get(int(c), ("", "", ""))[1])
     df["sic2"] = df["sic"].str.zfill(4).str[:2]
     df["industry"] = df["sic2"].map(SIC_MAJOR).fillna("Other")
     sicn = pd.to_numeric(df["sic"], errors="coerce")
+    # 細分幾個對景氣循環分析重要的產業
+    for lo, hi, label in ((2833, 2836, "Pharma & Biotech"), (3841, 3851, "Medical Devices"),
+                          (2840, 2844, "Household & Personal Products"), (4810, 4899, "Telecom"),
+                          (4900, 4991, "Utilities"), (5400, 5499, "Retail (Food)"),
+                          (3570, 3579, "Computers & Hardware"), (3670, 3679, "Electronics & Semis"),
+                          (7370, 7379, "Software & IT Services")):
+        df.loc[sicn.between(lo, hi), "industry"] = label
     df["is_financial"] = sicn.between(6000, 6799)
     df["yahoo"] = df["ticker"].str.replace(".", "-", regex=False)
     out = df[["cik", "ticker", "name", "exchange", "sic", "sic_desc", "industry",

@@ -22,11 +22,11 @@ portfolio:
 #  source: user = 你提供的條件；added = 我補充的常用條件
 # ---------------------------------------------------------------------
 hard_filters:
-  # ---- 你提供的 14 條 ----
+  # ---- 你提供的條件 ----
   - id: cash_ratio
     source: user
-    label: "1. 現金占總資產 ≥ 15%"
-    metric: cash_ratio              # (現金及約當現金 + 短期投資) / 總資產
+    label: "1. 現金（含短期投資）占總資產 ≥ 15%"
+    metric: cash_ratio
     op: ">="
     value: 0.15
     enabled: true
@@ -48,7 +48,7 @@ hard_filters:
     source: user
     label: "3. 存貨占總資產 ≤ 同產業中位數 + 1 個標準差"
     metric: inventory_ratio
-    op: "<=peer"                    # 與同產業比較
+    op: "<=peer"
     peer_k_std: 1.0
     peer_min_group: 5               # 同產業少於 5 家時改用全市場
     enabled: true
@@ -75,31 +75,31 @@ hard_filters:
     enabled: true
   - id: gross_margin
     source: user
-    label: "6. 毛利率 ≥ 10%"
-    metric: gross_margin
+    label: "6. 毛利率 ≥ 10%（近 3 年每年）"
+    metric: gross_margin_min3y
     op: ">="
     value: 0.10
     enabled: true
   - id: op_margin
     source: user
-    label: "7. 營業利益率 ≥ 15%"
-    metric: op_margin
+    label: "7. 營業利益率 ≥ 15%（近 3 年每年）"
+    metric: op_margin_min3y
     op: ">="
     value: 0.15
     enabled: true
   - id: op_to_gross
     source: user
-    label: "8. 營業利益 / 營業毛利 ≥ 65%"
+    label: "8. 營業利益 / 毛利 ≥ 65%（研發費用率 ≥ 5% 的公司 ≥ 55%）"
     metric: op_to_gross
     op: ">="
     value: 0.65
     enabled: true
   - id: nonop_share
     source: user
-    label: "9. 業外收支占稅前淨利 ≤ 5%"
+    label: "9. 業外收支占稅前淨利 ≤ 10%（原 5%，避免誤殺現金多、利息收入高的公司）"
     metric: nonop_share
     op: "<="
-    value: 0.05
+    value: 0.10
     enabled: true
   - id: cfo_positive
     source: user
@@ -129,7 +129,6 @@ hard_filters:
     op: ">="
     value: 0.30
     enabled: true
-  # ---- 你的圖片「現金流量與公司類型」（最少看三年） ----
   - id: cfo_positive_3y
     source: user
     label: "15. 近 3 年每年營業現金流皆 > 0"
@@ -144,12 +143,12 @@ hard_filters:
     op: "=="
     value: true
     enabled: true
-  # 第 14 條（籌資現金流為負）＝甲型 → 放在排名加分
+  # 第 14 條（籌資現金流為負）＝甲型 → 排名加分
 
-  # ---- 我補充的常用條件 ----
+  # ---- 補充條件 ----
   - id: exclude_financials
     source: added
-    label: "排除金融保險業（財報結構不同，上述比率不適用）"
+    label: "排除金融保險業（財報結構不同；金融股曝險由 ETF 部位提供）"
     metric: is_financial
     op: "=="
     value: false
@@ -163,7 +162,7 @@ hard_filters:
     enabled: true
   - id: profitable_3y
     source: added
-    label: "近 3 年每年（每段近四季）稅後淨利皆為正"
+    label: "近 3 年每年稅後淨利皆為正"
     metric: profitable_3y
     op: "=="
     value: true
@@ -196,6 +195,36 @@ hard_filters:
     op: "<="
     value: 0.05
     enabled: true
+  - id: revenue_growth
+    source: added
+    label: "成長：近 3 年營收年複合成長率 ≥ 0%（不衰退）"
+    metric: revenue_cagr_3y
+    op: ">="
+    value: 0
+    enabled: true
+  - id: momentum
+    source: added
+    label: "防價值陷阱：近 12 個月股價表現不在市場最差 20%"
+    metric: mom_12m_pct
+    op: ">="
+    value: 0.20
+    enabled: true
+  - id: pledge
+    source: added
+    label: "台股董監質押比 ≤ 30%（只有最新資料，回測不適用）"
+    metric: pledge_ratio
+    op: "<="
+    value: 0.30
+    enabled: true
+    na_pass: true
+  - id: event_veto
+    source: added
+    label: "近期無重大負面事件（美股 8-K 4.02/1.03/3.01/4.01；台股重大訊息關鍵字）"
+    metric: event_veto
+    op: "=="
+    value: false
+    enabled: true
+    na_pass: true
   - id: market_cap
     source: added
     label: "市值下限：台股 ≥ 30 億台幣、美股 ≥ 3 億美元"
@@ -212,11 +241,95 @@ hard_filters:
     enabled: true
   - id: history
     source: added
-    label: "至少 12 季財報資料"
+    label: "至少 16 季財報資料（3 年成長率需要）"
     metric: n_quarters
     op: ">="
-    value: 12
+    value: 16
     enabled: true
+
+# ---------------------------------------------------------------------
+#  一之二、景氣循環但書：不同景氣階段的強勢產業，套用調整後的門檻
+#  （群組可重疊，後面的覆寫前面的；沒列到的條件維持預設）
+# ---------------------------------------------------------------------
+groups:
+  rd_heavy:
+    label: "研發密集（美股：研發費用 ≥ 營收 5%；台股財報摘要沒有研發費用，改用研發密集產業）"
+    rule: {metric: rd_to_revenue, op: ">=", value: 0.05}
+    industries:
+      tw: [半導體業, 光電業, 通信網路業, 電腦及週邊設備業, 電子零組件業, 其他電子業, 資訊服務業, 生技醫療業, 數位雲端]
+  cyclicals:
+    label: "景氣循環股（復甦期、過熱期強勢）"
+    industries:
+      tw: [塑膠工業, 鋼鐵工業, 水泥工業, 航運業, 汽車工業, 化學工業, 橡膠工業, 紡織纖維, 造紙工業, 玻璃陶瓷, 電機機械, 建材營造業, 建材營造]
+      us: ["Oil & Gas Extraction", "Petroleum Refining", "Primary Metals", "Metal Mining", "Coal Mining", "Paper",
+           "Chemicals & Pharma", "Transportation Equipment", "Machinery & Computers", "Construction", "Lumber & Wood",
+           "Stone, Clay & Glass", "Fabricated Metals", "Railroads", "Trucking", "Air Transport", "Water Transport",
+           "Rubber & Plastics", "Textiles", "Pipelines"]
+  discretionary:
+    label: "非必需消費（復甦期強勢）"
+    industries:
+      tw: [貿易百貨業, 貿易百貨, 觀光餐旅, 觀光事業, 居家生活, 運動休閒]
+      us: ["Retail", "Retail (Auto)", "Retail (Apparel)", "Retail (Furniture)", "Retail (Misc)", "Restaurants",
+           "Hotels", "Apparel", "Recreation", "Furniture"]
+  staples:
+    label: "必需消費（衰退期防禦）"
+    industries:
+      tw: [食品工業]
+      us: ["Food Products", "Tobacco", "Retail (Food)", "Household & Personal Products"]
+  healthcare:
+    label: "醫療保健（衰退期防禦）"
+    industries:
+      tw: [生技醫療業, 生技醫療]
+      us: ["Pharma & Biotech", "Medical Devices", "Health Services"]
+  utilities_telecom:
+    label: "公用事業與電信（衰退期防禦）"
+    industries:
+      tw: [油電燃氣業]
+      us: ["Utilities", "Telecom"]
+    ids:
+      tw: ["2412", "3045", "4904"]
+
+overrides:
+  rd_heavy:
+    op_to_gross: {value: 0.55}
+  cyclicals:            # 看「景氣循環平均」而非最差年；用股價淨值比估值（循環高峰時本益比會假性便宜）
+    gross_margin: {metric: gross_margin_avg3y}
+    op_margin: {metric: op_margin_avg3y, value: 0.10}
+    profitable_3y: {enabled: false}
+    revenue_growth: {enabled: false}
+    pe: {enabled: false}
+    pb: {value: 1.5}
+  discretionary:        # 零售、餐飲毛利低、營業費用高是產業特性
+    op_margin: {value: 0.08}
+    op_to_gross: {value: 0.35}
+    cash_ratio: {value: 0.08}
+  staples:              # 品牌行銷費用高；現金需求較低
+    op_margin: {value: 0.10}
+    op_to_gross: {value: 0.40}
+    cash_ratio: {value: 0.08}
+  healthcare:           # 併購取得的專利、商譽多
+    intangible_ratio: {value: 0.40}
+    op_to_gross: {value: 0.55}
+    cash_ratio: {value: 0.10}
+  utilities_telecom:    # 受管制、資本密集：負債比高、流動比低、自由現金流常為負
+    cash_ratio: {value: 0.02}
+    equity_ratio: {value: 0.25}
+    current_ratio: {value: 0.6}
+    quick_ratio: {value: 0.4}
+    lt_invest_ratio: {value: 0.30}
+    fcf_positive: {enabled: false}
+    fcf_to_ni: {enabled: false}
+    revenue_growth: {enabled: false}
+
+# 換股緩衝區：新買進要通過全部條件；已持有的只要「門檻放寬 10% 仍通過」且排名在前 2 倍內就續抱
+buffer:
+  tolerance: 0.10
+  rank_multiple: 2
+
+# 重大事件否決（月數 = 事件發生後幾個月內排除）
+events:
+  veto_items: {"4.02": 12, "1.03": 24, "3.01": 12, "4.01": 6, "severe": 12}
+  flag_items: {"2.06": 6, "2.05": 6, "5.02": 3, "warn": 3}
 
 # ---------------------------------------------------------------------
 #  二、個股排名（通過 hard filters 的股票，在各自市場內以百分位計分）
