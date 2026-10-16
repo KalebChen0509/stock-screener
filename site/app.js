@@ -96,6 +96,7 @@ async function init() {
   }
   S.bt = await getJSON("data/backtest.json", true);
   S.news = await getJSON("data/news.json", true);
+  S.orders = await getJSON("data/orders.json", true);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   $("#updated").textContent = `資料更新：${S.meta.updated}（台北時間）　USD/TWD ${(+S.meta.fx_usdtwd).toFixed(2)}`;
   bindUI();
@@ -264,6 +265,7 @@ function renderOverview() {
   };
   $("#ovRegime").innerHTML = rtxt("tw", "台股加權") + rtxt("us", "美股 S&P 500") + `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
   renderSectors();
+  renderOrders();
   const N = S.news || { news: [], events: [] };
   const ev = (N.events || []).map((e) => `<li>${e.veto ? "⛔" : "⚠️"} <b>${esc(e.id)}</b> ${esc(e.name || "")}：${esc(e.text)}</li>`).join("");
   const nw = (N.news || []).slice().sort((a, b) => (b.negative - a.negative) || String(b.date).localeCompare(String(a.date))).slice(0, 40)
@@ -277,6 +279,25 @@ function renderSectors() {
   $("#ovSectors").innerHTML = `<div class="table-wrap" style="max-height:360px;overflow:auto"><table class="data compact"><thead><tr><th>產業</th><th class="num">家數</th><th class="num">6月報酬</th><th class="num">EBIT/EV</th><th>分數</th></tr></thead><tbody>${sec.map((s) => `
     <tr><td>${esc(s.industry)}</td><td class="num">${s.n}</td><td class="num ${s.mom >= 0 ? "pos" : "neg"}">${fmt.pct(s.mom)}</td><td class="num">${fmt.pct(s.val)}</td>
     <td><span class="bar" style="width:${(70 * s.score) / max}px"></span> <span class="hint">${s.score.toFixed(0)}</span></td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderOrders() {
+  const O = S.orders;
+  if (!O || !O.orders) { $("#ordNote").textContent = "尚無資料"; return; }
+  $("#ordNote").textContent = `投入金額 ${fmt.ntd(O.account_value_twd)}（可在 config/strategy.yaml 的 account_value_twd 修改）；USD/TWD ${(+O.fx_usdtwd).toFixed(2)}。${O.note} 台股零股請用盤中零股交易；複委託多半只能買整股。`;
+  const names = { tw: "台股", us: "美股", etf: "ETF" };
+  const rows = O.orders.slice().sort((a, b) => (a.sleeve > b.sleeve ? 1 : -1));
+  $("#ordTable").innerHTML = `<thead><tr><th>部位</th><th>代號</th><th>名稱</th><th class="num">參考價</th><th class="num">目標金額</th><th class="num">目標股數</th><th class="num">上月股數</th><th class="num">本月買賣</th></tr></thead><tbody>${rows.map((o) => `
+    <tr><td>${names[o.sleeve] || o.sleeve}</td><td><b>${esc(o.id)}</b></td><td>${esc(o.name)}</td><td class="num">${o.price == null ? "–" : o.price + " " + (o.currency || "")}</td>
+    <td class="num">${fmt.ntd(o.target_amount_twd)}</td><td class="num">${o.target_shares.toLocaleString()}${o.lots && o.target_shares ? `<br><span class="hint">${esc(o.lots)}</span>` : ""}</td>
+    <td class="num">${o.prev_shares.toLocaleString()}</td><td class="num ${o.trade_shares > 0 ? "pos" : o.trade_shares < 0 ? "neg" : ""}"><b>${o.trade_shares > 0 ? "買 " : o.trade_shares < 0 ? "賣 " : ""}${Math.abs(o.trade_shares).toLocaleString()}</b></td></tr>`).join("")}</tbody>`;
+  $("#ordCsv").onclick = () => {
+    const cols = ["sleeve", "id", "name", "currency", "price", "target_amount_twd", "target_shares", "prev_shares", "trade_shares"];
+    const csv = [cols.join(",")].concat(rows.map((o) => cols.map((c) => (typeof o[c] === "string" ? `"${o[c]}"` : o[c] ?? "")).join(","))).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" }));
+    a.download = `orders_${O.month}.csv`; a.click();
+  };
 }
 
 // ---------------------------------------------------------------- 個股篩選

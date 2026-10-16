@@ -1,7 +1,9 @@
 name: 台股財報回填
+# 一次執行最多約 5.5 小時：每小時用完 FinMind 額度就存檔、等下一小時繼續；
+# 還沒抓完就自動再啟動下一輪，不依賴排程。排程只當備援。
 on:
   schedule:
-    - cron: "12 * * * *"   # 每小時（FinMind 免費會員每小時約 600 次）
+    - cron: "12 */6 * * *"
   workflow_dispatch:
 concurrency:
   group: tw-backfill
@@ -12,7 +14,7 @@ permissions:
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 350
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -20,38 +22,31 @@ jobs:
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - name: 每日更新或回測執行中就跳過
-        id: busy
-        run: |
-          n=$(gh run list -R "$GITHUB_REPOSITORY" --json workflowName,status -L 20 \
-              --jq '[.[] | select((.workflowName=="每日更新" or .workflowName=="回測") and (.status=="in_progress" or .status=="queued"))] | length')
-          echo "busy=$n" >> "$GITHUB_OUTPUT"
-      - if: steps.busy.outputs.busy == '0'
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
-      - if: steps.busy.outputs.busy == '0'
-        run: pip install -r requirements.txt
-      - if: steps.busy.outputs.busy == '0'
-        run: bash scripts/data_branch.sh pull
-      - if: steps.busy.outputs.busy == '0'
-        run: python scripts/fetch_tw.py --max-calls 570
-      - name: 回填完成時自動觸發第一次完整回測
-        if: steps.busy.outputs.busy == '0'
-        id: done
+      - run: pip install -r requirements.txt
+      - run: bash scripts/data_branch.sh pull
+      - name: 分批回填（每小時一批）
+        id: loop
         run: |
-          python - <<'PY'
-          import json, os
-          p = os.path.join(os.environ["SCREENER_CACHE"], "tw_progress.json")
-          d = json.load(open(p)) if os.path.exists(p) else {"have": 0, "total": 1}
-          marker = os.path.join(os.environ["SCREENER_CACHE"], "backtest_triggered")
-          fire = d["have"] >= d["total"] * 0.98 and not os.path.exists(marker)
-          if fire:
-              open(marker, "w").write("1")
-          print("progress", d, "fire", fire)
-          open(os.environ["GITHUB_OUTPUT"], "a").write(f"fire={'1' if fire else '0'}\n")
-          PY
-      - name: 儲存進度（就算中途出錯也存）
-        if: always() && steps.busy.outputs.busy == '0'
-        run: bash scripts/data_branch.sh push-tw
-      - if: steps.done.outputs.fire == '1'
-        run: gh workflow run backtest.yml -R "$GITHUB_REPOSITORY"
+          for i in 1 2 3 4 5; do
+            t0=$(date +%s)
+            python scripts/fetch_tw.py --max-calls 570 || true
+            bash scripts/data_branch.sh push-tw || true
+            done=$(python -c "import json;d=json.load(open('$SCREENER_CACHE/tw_progress.json'));print(1 if d['have']>=d['total']*0.98 else 0)" 2>/dev/null || echo 0)
+            echo "batch $i done=$done"
+            if [ "$done" = "1" ]; then echo "complete=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+            [ $i -lt 5 ] && sleep $(( 3660 - ($(date +%s) - t0) > 0 ? 3660 - ($(date +%s) - t0) : 0 ))
+          done
+          echo "complete=0" >> "$GITHUB_OUTPUT"
+      - name: 還沒完成 → 自動接下一輪
+        if: steps.loop.outputs.complete == '0'
+        run: gh workflow run backfill.yml -R "$GITHUB_REPOSITORY"
+      - name: 完成 → 觸發第一次完整回測
+        if: steps.loop.outputs.complete == '1'
+        run: |
+          if [ ! -f "$SCREENER_CACHE/backtest_triggered" ]; then
+            echo 1 > "$SCREENER_CACHE/backtest_triggered"
+            bash scripts/data_branch.sh push-tw
+            gh workflow run backtest.yml -R "$GITHUB_REPOSITORY"
+          fi

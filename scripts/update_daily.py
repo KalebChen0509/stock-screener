@@ -280,6 +280,37 @@ def main():
         changed = True
     month_key = today.strftime("%Y-%m")
     rebalance = state.get("last_rebalance_month") != month_key
+    # ---------- 下單清單：依投入金額算出每檔目標股數，與上月目標比較 ----------
+    acct = float(cfg["portfolio"].get("account_value_twd", cfg["portfolio"]["initial_capital"]))
+    last_close = close.ffill().iloc[-1]
+    # 上月目標：本月已記錄過就用 targets_prev，否則用目前存的 targets
+    prev_t = state.get("targets_prev", {}) if state.get("targets_month") == month_key else state.get("targets", {})
+    orders, new_targets = [], {}
+    for h in port:
+        is_tw = h["sleeve"] == "tw" or (h["sleeve"] == "etf" and str(h["id"]).endswith((".TW", ".TWO")))
+        yt = h["id"] if h["sleeve"] == "etf" else infos[h["sleeve"]].at[h["id"], "yahoo"]
+        px = float(last_close.get(yt, np.nan))
+        if not np.isfinite(px) or px <= 0:
+            continue
+        amt_twd = acct * h["weight"]
+        amt_local = amt_twd if is_tw else amt_twd / fx_now
+        sh = int(amt_local // px)
+        key = f"{h['sleeve']}:{h['id']}"
+        new_targets[key] = sh
+        prev = int(prev_t.get(key, 0))
+        orders.append({"sleeve": h["sleeve"], "id": h["id"], "name": h["name"], "currency": "TWD" if is_tw else "USD",
+                       "price": round(px, 2), "target_amount_twd": round(amt_twd), "target_shares": sh,
+                       "prev_shares": prev, "trade_shares": sh - prev,
+                       "lots": f"{sh // 1000} 張 + {sh % 1000} 股" if is_tw else ""})
+    for key, prev in prev_t.items():
+        if key not in new_targets and prev:
+            sl, sid = key.split(":", 1)
+            orders.append({"sleeve": sl, "id": sid, "name": "", "currency": "", "price": None,
+                           "target_amount_twd": 0, "target_shares": 0, "prev_shares": int(prev),
+                           "trade_shares": -int(prev), "lots": "全部賣出"})
+    write_json(SITE_DATA / "orders.json", {"as_of": meta["updated"], "month": month_key, "account_value_twd": acct,
+                                          "fx_usdtwd": fx_now, "orders": orders,
+                                          "note": "以最新收盤價估算；「上月股數」假設你已照上月清單下單。"})
     if rebalance:
         lines.append("")
         lines.append(f"📅 {month_key} 月初調倉建議（台股 {pw['tw_stock']:.0%}／美股 {pw['us_stock']:.0%}／ETF {pw['etf']:.0%}）：")
@@ -289,6 +320,12 @@ def main():
                 lines.append(f"{label}（每檔 {hs[0]['weight']:.2%}）：" + "、".join(f"{h['id']} {h['name']}" for h in hs))
             else:
                 lines.append(f"{label}：無符合條件標的，持有現金")
+        lines.append("")
+        lines.append(f"🧾 下單清單（投入 NT${acct:,.0f}，以最新收盤估算）：")
+        for o in orders:
+            if o["trade_shares"]:
+                act = "買進" if o["trade_shares"] > 0 else "賣出"
+                lines.append(f"  {act} {o['id']} {o['name']} {abs(o['trade_shares']):,} 股" + (f"（目標 {o['lots']}）" if o["lots"] and o["trade_shares"] > 0 else ""))
     site = os.environ.get("PAGES_URL", "")
     if site:
         lines.append(f"\n網站：{site}")
@@ -300,6 +337,10 @@ def main():
     else:
         log.info("no notification (changed=%s rebalance=%s)", changed, rebalance)
     state["passed"] = cur
+    if state.get("targets_month") != month_key:
+        state["targets_prev"] = state.get("targets", {})
+        state["targets_month"] = month_key
+    state["targets"] = new_targets      # 本月內每天依最新價格微調目標股數
     if rebalance or not held_prev:
         state["held"] = new_held
     state_p.write_text(json.dumps(state, ensure_ascii=False))

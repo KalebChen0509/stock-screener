@@ -8,6 +8,7 @@
 portfolio:
   base_currency: TWD
   initial_capital: 1000000          # 回測起始金額（新台幣）
+  account_value_twd: 1000000        # 下單清單用：你打算投入的總金額（新台幣），改這裡即可
   weights:                          # 資產配置
     tw_stock: 0.20
     us_stock: 0.20
@@ -395,7 +396,7 @@ etf:
 costs:
   tw_stock: {buy: 0.001425, sell: 0.004425}   # 手續費 0.1425% + 賣出證交稅 0.3%
   tw_etf:   {buy: 0.001425, sell: 0.002425}   # 手續費 0.1425% + 賣出證交稅 0.1%
-  us:       {buy: 0.0010,   sell: 0.0010}     # 複委託手續費假設 0.1%（依你的券商調整）
+  us:       {buy: 0.0008,   sell: 0.0008}     # 複委託網路下單 0.08%（國泰、永豐 2026 年優惠價；優惠結束請改回）
   us_dividend_withholding: 0.30               # 美股股利預扣 30%
   fx_spread: 0.0005                           # 換匯價差 0.05%（單邊）
 
