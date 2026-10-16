@@ -1,0 +1,56 @@
+# ETF 候選池。費用率為「經理費＋保管費」的近似值（台股 ETF 請以投信公告為準；
+# 高股息 ETF 換股頻繁，實際內扣成本含周轉交易成本可能明顯更高）。
+# 美股 ETF 的費用率、規模、前十大持股、估值，執行時會用 Yahoo Finance 即時資料覆蓋。
+# is_value：指數方法是否屬於價值／高股息／基本面加權／自由現金流殖利率。
+# tracking_index：可取得的對標指數代號（沒有就留空，該項排名分數視為中性）。
+
+etfs:
+  # ---------------- 美股：大型價值 ----------------
+  - {ticker: VTV,  name: "Vanguard Value",                    market: us, expense_ratio: 0.0004, is_value: true,  style: "大型價值（CRSP）"}
+  - {ticker: SCHV, name: "Schwab U.S. Large-Cap Value",       market: us, expense_ratio: 0.0004, is_value: true,  style: "大型價值（Dow Jones）"}
+  - {ticker: SPYV, name: "SPDR Portfolio S&P 500 Value",      market: us, expense_ratio: 0.0004, is_value: true,  style: "大型價值（S&P）"}
+  - {ticker: IUSV, name: "iShares Core S&P U.S. Value",       market: us, expense_ratio: 0.0004, is_value: true,  style: "全市場價值（S&P）"}
+  - {ticker: IWD,  name: "iShares Russell 1000 Value",        market: us, expense_ratio: 0.0019, is_value: true,  style: "大型價值（Russell）", tracking_index: "^RLV"}
+  - {ticker: RPV,  name: "Invesco S&P 500 Pure Value",        market: us, expense_ratio: 0.0035, is_value: true,  style: "純價值（S&P）"}
+  - {ticker: VLUE, name: "iShares MSCI USA Value Factor",     market: us, expense_ratio: 0.0015, is_value: true,  style: "價值因子（MSCI）"}
+  - {ticker: FNDX, name: "Schwab Fundamental U.S. Large",     market: us, expense_ratio: 0.0025, is_value: true,  style: "基本面加權"}
+  - {ticker: PRF,  name: "Invesco RAFI US 1000",              market: us, expense_ratio: 0.0039, is_value: true,  style: "基本面加權"}
+  - {ticker: AVLV, name: "Avantis U.S. Large Cap Value",      market: us, expense_ratio: 0.0015, is_value: true,  style: "主動價值＋獲利"}
+  - {ticker: DFLV, name: "Dimensional US Large Cap Value",    market: us, expense_ratio: 0.0022, is_value: true,  style: "主動價值"}
+  - {ticker: COWZ, name: "Pacer US Cash Cows 100",            market: us, expense_ratio: 0.0049, is_value: true,  style: "自由現金流殖利率"}
+  # ---------------- 美股：高股息 ----------------
+  - {ticker: SCHD, name: "Schwab U.S. Dividend Equity",       market: us, expense_ratio: 0.0006, is_value: true,  style: "高股息＋品質"}
+  - {ticker: VYM,  name: "Vanguard High Dividend Yield",      market: us, expense_ratio: 0.0006, is_value: true,  style: "高股息"}
+  - {ticker: DVY,  name: "iShares Select Dividend",           market: us, expense_ratio: 0.0038, is_value: true,  style: "高股息"}
+  # ---------------- 美股：中小型價值 ----------------
+  - {ticker: VOE,  name: "Vanguard Mid-Cap Value",            market: us, expense_ratio: 0.0007, is_value: true,  style: "中型價值"}
+  - {ticker: VBR,  name: "Vanguard Small-Cap Value",          market: us, expense_ratio: 0.0007, is_value: true,  style: "小型價值"}
+  - {ticker: IJS,  name: "iShares S&P Small-Cap 600 Value",   market: us, expense_ratio: 0.0018, is_value: true,  style: "小型價值"}
+  - {ticker: IWN,  name: "iShares Russell 2000 Value",        market: us, expense_ratio: 0.0024, is_value: true,  style: "小型價值", tracking_index: "^RUJ"}
+  - {ticker: AVUV, name: "Avantis U.S. Small Cap Value",      market: us, expense_ratio: 0.0025, is_value: true,  style: "主動小型價值"}
+  - {ticker: FNDA, name: "Schwab Fundamental U.S. Small",     market: us, expense_ratio: 0.0025, is_value: true,  style: "基本面加權小型"}
+  # ---------------- 美股掛牌：國際／新興市場價值 ----------------
+  - {ticker: EFV,  name: "iShares MSCI EAFE Value",           market: us, expense_ratio: 0.0033, is_value: true,  style: "已開發國際價值"}
+  - {ticker: FNDF, name: "Schwab Fundamental Intl Equity",    market: us, expense_ratio: 0.0025, is_value: true,  style: "國際基本面加權"}
+  - {ticker: AVDV, name: "Avantis Intl Small Cap Value",      market: us, expense_ratio: 0.0036, is_value: true,  style: "國際小型價值"}
+  - {ticker: DFIV, name: "Dimensional International Value",   market: us, expense_ratio: 0.0027, is_value: true,  style: "國際價值"}
+  - {ticker: IVLU, name: "iShares MSCI Intl Value Factor",    market: us, expense_ratio: 0.0030, is_value: true,  style: "國際價值因子"}
+  - {ticker: VYMI, name: "Vanguard Intl High Dividend",       market: us, expense_ratio: 0.0022, is_value: true,  style: "國際高股息"}
+  - {ticker: FNDE, name: "Schwab Fundamental Emerging Mkts",  market: us, expense_ratio: 0.0039, is_value: true,  style: "新興市場基本面加權"}
+  - {ticker: AVES, name: "Avantis Emerging Markets Value",    market: us, expense_ratio: 0.0036, is_value: true,  style: "新興市場價值"}
+  # ---------------- 台股：價值／高股息 ----------------
+  - {ticker: "0056.TW",   name: "元大高股息",          market: tw, expense_ratio: 0.0040, is_value: true,  style: "高股息（預測殖利率）",  aum_twd_approx: 4.0e11}
+  - {ticker: "00878.TW",  name: "國泰永續高股息",      market: tw, expense_ratio: 0.0030, is_value: true,  style: "高股息＋ESG",          aum_twd_approx: 4.0e11}
+  - {ticker: "00713.TW",  name: "元大台灣高息低波",    market: tw, expense_ratio: 0.0035, is_value: true,  style: "高息低波動",           aum_twd_approx: 1.5e11}
+  - {ticker: "00919.TW",  name: "群益台灣精選高息",    market: tw, expense_ratio: 0.0033, is_value: true,  style: "高股息（已公告殖利率）", aum_twd_approx: 3.0e11}
+  - {ticker: "00929.TW",  name: "復華台灣科技優息",    market: tw, expense_ratio: 0.0033, is_value: true,  style: "科技高股息",           aum_twd_approx: 1.0e11}
+  - {ticker: "00940.TW",  name: "元大台灣價值高息",    market: tw, expense_ratio: 0.0033, is_value: true,  style: "價值＋高股息",         aum_twd_approx: 1.0e11}
+  - {ticker: "00915.TW",  name: "凱基優選高股息30",    market: tw, expense_ratio: 0.0033, is_value: true,  style: "高股息＋品質",         aum_twd_approx: 3.0e10}
+  - {ticker: "00918.TW",  name: "大華優利高填息30",    market: tw, expense_ratio: 0.0033, is_value: true,  style: "高股息（填息）",       aum_twd_approx: 1.0e11}
+  - {ticker: "00730.TW",  name: "富邦臺灣優質高息",    market: tw, expense_ratio: 0.0034, is_value: true,  style: "高股息＋品質",         aum_twd_approx: 1.0e10}
+  - {ticker: "00701.TW",  name: "國泰股利精選30",      market: tw, expense_ratio: 0.0034, is_value: true,  style: "低波動高股息",         aum_twd_approx: 1.0e10}
+  - {ticker: "00731.TW",  name: "復華富時高息低波",    market: tw, expense_ratio: 0.0034, is_value: true,  style: "高息低波動",           aum_twd_approx: 5.0e9}
+  # ---------------- 參考／基準（非價值，不會被選入） ----------------
+  - {ticker: "0050.TW",   name: "元大台灣50",          market: tw, expense_ratio: 0.0019, is_value: false, style: "市值型（基準）",       aum_twd_approx: 5.0e11}
+  - {ticker: SPY,  name: "SPDR S&P 500",                      market: us, expense_ratio: 0.0009, is_value: false, style: "市值型（基準）"}
+  - {ticker: VT,   name: "Vanguard Total World Stock",        market: us, expense_ratio: 0.0006, is_value: false, style: "全球市值型（基準）"}

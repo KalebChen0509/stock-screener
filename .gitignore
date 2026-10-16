@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data/
+databr/
+debug/
+site/data/
+.DS_Store

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>價值選股系統</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a78d6'/><path d='M7 22l6-7 5 4 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div>
+      <h1>價值選股系統</h1>
+      <p class="sub" id="updated">載入中…</p>
+    </div>
+  </div>
+  <nav id="tabs" aria-label="主選單">
+    <a href="#overview">總覽</a>
+    <a href="#screener">個股篩選</a>
+    <a href="#etf">ETF</a>
+    <a href="#backtest">回測</a>
+    <a href="#watchlist">追蹤清單</a>
+    <a href="#rules">條件說明</a>
+  </nav>
+  <button id="themeBtn" class="ghost" title="切換深淺色">◐</button>
+</header>
+
+<main>
+  <!-- ======================= 總覽 ======================= -->
+  <section id="view-overview" class="view">
+    <div class="tiles" id="ovTiles"></div>
+    <div class="grid2">
+      <div class="card">
+        <h2>本月建議投資組合</h2>
+        <p class="hint">台股 20%／美股 20%／ETF 60%，各部位內等權重。⭐ = 由上而下與由下而上交叉比對皆優。</p>
+        <div id="ovPortfolio"></div>
+      </div>
+      <div class="card">
+        <h2>由上而下：大盤與產業</h2>
+        <div id="ovRegime"></div>
+        <div class="seg" id="ovSecSeg">
+          <button data-m="tw" class="on">台股產業</button><button data-m="us">美股產業</button>
+        </div>
+        <div id="ovSectors"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 個股篩選 ======================= -->
+  <section id="view-screener" class="view">
+    <div class="toolbar">
+      <div class="seg" id="mktSeg">
+        <button data-m="tw" class="on">台股</button><button data-m="us">美股</button>
+      </div>
+      <input id="search" type="search" placeholder="搜尋代號／名稱／產業">
+      <label class="chk"><input type="checkbox" id="showNear"> 顯示差 1–2 條的股票</label>
+      <label class="chk"><input type="checkbox" id="showAll"> 顯示全部</label>
+      <span class="spacer"></span>
+      <button id="toggleFilters" class="ghost">調整條件 ▾</button>
+      <button id="exportCsv" class="ghost">匯出 CSV</button>
+    </div>
+    <div id="filterPanel" class="card filters" hidden>
+      <div class="fp-head">
+        <h3>Hard filters（全部通過才入選）</h3>
+        <button id="resetFilters" class="ghost small">重設為預設值</button>
+      </div>
+      <div id="filterList" class="filter-grid"></div>
+      <h3>排名權重（百分位加權，總和自動標準化）</h3>
+      <div id="weightList" class="filter-grid"></div>
+    </div>
+    <p class="hint" id="screenSummary"></p>
+    <div class="table-wrap"><table id="stockTable" class="data"></table></div>
+  </section>
+
+  <!-- ======================= ETF ======================= -->
+  <section id="view-etf" class="view">
+    <p class="hint">ETF 不分市場一起排名，取前 6 檔（各 10%）。費用率、規模為近似值，台股 ETF 請以投信公告為準；高股息 ETF 換股頻繁，實際內扣成本可能更高。</p>
+    <div class="table-wrap"><table id="etfTable" class="data"></table></div>
+  </section>
+
+  <!-- ======================= 回測 ======================= -->
+  <section id="view-backtest" class="view">
+    <div class="toolbar">
+      <div class="seg" id="btPeriod">
+        <button data-p="full" class="on">完整期間</button><button data-p="5y">近 5 年</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="btLog"> 對數座標</label>
+      <span class="spacer"></span>
+      <span class="hint" id="btMeta"></span>
+    </div>
+    <div class="tiles" id="btTiles"></div>
+    <div class="card">
+      <h2>資產淨值（新台幣）</h2>
+      <div class="legend" id="btLegend"></div>
+      <div class="chart-box tall"><canvas id="btChart"></canvas></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h2>績效比較</h2>
+        <div class="table-wrap"><table id="btStats" class="data compact"></table></div>
+      </div>
+      <div class="card">
+        <h2>逐年報酬</h2>
+        <div class="table-wrap"><table id="btYearly" class="data compact"></table></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h2>回撤（扣費後策略）</h2>
+        <div class="chart-box"><canvas id="btDD"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>每月持股檔數</h2>
+        <div class="legend" id="cntLegend"></div>
+        <div class="chart-box"><canvas id="btCount"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>歷史持股</h2>
+      <select id="btMonth"></select>
+      <div id="btHoldings" class="holdings"></div>
+    </div>
+    <div class="card note" id="btNotes"></div>
+  </section>
+
+  <!-- ======================= 追蹤清單 ======================= -->
+  <section id="view-watchlist" class="view">
+    <div class="card">
+      <h2>追蹤清單</h2>
+      <p class="hint">這裡的清單存在你這台瀏覽器。要收到 LINE／Email 通知，請把代號加到 GitHub 上的 <code>config/watchlist.yaml</code>（<a id="wlEdit" target="_blank" rel="noopener">點這裡編輯</a>）。</p>
+      <div class="toolbar">
+        <div class="seg" id="wlSeg"><button data-m="tw" class="on">台股</button><button data-m="us">美股</button></div>
+        <input id="wlInput" placeholder="輸入代號，例如 2330 或 AAPL">
+        <button id="wlAdd">加入</button>
+      </div>
+      <div class="table-wrap"><table id="wlTable" class="data"></table></div>
+    </div>
+  </section>
+
+  <!-- ======================= 條件說明 ======================= -->
+  <section id="view-rules" class="view">
+    <div class="card prose" id="rulesBody"></div>
+  </section>
+</main>
+
+<!-- 個股詳情 -->
+<dialog id="detail">
+  <div class="dlg-head">
+    <h2 id="dTitle"></h2>
+    <button class="ghost" id="dClose" aria-label="關閉">✕</button>
+  </div>
+  <div id="dBody"></div>
+</dialog>
+
+<div id="tooltip" role="tooltip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

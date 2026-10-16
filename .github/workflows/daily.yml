@@ -1,0 +1,62 @@
+name: 每日更新
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"   # 台北時間週二～週六 06:30（美股收盤後）
+  workflow_dispatch:
+    inputs:
+      skip_us:
+        description: "略過美股財報下載（測試用）"
+        default: "false"
+concurrency:
+  group: data-branch
+  cancel-in-progress: false
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SCREENER_CACHE: ${{ github.workspace }}/databr/cache
+      SEC_RAW_DIR: ${{ runner.temp }}/sec
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      SEC_USER_AGENT: "${{ github.repository_owner }} stock-screener ${{ github.repository_owner }}@users.noreply.github.com"
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
+      PAGES_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: bash scripts/data_branch.sh pull
+      - name: 台股財報（增量）
+        run: python scripts/fetch_tw.py --max-calls 500
+        continue-on-error: true
+      - name: 美股財報（SEC）
+        if: ${{ github.event.inputs.skip_us != 'true' }}
+        run: python scripts/fetch_us.py
+        continue-on-error: true
+      - name: 價格
+        run: python scripts/fetch_prices.py
+      - name: 篩選＋網站資料＋通知
+        run: python scripts/update_daily.py
+      - name: 儲存快取
+        if: always()
+        run: bash scripts/data_branch.sh push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: deploy
+        uses: actions/deploy-pages@v4

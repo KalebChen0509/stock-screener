@@ -1,0 +1,56 @@
+name: 台股財報回填
+on:
+  schedule:
+    - cron: "12 * * * *"   # 每小時（FinMind 免費會員每小時約 600 次）
+  workflow_dispatch:
+concurrency:
+  group: tw-backfill
+  cancel-in-progress: false
+permissions:
+  contents: write
+  actions: write
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SCREENER_CACHE: ${{ github.workspace }}/databr/cache
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 每日更新或回測執行中就跳過
+        id: busy
+        run: |
+          n=$(gh run list -R "$GITHUB_REPOSITORY" --json workflowName,status -L 20 \
+              --jq '[.[] | select((.workflowName=="每日更新" or .workflowName=="回測") and (.status=="in_progress" or .status=="queued"))] | length')
+          echo "busy=$n" >> "$GITHUB_OUTPUT"
+      - if: steps.busy.outputs.busy == '0'
+        uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - if: steps.busy.outputs.busy == '0'
+        run: pip install -r requirements.txt
+      - if: steps.busy.outputs.busy == '0'
+        run: bash scripts/data_branch.sh pull
+      - if: steps.busy.outputs.busy == '0'
+        run: python scripts/fetch_tw.py --max-calls 570
+      - name: 回填完成時自動觸發第一次完整回測
+        if: steps.busy.outputs.busy == '0'
+        id: done
+        run: |
+          python - <<'PY'
+          import json, os
+          p = os.path.join(os.environ["SCREENER_CACHE"], "tw_progress.json")
+          d = json.load(open(p)) if os.path.exists(p) else {"have": 0, "total": 1}
+          marker = os.path.join(os.environ["SCREENER_CACHE"], "backtest_triggered")
+          fire = d["have"] >= d["total"] * 0.98 and not os.path.exists(marker)
+          if fire:
+              open(marker, "w").write("1")
+          print("progress", d, "fire", fire)
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"fire={'1' if fire else '0'}\n")
+          PY
+      - if: steps.busy.outputs.busy == '0'
+        run: bash scripts/data_branch.sh push-tw
+      - if: steps.done.outputs.fire == '1'
+        run: gh workflow run backtest.yml -R "$GITHUB_REPOSITORY"

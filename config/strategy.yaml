@@ -1,0 +1,301 @@
+# =====================================================================
+#  價值型選股策略設定檔（所有門檻都可在這裡或網站上調整）
+#  單位：比率一律用小數（0.15 = 15%）
+#  流量項目（營收、利潤、現金流）一律用「近四季合計 TTM」
+#  存量項目（資產、負債、權益）一律用「最新一季季末」
+# =====================================================================
+
+portfolio:
+  base_currency: TWD
+  initial_capital: 1000000          # 回測起始金額（新台幣）
+  weights:                          # 資產配置
+    tw_stock: 0.20
+    us_stock: 0.20
+    etf: 0.60
+  max_holdings_per_stock_sleeve: 30 # 通過條件的股票超過此數時，取排名前 N 檔
+  etf_holdings: 6                   # ETF 不分市場，取綜合排名前 N 檔
+  empty_sleeve: cash                # 某市場沒有股票通過時：cash = 持有現金
+  rebalance: monthly                # 每月初依上月底資料換股，等權重
+
+# ---------------------------------------------------------------------
+#  一、個股 Hard Filters（全部通過才入選）
+#  source: user = 你提供的條件；added = 我補充的常用條件
+# ---------------------------------------------------------------------
+hard_filters:
+  # ---- 你提供的 14 條 ----
+  - id: cash_ratio
+    source: user
+    label: "1. 現金占總資產 ≥ 15%"
+    metric: cash_ratio              # (現金及約當現金 + 短期投資) / 總資產
+    op: ">="
+    value: 0.15
+    enabled: true
+  - id: intangible_ratio
+    source: user
+    label: "2a. 資產結構單純：商譽＋無形資產占總資產 ≤ 15%"
+    metric: intangible_ratio
+    op: "<="
+    value: 0.15
+    enabled: true
+  - id: lt_invest_ratio
+    source: user
+    label: "2b. 資產結構單純：長期投資占總資產 ≤ 20%"
+    metric: lt_invest_ratio
+    op: "<="
+    value: 0.20
+    enabled: true
+  - id: inventory_vs_peers
+    source: user
+    label: "3. 存貨占總資產 ≤ 同產業中位數 + 1 個標準差"
+    metric: inventory_ratio
+    op: "<=peer"                    # 與同產業比較
+    peer_k_std: 1.0
+    peer_min_group: 5               # 同產業少於 5 家時改用全市場
+    enabled: true
+  - id: equity_ratio
+    source: user
+    label: "4. 股東權益占總資產 ≥ 40%"
+    metric: equity_ratio
+    op: ">="
+    value: 0.40
+    enabled: true
+  - id: current_ratio
+    source: user
+    label: "5a. 短期負債不過多：流動比率 ≥ 150%"
+    metric: current_ratio
+    op: ">="
+    value: 1.5
+    enabled: true
+  - id: quick_ratio
+    source: user
+    label: "5b. 短期負債不過多：速動比率 ≥ 100%"
+    metric: quick_ratio
+    op: ">="
+    value: 1.0
+    enabled: true
+  - id: gross_margin
+    source: user
+    label: "6. 毛利率 ≥ 10%"
+    metric: gross_margin
+    op: ">="
+    value: 0.10
+    enabled: true
+  - id: op_margin
+    source: user
+    label: "7. 營業利益率 ≥ 15%"
+    metric: op_margin
+    op: ">="
+    value: 0.15
+    enabled: true
+  - id: op_to_gross
+    source: user
+    label: "8. 營業利益 / 營業毛利 ≥ 65%"
+    metric: op_to_gross
+    op: ">="
+    value: 0.65
+    enabled: true
+  - id: nonop_share
+    source: user
+    label: "9. 業外收支占稅前淨利 ≤ 5%"
+    metric: nonop_share
+    op: "<="
+    value: 0.05
+    enabled: true
+  - id: cfo_positive
+    source: user
+    label: "10. 營業活動現金流 > 0"
+    metric: cfo
+    op: ">"
+    value: 0
+    enabled: true
+  - id: fcf_positive
+    source: user
+    label: "11. 自由現金流 > 0"
+    metric: fcf
+    op: ">"
+    value: 0
+    enabled: true
+  - id: cfo_to_ni
+    source: user
+    label: "12. 營業現金流 / 稅後淨利 ≥ 50%（≥100% 在排名加分）"
+    metric: cfo_to_ni
+    op: ">="
+    value: 0.50
+    enabled: true
+  - id: fcf_to_ni
+    source: user
+    label: "13. 自由現金流 / 稅後淨利 ≥ 30%（越高排名越前）"
+    metric: fcf_to_ni
+    op: ">="
+    value: 0.30
+    enabled: true
+  # ---- 你的圖片「現金流量與公司類型」（最少看三年） ----
+  - id: cfo_positive_3y
+    source: user
+    label: "15. 近 3 年每年營業現金流皆 > 0"
+    metric: cfo_positive_3y
+    op: "=="
+    value: true
+    enabled: true
+  - id: cf_type
+    source: user
+    label: "16. 現金流類型為甲或乙（近 3 年合計：營業 +、投資 −）；丙丁戊不要碰"
+    metric: cf_type_ok
+    op: "=="
+    value: true
+    enabled: true
+  # 第 14 條（籌資現金流為負）＝甲型 → 放在排名加分
+
+  # ---- 我補充的常用條件 ----
+  - id: exclude_financials
+    source: added
+    label: "排除金融保險業（財報結構不同，上述比率不適用）"
+    metric: is_financial
+    op: "=="
+    value: false
+    enabled: true
+  - id: net_income_positive
+    source: added
+    label: "稅後淨利 > 0（現金流比率才有意義）"
+    metric: net_income
+    op: ">"
+    value: 0
+    enabled: true
+  - id: profitable_3y
+    source: added
+    label: "近 3 年每年（每段近四季）稅後淨利皆為正"
+    metric: profitable_3y
+    op: "=="
+    value: true
+    enabled: true
+  - id: roe
+    source: added
+    label: "ROE（近四季）≥ 8%"
+    metric: roe
+    op: ">="
+    value: 0.08
+    enabled: true
+  - id: pe
+    source: added
+    label: "價值股估值：本益比 ≤ 20 倍"
+    metric: pe
+    op: "<="
+    value: 20
+    enabled: true
+  - id: pb
+    source: added
+    label: "價值股估值：股價淨值比 ≤ 3 倍"
+    metric: pb
+    op: "<="
+    value: 3
+    enabled: true
+  - id: dilution
+    source: added
+    label: "股數一年內膨脹 ≤ 5%（避免增資稀釋）"
+    metric: share_growth
+    op: "<="
+    value: 0.05
+    enabled: true
+  - id: market_cap
+    source: added
+    label: "市值下限：台股 ≥ 30 億台幣、美股 ≥ 3 億美元"
+    metric: market_cap
+    op: ">="
+    value: {tw: 3.0e9, us: 3.0e8}
+    enabled: true
+  - id: liquidity
+    source: added
+    label: "流動性：日均成交值 台股 ≥ 1,000 萬台幣、美股 ≥ 200 萬美元"
+    metric: avg_traded_value
+    op: ">="
+    value: {tw: 1.0e7, us: 2.0e6}
+    enabled: true
+  - id: history
+    source: added
+    label: "至少 12 季財報資料"
+    metric: n_quarters
+    op: ">="
+    value: 12
+    enabled: true
+
+# ---------------------------------------------------------------------
+#  二、個股排名（通過 hard filters 的股票，在各自市場內以百分位計分）
+#  綜合分數 = Σ 權重 × 百分位（0~100）
+# ---------------------------------------------------------------------
+ranking:
+  bottom_up:
+    value:            # 價值 40%
+      earnings_yield: 0.15    # EBIT / 企業價值（EV），越高越便宜
+      fcf_yield: 0.15         # 自由現金流 / 市值
+      book_to_price: 0.10     # 淨值 / 市值
+    quality:          # 品質 30%
+      fcf_to_ni: 0.10         # 你的第 13 條：越高越好
+      cfo_to_ni: 0.05         # 你的第 12 條
+      roe: 0.10
+      op_margin: 0.05
+    safety:           # 安全 10%
+      cash_ratio: 0.05
+      equity_ratio: 0.05
+  top_down: 0.20      # 由上而下（產業）20%
+  bonuses:            # 額外加分（分數點數）
+    cf_type_a: 4              # 甲型（營運成長及財務穩健，籌資為負）優先於乙型；含第 14 條
+    cfo_to_ni_100: 2          # 第 12 條：營業現金流 ≥ 稅後淨利
+
+# ---------------------------------------------------------------------
+#  三、由上而下（Top-down）
+#  1) 大盤多空：指數 vs 10 個月均線（顯示用，可選擇用於調整配置）
+#  2) 產業評分：產業相對強弱（6 個月）50% + 產業估值（中位數盈餘殖利率）50%
+#     每檔股票拿到所屬產業的百分位分數，計入綜合排名 20%
+#  交叉比對：bottom-up 排名前 1/3 且產業分數前 1/2 → 標記「上下皆優」
+# ---------------------------------------------------------------------
+top_down:
+  regime_ma_months: 10
+  regime_indices: {tw: "^TWII", us: "^GSPC"}
+  sector_momentum_months: 6
+  sector_weights: {momentum: 0.5, valuation: 0.5}
+  exclude_bottom_sectors_pct: 0.0   # 例如 0.25 = 排除產業分數最差的 25%（預設不排除）
+  regime_defensive: false           # true = 大盤跌破均線時，該市場股票部位減半改持現金
+  cross_check: {bottom_up_top: 0.3333, sector_top: 0.5}
+
+# ---------------------------------------------------------------------
+#  四、ETF 篩選
+# ---------------------------------------------------------------------
+etf:
+  hard_filters:
+    - {id: is_value,  label: "指數方法為價值／高股息／基本面加權", metric: is_value, op: "==", value: true, enabled: true}
+    - {id: expense,   label: "總費用率 ≤ 0.60%", metric: expense_ratio, op: "<=", value: 0.0060, enabled: true}
+    - {id: age,       label: "成立滿 3 年", metric: age_years, op: ">=", value: 3, enabled: true}
+    - {id: aum,       label: "規模 ≥ 3 億美元（約 100 億台幣）", metric: aum_usd, op: ">=", value: 3.0e8, enabled: true}
+    - {id: liquidity, label: "日均成交值 ≥ 100 萬美元", metric: avg_traded_value_usd, op: ">=", value: 1.0e6, enabled: true}
+    - {id: top10,     label: "前十大持股占比 ≤ 60%", metric: top10_weight, op: "<=", value: 0.60, enabled: true}
+  ranking:
+    expense_ratio: -0.30     # 負號 = 越低越好
+    aum_usd: 0.10
+    avg_traded_value_usd: 0.10
+    tracking_vol: -0.10      # 對標指數的追蹤波動，越低越好（無資料時略過）
+    top10_weight: -0.10
+    value_tilt: 0.30         # ETF 本身的盈餘殖利率 + 淨值市價比（越便宜越高）
+
+# ---------------------------------------------------------------------
+#  五、交易成本與稅（回測「扣費後」情境）
+# ---------------------------------------------------------------------
+costs:
+  tw_stock: {buy: 0.001425, sell: 0.004425}   # 手續費 0.1425% + 賣出證交稅 0.3%
+  tw_etf:   {buy: 0.001425, sell: 0.002425}   # 手續費 0.1425% + 賣出證交稅 0.1%
+  us:       {buy: 0.0010,   sell: 0.0010}     # 複委託手續費假設 0.1%（依你的券商調整）
+  us_dividend_withholding: 0.30               # 美股股利預扣 30%
+  fx_spread: 0.0005                           # 換匯價差 0.05%（單邊）
+
+# ---------------------------------------------------------------------
+#  六、財報公布時間（避免前視偏誤）
+#  台股：Q1→5/15、Q2→8/14、Q3→11/14、Q4（年報）→3/31
+#  美股：使用 SEC 實際申報日（filed date）
+# ---------------------------------------------------------------------
+reporting_lag:
+  tw: {Q1: "05-15", Q2: "08-14", Q3: "11-14", Q4: "03-31"}
+
+backtest:
+  start: "2016-10-01"
+  end: "latest"
+  risk_free: 0.015
+  benchmarks: ["0050.TW", "SPY", "VT"]
