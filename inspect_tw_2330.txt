@@ -1,0 +1,176 @@
+===== TaiwanStockFinancialStatements rows=306
+2026-06-30 EPS                                                                                      27  基本每股盈餘
+2026-06-30 OTHNOE                                                                        5,274,039,000  其他收益及費損淨額
+2026-06-30 OtherComprehensiveIncome                                                     17,286,598,000  其他綜合損益（淨額）
+2026-06-30 TAX                                                                         155,649,163,000  所得稅費用（利益）
+2026-06-30 IncomeAfterTaxes                                                            706,780,923,000  本期淨利（淨損）
+2026-06-30 TotalConsolidatedProfitForThePeriod                                         724,067,521,000  本期綜合損益總額
+2026-06-30 EquityAttributableToOwnersOfParent                                          706,561,938,000  淨利（淨損）歸屬於母公司業主
+2026-06-30 NoncontrollingInterests                                                         218,985,000  淨利（淨損）歸屬於非控制權益
+2026-06-30 OperatingIncome                                                             766,602,651,000  營業利益（損失）
+2026-06-30 TotalNonoperatingIncomeAndExpense                                            95,827,435,000  營業外收入及支出
+2026-06-30 CostOfGoodsSold                                                             410,069,555,000  營業成本
+2026-06-30 Revenue                                                                   1,270,380,250,000  營業收入
+2026-06-30 GrossProfit                                                                 860,310,695,000  營業毛利（毛損）
+2026-06-30 OperatingExpenses                                                            98,982,083,000  營業費用
+2026-06-30 PreTaxIncome                                                                862,430,086,000  稅前淨利（淨損）
+2026-06-30 ComprehensiveIncomeConsolidatedNetIncomeAttributedNonControllingInterest         -292,127,000  綜合損益總額歸屬於非控制權益
+2026-06-30 IncomeFromContinuingOperations                                              706,780,923,000  繼續營業單位本期淨利（淨損）
+===== TaiwanStockBalanceSheet rows=1826
+2026-06-30 CashAndCashEquivalents                                                    3,134,218,213,000  現金及約當現金
+2026-06-30 CashAndCashEquivalents_per                                                               33  現金及約當現金
+2026-06-30 CurrentFinancialAssetsAtFairvalueThroughProfitOrLoss                            226,375,000  透過損益按公允價值衡量之金融資產－流動
+2026-06-30 CurrentFinancialAssetsAtFairvalueThroughProfitOrLoss_per                                  0  透過損益按公允價值衡量之金融資產－流動
+2026-06-30 NonCurrentFinancialAssetsAtFairvalueThroughProfitOrLoss                      15,780,286,000  透過損益按公允價值衡量之金融資產－非流動
+2026-06-30 NonCurrentFinancialAssetsAtFairvalueThroughProfitOrLoss_per                               0  透過損益按公允價值衡量之金融資產－非流動
+2026-06-30 FinancialAssetsAtFairvalueThroughOtherComprehensiveIncome                   193,182,690,000  透過其他綜合損益按公允價值衡量之金融資產－流動
+2026-06-30 FinancialAssetsAtFairvalueThroughOtherComprehensiveIncome_per                             2  透過其他綜合損益按公允價值衡量之金融資產－流動
+2026-06-30 FinancialAssetsAtFairvalueThroughOtherComprehensiveIncomeNonCurrent          88,151,593,000  透過其他綜合損益按公允價值衡量之金融資產－非流動
+2026-06-30 FinancialAssetsAtFairvalueThroughOtherComprehensiveIncomeNonCurrent_per                    1  透過其他綜合損益按公允價值衡量之金融資產－非流動
+2026-06-30 FinancialAssetsAtAmortizedCost                                              190,385,845,000  按攤銷後成本衡量之金融資產－流動
+2026-06-30 FinancialAssetsAtAmortizedCost_per                                                        2  按攤銷後成本衡量之金融資產－流動
+2026-06-30 FinancialAssetsAtAmortizedCostNonCurrent                                    105,877,457,000  按攤銷後成本衡量之金融資產－非流動
+2026-06-30 FinancialAssetsAtAmortizedCostNonCurrent_per                                              1  按攤銷後成本衡量之金融資產－非流動
+2026-06-30 AccountsReceivableNet                                                       435,762,477,000  應收帳款淨額
+2026-06-30 AccountsReceivableNet_per                                                                 5  應收帳款淨額
+2026-06-30 AccountsReceivableDuefromRelatedPartiesNet                                    5,160,539,000  應收帳款－關係人淨額
+2026-06-30 AccountsReceivableDuefromRelatedPartiesNet_per                                            0  應收帳款－關係人淨額
+2026-06-30 OtherReceivablesDueFromRelatedParties                                         1,209,013,000  其他應收款－關係人淨額
+2026-06-30 OtherReceivablesDueFromRelatedParties_per                                                 0  其他應收款－關係人淨額
+2026-06-30 Inventories                                                                 385,524,542,000  存貨
+2026-06-30 Inventories_per                                                                           4  存貨
+2026-06-30 OtherCurrentAssets                                                          220,031,048,000  其他流動資產
+2026-06-30 OtherCurrentAssets_per                                                                    2  其他流動資產
+2026-06-30 CurrentAssets                                                             4,565,700,742,000  流動資產合計
+2026-06-30 CurrentAssets_per                                                                        49  流動資產合計
+2026-06-30 InvestmentAccountedForUsingEquityMethod                                      18,126,371,000  採用權益法之投資
+2026-06-30 InvestmentAccountedForUsingEquityMethod_per                                               0  採用權益法之投資
+2026-06-30 PropertyPlantAndEquipment                                                 4,302,880,478,000  不動產、廠房及設備
+2026-06-30 PropertyPlantAndEquipment_per                                                            46  不動產、廠房及設備
+2026-06-30 RightOfUseAsset                                                              54,895,205,000  使用權資產
+2026-06-30 RightOfUseAsset_per                                                                       1  使用權資產
+2026-06-30 IntangibleAssets                                                             24,074,828,000  無形資產
+2026-06-30 IntangibleAssets_per                                                                      0  無形資產
+2026-06-30 DeferredTaxAssets                                                            62,888,627,000  遞延所得稅資產
+2026-06-30 DeferredTaxAssets_per                                                                     1  遞延所得稅資產
+2026-06-30 OtherNoncurrentAssets                                                       137,279,140,000  其他非流動資產
+2026-06-30 OtherNoncurrentAssets_per                                                                 1  其他非流動資產
+2026-06-30 NoncurrentAssets                                                          4,809,953,985,000  非流動資產合計
+2026-06-30 NoncurrentAssets_per                                                                     51  非流動資產合計
+2026-06-30 TotalAssets                                                               9,375,654,727,000  資產總額
+2026-06-30 TotalAssets_per                                                                         100  資產總額
+2026-06-30 CurrentFinancialLiabilitiesAtFairValueThroughProfitOrLoss                     2,452,333,000  透過損益按公允價值衡量之金融負債－流動
+2026-06-30 CurrentFinancialLiabilitiesAtFairValueThroughProfitOrLoss_per                             0  透過損益按公允價值衡量之金融負債－流動
+2026-06-30 CurrentDerivativeFinancialLiabilitiesForHedging                                   2,563,000  避險之金融負債－流動
+2026-06-30 CurrentDerivativeFinancialLiabilitiesForHedging_per                                       0  避險之金融負債－流動
+2026-06-30 AccountsPayable                                                             108,890,080,000  應付帳款
+2026-06-30 AccountsPayable_per                                                                       1  應付帳款
+2026-06-30 AccountsPayableToRelatedParties                                               1,735,737,000  應付帳款－關係人
+2026-06-30 AccountsPayableToRelatedParties_per                                                       0  應付帳款－關係人
+2026-06-30 OtherPayables                                                               871,930,363,000  其他應付款
+2026-06-30 OtherPayables_per                                                                         9  其他應付款
+2026-06-30 CurrentTaxLiabilities                                                       283,343,231,000  本期所得稅負債
+2026-06-30 CurrentTaxLiabilities_per                                                                 3  本期所得稅負債
+2026-06-30 OtherCurrentLiabilities                                                     589,407,518,000  其他流動負債
+2026-06-30 OtherCurrentLiabilities_per                                                               6  其他流動負債
+2026-06-30 CurrentLiabilities                                                        1,857,761,825,000  流動負債合計
+2026-06-30 CurrentLiabilities_per                                                                   20  流動負債合計
+2026-06-30 BondsPayable                                                                815,036,716,000  應付公司債
+2026-06-30 BondsPayable_per                                                                          9  應付公司債
+2026-06-30 LongtermBorrowings                                                           49,226,958,000  長期借款
+2026-06-30 LongtermBorrowings_per                                                                    1  長期借款
+2026-06-30 OtherNoncurrentLiabilities                                                  141,975,372,000  其他非流動負債
+2026-06-30 OtherNoncurrentLiabilities_per                                                            2  其他非流動負債
+2026-06-30 NoncurrentLiabilities                                                     1,043,421,921,000  非流動負債合計
+2026-06-30 NoncurrentLiabilities_per                                                                11  非流動負債合計
+2026-06-30 Liabilities                                                               2,901,183,746,000  負債總額
+2026-06-30 Liabilities_per                                                                          31  負債總額
+2026-06-30 OrdinaryShare                                                               259,323,701,000  普通股股本
+2026-06-30 OrdinaryShare_per                                                                         3  普通股股本
+2026-06-30 CapitalStock                                                                259,323,701,000  股本合計
+2026-06-30 CapitalStock_per                                                                          3  股本合計
+2026-06-30 CapitalSurplusAdditionalPaidInCapital                                        35,617,758,000  資本公積－發行溢價
+2026-06-30 CapitalSurplusAdditionalPaidInCapital_per                                                 0  資本公積－發行溢價
+2026-06-30 CapitalSurplusDonatedAssetsReceived                                             116,964,000  資本公積－受贈資產
+2026-06-30 CapitalSurplusDonatedAssetsReceived_per                                                   0  資本公積－受贈資產
+2026-06-30 CapitalSurplusChangesInEquityOfAssociatesAndJointVenturesAccountedForUsingEquityMethod          271,072,000  資本公積－採用權益法認列關聯企業及合資股權淨值之變動數
+2026-06-30 CapitalSurplusChangesInEquityOfAssociatesAndJointVenturesAccountedForUsingEquityMethod_per                    0  資本公積－採用權益法認列關聯企業及合資股權淨值之變動數
+2026-06-30 CapitalSurplusNetAssetsFromMerger                                            22,800,434,000  資本公積－合併溢額
+2026-06-30 CapitalSurplusNetAssetsFromMerger_per                                                     0  資本公積－合併溢額
+2026-06-30 CapitalSurplus                                                               72,290,839,000  資本公積合計
+2026-06-30 CapitalSurplus_per                                                                        1  資本公積合計
+2026-06-30 LegalReserve                                                                311,146,899,000  法定盈餘公積
+2026-06-30 LegalReserve_per                                                                          3  法定盈餘公積
+2026-06-30 UnappropriatedRetainedEarningsAaccumulatedDeficit                         5,739,966,200,000  未分配盈餘
+2026-06-30 UnappropriatedRetainedEarningsAaccumulatedDeficit_per                                    61  未分配盈餘
+2026-06-30 RetainedEarnings                                                          6,051,113,099,000  保留盈餘合計
+2026-06-30 RetainedEarnings_per                                                                     65  保留盈餘合計
+2026-06-30 OtherEquityInterest                                                          49,790,695,000  其他權益合計
+2026-06-30 OtherEquityInterest_per                                                                   1  其他權益合計
+2026-06-30 EquityAttributableToOwnersOfParent                                        6,432,518,334,000  歸屬於母公司業主之權益合計
+2026-06-30 EquityAttributableToOwnersOfParent_per                                                   69  歸屬於母公司業主之權益合計
+2026-06-30 NoncontrollingInterests                                                      41,952,647,000  非控制權益
+2026-06-30 NoncontrollingInterests_per                                                               0  非控制權益
+2026-06-30 Equity                                                                    6,474,470,981,000  權益總額
+2026-06-30 Equity_per                                                                               69  權益總額
+2026-06-30 TotalLiabilitiesEquity                                                    9,375,654,727,000  負債及權益總計
+2026-06-30 TotalLiabilitiesEquity_per                                                              100  負債及權益總計
+2026-06-30 NumberOfSharesInEntityHeldByEntityAndByItsSubsidiaries                                    0  母公司暨子公司所持有之母公司庫藏股股數
+===== TaiwanStockCashFlowsStatement rows=504
+2026-06-30 CashProvidedByInvestingActivities                                          -849,664,174,000  投資活動之淨現金流入（流出）
+2026-06-30 OtherInvestingActivities                                                     -3,754,267,000  其他投資活動
+2026-06-30 CashBalancesBeginningOfPeriod                                             2,767,856,402,000  期初現金及約當現金餘額
+2026-06-30 PropertyAndPlantAndEquipment                                               -846,764,746,000  取得不動產、廠房及設備
+2026-06-30 HedgingFinancialLiabilities                                                      16,726,000  除列避險之金融負債
+2026-06-30 CashBalancesIncrease                                                        366,361,811,000  本期現金及約當現金增加（減少）數
+2026-06-30 RedemptionOfBonds                                                           -54,861,100,000  償還公司債
+2026-06-30 CashBalancesEndOfPeriod                                                   3,134,218,213,000  期末現金及約當現金餘額
+2026-06-30 IncomeBeforeIncomeTaxFromContinuingOperations                             1,550,229,773,000  繼續營業單位稅前淨利（淨損）
+2026-06-30 RentalPrincipalRepayments                                                    -2,249,689,000  租賃本金償還
+2026-06-30 NetIncomeBeforeTax                                                        1,550,229,773,000  本期稅前淨利（淨損）
+2026-06-30 CashFlowsFromOperatingActivities                                          1,482,341,242,000  營業活動之淨現金流入（流出）
+2026-06-30 Depreciation                                                                359,541,458,000  折舊費用
+2026-06-30 AmortizationExpense                                                           4,447,147,000  攤銷費用
+2026-06-30 AccountsPayable                                                              26,338,485,000  應付帳款
+2026-06-30 NetCashInflowFromOperatingActivities                                      1,482,341,242,000  營業活動之淨現金流入
+2026-06-30 DecreaseInDepositDeposit                                                        321,288,000  存出保證金減少
+2026-06-30 InterestExpense                                                               5,801,911,000  利息費用
+2026-06-30 TotalIncomeLossItems                                                        238,122,232,000  收益費損項目合計
+2026-06-30 ReceivableIncrease                                                         -156,710,924,000  應收帳款（增加）減少
+2026-06-30 InventoryIncrease                                                           -97,415,057,000  存貨（增加）減少
+2026-06-30 CashReceivedThroughOperations                                             1,672,060,854,000  營運產生之現金流入（流出）
+2026-06-30 CashFlowsProvidedFromFinancingActivities                                   -304,563,833,000  籌資活動之淨現金流入（流出）
+2026-06-30 ProceedsFromLongTermDebt                                                     11,950,000,000  舉借長期借款
+2026-06-30 RepaymentOfLongTermDebt                                                        -651,389,000  償還長期借款
+2026-06-30 PayTheInterest                                                               -9,889,408,000  支付之利息
+2026-06-30 InterestIncome                                                              -58,906,984,000  利息收入
+===== standardized
+                                 10                   11                   12                   13                   14                   15                   16                   17
+market                           tw                   tw                   tw                   tw                   tw                   tw                   tw                   tw
+id                             2330                 2330                 2330                 2330                 2330                 2330                 2330                 2330
+period_end      2024-09-30 00:00:00  2024-12-31 00:00:00  2025-03-31 00:00:00  2025-06-30 00:00:00  2025-09-30 00:00:00  2025-12-31 00:00:00  2026-03-31 00:00:00  2026-06-30 00:00:00
+available_date  2024-11-14 00:00:00  2025-03-31 00:00:00  2025-05-15 00:00:00  2025-08-14 00:00:00  2025-11-14 00:00:00  2026-03-31 00:00:00  2026-05-15 00:00:00  2026-08-14 00:00:00
+revenue              759692143000.0       868461178000.0       839253664000.0       933791869000.0       989918318000.0      1046090421000.0      1134103440000.0      1270380250000.0
+gross_profit         439345666000.0       512378151000.0       493395076000.0       547369238000.0       588542829000.0       651986836000.0       751295421000.0       860310695000.0
+op_income            360766289000.0       425712913000.0       407080808000.0       463423638000.0       500684818000.0       564902413000.0       658966142000.0       766602651000.0
+nonop                 23420563000.0        23085091000.0        23814604000.0        29611566000.0        24684205000.0        27460788000.0        28833545000.0        95827435000.0
+pretax               384186852000.0       448798004000.0       430895412000.0       493035204000.0       525369023000.0       592363201000.0       687799687000.0       862430086000.0
+net_income           325080170000.0       374468888000.0       360732661000.0       397493424000.0       451755362000.0       505415333000.0       572801304000.0       706780923000.0
+cfo                  391992467000.0       620205283000.0       625573672000.0       497064085000.0       426829081000.0       725508787000.0       698976265000.0       783364977000.0
+capex                207078888000.0       361948162000.0       330826730000.0       297225801000.0       287451994000.0       356906004000.0       350762799000.0       496001947000.0
+cfi                 -195509921000.0      -311918527000.0      -290192426000.0      -228488307000.0      -259752617000.0      -365960057000.0      -356853756000.0      -492810418000.0
+cff                  -83638287000.0      -100732423000.0       -84665592000.0      -119700601000.0      -128293126000.0      -107685373000.0      -119910612000.0      -184653221000.0
+cash                1886780555000.0      2127627043000.0      2394804250000.0      2364524340000.0      2470759384000.0      2767856402000.0      3035637228000.0      3134218213000.0
+st_inv                  971386000.0          207700000.0           54369000.0         1765904000.0           20955000.0          100200000.0            5408000.0          226375000.0
+receivables          249973952000.0       272087708000.0       243949322000.0       235684971000.0       307813839000.0       281791053000.0       363005130000.0       440923016000.0
+inventory            292883930000.0       287868810000.0       293387615000.0       304193716000.0       288689063000.0       288109485000.0       311453459000.0       385524542000.0
+current_assets      2773913863000.0      3088352120000.0      3345663882000.0      3264917475000.0      3436015312000.0      3817130817000.0      4265512176000.0      4565700742000.0
+total_assets        6165658176000.0      6691938000000.0      7133287420000.0      7006349549000.0      7354107076000.0      7933023878000.0      8660949685000.0      9375654727000.0
+current_liab        1080399099000.0      1264524964000.0      1399802998000.0      1377314334000.0      1275906624000.0      1458019289000.0      1714253448000.0      1857761825000.0
+total_liab          2143735885000.0      2368362135000.0      2531662963000.0      2389717699000.0      2318529274000.0      2472228595000.0      2728560764000.0      2901183746000.0
+equity              4021922291000.0      4323575865000.0      4601624457000.0      4616631850000.0      5035577802000.0      5460795283000.0      5932388921000.0      6474470981000.0
+goodwill                        NaN                  NaN                  NaN                  NaN                  NaN                  NaN                  NaN                  NaN
+intangibles           22083031000.0        26282520000.0        25450343000.0        24707294000.0        25558048000.0        24952615000.0        24728596000.0        24074828000.0
+lt_inv                30967916000.0        37421105000.0        38766658000.0        34162043000.0        36016415000.0        38033271000.0        37765362000.0        18126371000.0
+debt                 936163265000.0       958428892000.0       986983899000.0       883671102000.0       918228256000.0       896061999000.0       901017742000.0       864263674000.0
+shares                25932733200.0        25932733200.0        25932733200.0        25932615500.0        25932524500.0        25932524500.0        25932524500.0        25932370100.0
