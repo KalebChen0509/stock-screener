@@ -28,8 +28,8 @@ def send_line(text: str) -> bool:
 
 
 def send_email(subject: str, text: str, html: str | None = None) -> bool:
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "465"))
+    host = os.environ.get("SMTP_HOST") or "smtp.gmail.com"
+    port = int(os.environ.get("SMTP_PORT") or 465)
     user = os.environ.get("SMTP_USER")
     pw = os.environ.get("SMTP_PASS")
     to = os.environ.get("EMAIL_TO") or user

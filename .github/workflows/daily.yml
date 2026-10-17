@@ -32,7 +32,7 @@ jobs:
       SCREENER_CACHE: ${{ github.workspace }}/databr/cache
       SEC_RAW_DIR: /tmp/sec
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
-      SEC_USER_AGENT: "${{ github.repository_owner }} stock-screener ${{ github.repository_owner }}@users.noreply.github.com"
+      SEC_USER_AGENT: "${{ github.repository_owner }} personal-research ${{ secrets.SEC_CONTACT_EMAIL }}"
       LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}

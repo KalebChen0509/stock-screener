@@ -177,17 +177,17 @@ hard_filters:
     enabled: true
   - id: pe
     source: added
-    label: "價值股估值：本益比 ≤ 20 倍"
+    label: "價值股估值：本益比 ≤ 25 倍"
     metric: pe
     op: "<="
-    value: 20
+    value: 25
     enabled: true
   - id: pb
     source: added
-    label: "價值股估值：股價淨值比 ≤ 3 倍"
+    label: "價值股估值：股價淨值比 ≤ 5 倍"
     metric: pb
     op: "<="
-    value: 3
+    value: 5
     enabled: true
   - id: dilution
     source: added
@@ -210,6 +210,7 @@ hard_filters:
     op: ">="
     value: 0.20
     enabled: true
+    na_pass: true            # 上市未滿一年、沒有 12 個月股價時不扣分
   - id: pledge
     source: added
     label: "台股董監質押比 ≤ 30%（只有最新資料，回測不適用）"
@@ -257,7 +258,7 @@ groups:
     label: "研發密集（美股：研發費用 ≥ 營收 5%；台股財報摘要沒有研發費用，改用研發密集產業）"
     rule: {metric: rd_to_revenue, op: ">=", value: 0.05}
     industries:
-      tw: [半導體業, 光電業, 通信網路業, 電腦及週邊設備業, 電子零組件業, 其他電子業, 資訊服務業, 生技醫療業, 數位雲端]
+      tw: [半導體業, 光電業, 通信網路業, 電腦及週邊設備業, 電子零組件業, 其他電子業, 資訊服務業, 生技醫療業, 數位雲端, 電子工業, 其他電子類]
   cyclicals:
     label: "景氣循環股（復甦期、過熱期強勢）"
     industries:

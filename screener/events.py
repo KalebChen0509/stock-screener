@@ -81,7 +81,7 @@ def update_tw_events() -> pd.DataFrame:
         js = _get_json(url)
         if not js:
             continue
-        cid = _col(js, "公司代號") or _col(js, "代號")
+        cid = _col(js, "公司代號") or _col(js, "代號") or _col(js, "CompanyCode")
         subj = _col(js, "主旨") or _col(js, "標題")
         dcol = _col(js, "發言日期") or _col(js, "日期")
         if not cid or not subj:
@@ -170,7 +170,7 @@ def update_tw_pledge() -> pd.DataFrame:
         js = _get_json(url)
         if not js:
             continue
-        cid = _col(js, "公司代號") or _col(js, "代號")
+        cid = _col(js, "公司代號") or _col(js, "代號") or _col(js, "CompanyCode")
         held = _col(js, "目前持股") or _col(js, "持股")
         pled = _col(js, "設質股數") or _col(js, "質")
         if not (cid and held and pled):
