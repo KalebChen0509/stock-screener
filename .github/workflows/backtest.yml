@@ -15,6 +15,9 @@ permissions:
   contents: write
   pages: write
   id-token: write
+defaults:
+  run:
+    shell: bash
 jobs:
   backtest:
     runs-on: ubuntu-latest
@@ -34,15 +37,15 @@ jobs:
       - run: pip install -r requirements.txt
       - run: bash scripts/data_branch.sh pull
       - name: 美股財報（若尚未建立）
-        run: '[ -f databr/cache/us_fundamentals.csv.gz ] || python scripts/fetch_us.py'
+        run: '[ -f databr/cache/us_fundamentals.csv.gz ] || python scripts/fetch_us.py 2>&1 | tee site/data/logs/fetch_us.txt'
       - name: 價格
         run: |
-          if [ "${{ github.event.inputs.full_prices }}" = "true" ]; then python scripts/fetch_prices.py --full; else python scripts/fetch_prices.py; fi
+          if [ "${{ github.event.inputs.full_prices }}" = "true" ]; then python scripts/fetch_prices.py --full 2>&1 | tee site/data/logs/fetch_prices.txt; else python scripts/fetch_prices.py 2>&1 | tee site/data/logs/fetch_prices.txt; fi
       - name: 回測
         run: |
-          if [ -n "${{ github.event.inputs.start }}" ]; then python scripts/run_backtest.py --start "${{ github.event.inputs.start }}"; else python scripts/run_backtest.py; fi
+          if [ -n "${{ github.event.inputs.start }}" ]; then python scripts/run_backtest.py --start "${{ github.event.inputs.start }}" 2>&1 | tee site/data/logs/run_backtest.txt; else python scripts/run_backtest.py 2>&1 | tee site/data/logs/run_backtest.txt; fi
       - name: 網站資料
-        run: python scripts/update_daily.py --no-notify
+        run: mkdir -p site/data/logs && set -o pipefail && python scripts/update_daily.py --no-notify 2>&1 | tee -a site/data/logs/update_daily.txt
       - if: always()
         run: bash scripts/data_branch.sh push
       - uses: actions/configure-pages@v5

@@ -17,6 +17,9 @@ permissions:
   contents: write
   pages: write
   id-token: write
+defaults:
+  run:
+    shell: bash
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -45,21 +48,21 @@ jobs:
       - run: pip install -r requirements.txt
       - run: bash scripts/data_branch.sh pull
       - name: 台股財報（增量）
-        run: python scripts/fetch_tw.py --max-calls 500
+        run: mkdir -p site/data/logs && set -o pipefail && python scripts/fetch_tw.py --max-calls 500 2>&1 | tee -a site/data/logs/fetch_tw.txt
         continue-on-error: true
       - name: 美股財報（SEC，每週一或尚無資料時才重抓，平日省 10～15 分鐘）
         if: ${{ github.event.inputs.skip_us != 'true' }}
         run: |
           if [ "$(date -u +%u)" = "1" ] || [ ! -f databr/cache/us_fundamentals.csv.gz ] || [ "${{ github.event.inputs.force_us }}" = "true" ]; then
-            python scripts/fetch_us.py
+            python scripts/fetch_us.py 2>&1 | tee site/data/logs/fetch_us.txt
           else
             echo "略過（非週一）"
           fi
         continue-on-error: true
       - name: 價格
-        run: python scripts/fetch_prices.py
+        run: mkdir -p site/data/logs && set -o pipefail && python scripts/fetch_prices.py 2>&1 | tee -a site/data/logs/fetch_prices.txt
       - name: 篩選＋網站資料＋通知
-        run: python scripts/update_daily.py
+        run: mkdir -p site/data/logs && set -o pipefail && python scripts/update_daily.py 2>&1 | tee -a site/data/logs/update_daily.txt
       - name: 儲存快取
         if: always()
         run: bash scripts/data_branch.sh push

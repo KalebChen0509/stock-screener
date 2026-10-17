@@ -26,7 +26,7 @@ push_dir() {  # $1 = 要推上去的資料夾
 case "$1" in
   pull)
     pull_into databr
-    mkdir -p site/data
+    mkdir -p site/data/logs
     [ -f databr/site_data/backtest.json ] && cp databr/site_data/backtest.json site/data/ || true
     du -sh databr || true
     ;;
