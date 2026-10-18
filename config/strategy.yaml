@@ -16,7 +16,32 @@ portfolio:
   max_holdings_per_stock_sleeve: 30 # 通過條件的股票超過此數時，取排名前 N 檔
   etf_holdings: 6                   # ETF 不分市場，取綜合排名前 N 檔
   empty_sleeve: cash                # 某市場沒有股票通過時：cash = 持有現金
+  fill_with_index:                  # 通過的股票太少時，空出來的名額改買大盤 ETF（不放現金、不重壓少數股票）
+    enabled: false
+    min_holdings: 10
+    tw: "0050.TW"
+    us: "SPY"
   rebalance: monthly                # 每月初依上月底資料換股，等權重
+
+# ---------------------------------------------------------------------
+#  風險控管：個股停損
+#  回測：每月底檢查一次（只有月資料）；每日更新：每天收盤後檢查並通知
+#  報酬用「含息還原價」計算，除息造成的帳面下跌不會誤觸停損
+# ---------------------------------------------------------------------
+risk:
+  stop_loss:
+    enabled: true
+    pct: 0.15                       # 從參考價下跌 15% 即賣出
+    basis: trailing                 # entry = 買進價；trailing = 買進後最高價（移動停損）；vol = 移動停損，幅度依個股波動調整
+    vol_mult: 2.5                   # basis=vol 時：停損幅度 = 個股近 12 個月月報酬標準差 × 2.5
+    vol_min: 0.08                   #   下限 8%
+    vol_max: 0.35                   #   上限 35%
+    apply_to: [tw, us]              # 只用在個股；ETF 已分散，不設停損
+    reentry: cooldown               # cooldown = 冷卻固定月數後才可買回；ma = 至少 1 個月且站上 10 個月均線才可買回
+    cooldown_months: 3
+    reentry_ma_months: 10
+    exit_delay_days: 1              # 回測：觸發後「隔 1 個交易日」才以收盤價賣出（模擬跳空、來不及成交）
+    proceeds: cash                  # 停損賣出的錢先放現金，下次月初調倉再重新分配
 
 # ---------------------------------------------------------------------
 #  一、個股 Hard Filters（全部通過才入選）
@@ -414,3 +439,58 @@ backtest:
   end: "latest"
   risk_free: 0.015
   benchmarks: ["0050.TW", "SPY", "VT"]
+  # 一次回測多組方案做比較（只影響回測頁的「方案比較」，不影響每日選股）
+  # 危機壓力測試區間（完整策略；以混合基準的谷底區分「跌段」與「反彈段」）
+  crises:
+    - {name: "2018Q4 升息＋貿易戰", start: "2018-09", end: "2019-06"}
+    - {name: "2020 新冠崩盤（V 型）", start: "2020-01", end: "2020-12"}
+    - {name: "2022 升息空頭（慢跌）", start: "2021-12", end: "2023-06"}
+    - {name: "2024/8 日圓套利平倉", start: "2024-06", end: "2025-01"}
+    - {name: "2025/4 關稅衝擊", start: "2025-01", end: "2025-10"}
+  # 指數壓力測試（只測停損規則本身；使用「只改 risk」的方案）
+  stress:
+    assets: ["^TWII", "0050.TW", "0056.TW", "IWD", "IWN", "SPY"]
+    episodes:
+      - {name: "2000-02 網路泡沫", start: "2000-01-01", trough_by: "2003-04-30"}
+      - {name: "2008 金融海嘯", start: "2007-10-01", trough_by: "2009-04-30"}
+      - {name: "2011 歐債危機", start: "2011-04-01", trough_by: "2012-01-31"}
+      - {name: "2015 中國股災", start: "2015-04-01", trough_by: "2016-03-31"}
+      - {name: "2018Q4 升息＋貿易戰", start: "2018-09-01", trough_by: "2019-01-31"}
+      - {name: "2020 新冠崩盤", start: "2020-01-15", trough_by: "2020-04-30"}
+      - {name: "2022 升息空頭", start: "2022-01-01", trough_by: "2022-12-31"}
+    rebound_months: 12              # 谷底後再看 12 個月，衡量「錯過的反彈」
+  variants:
+    - name: "目前版（移動停損15%）"
+      patch: {}
+    - name: "無停損"
+      patch: {risk: {stop_loss: {enabled: false}}}
+    - name: "買進價停損15%"
+      patch: {risk: {stop_loss: {basis: entry}}}
+    - name: "移動停損20%"
+      patch: {risk: {stop_loss: {pct: 0.20}}}
+    - name: "移動停損25%"
+      patch: {risk: {stop_loss: {pct: 0.25}}}
+    - name: "波動度停損（2.5倍）"
+      patch: {risk: {stop_loss: {basis: vol}}}
+    - name: "移動20%＋均線買回"
+      patch: {risk: {stop_loss: {pct: 0.20, reentry: ma}}}
+    - name: "波動度＋均線買回"
+      patch: {risk: {stop_loss: {basis: vol, reentry: ma}}}
+    - name: "A 大盤補位"
+      patch:
+        portfolio: {fill_with_index: {enabled: true}}
+    - name: "B 美股門檻"
+      patch:
+        hard_filters:
+          cash_ratio: {value: {tw: 0.15, us: 0.08}}
+          equity_ratio: {value: {tw: 0.40, us: 0.30}}
+          current_ratio: {value: {tw: 1.5, us: 1.2}}
+          quick_ratio: {value: {tw: 1.0, us: 0.8}}
+    - name: "A+B"
+      patch:
+        portfolio: {fill_with_index: {enabled: true}}
+        hard_filters:
+          cash_ratio: {value: {tw: 0.15, us: 0.08}}
+          equity_ratio: {value: {tw: 0.40, us: 0.30}}
+          current_ratio: {value: {tw: 1.5, us: 1.2}}
+          quick_ratio: {value: {tw: 1.0, us: 0.8}}

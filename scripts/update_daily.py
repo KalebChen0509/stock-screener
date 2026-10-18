@@ -11,7 +11,7 @@ import pandas as pd  # noqa: E402
 
 from screener import prices  # noqa: E402
 from screener.backtest import wide  # noqa: E402
-from screener.common import (CACHE_DIR, SITE_DATA, load_etf_universe, load_strategy,  # noqa: E402
+from screener.common import (CACHE_DIR, ROOT, SITE_DATA, load_etf_universe, load_strategy,  # noqa: E402
                              load_watchlist, log, write_json)
 from screener.engine import ret_n_months, screen_market, select_with_buffer  # noqa: E402
 from screener import events as evmod  # noqa: E402
@@ -72,6 +72,96 @@ def quarterly_history(raw: pd.DataFrame, panel: pd.DataFrame, sid: str) -> list:
                     "gm": g("gross_margin"), "om": g("op_margin"), "cash_ratio": g("cash_ratio"),
                     "equity_ratio": g("equity_ratio"), "fcf_to_ni": g("fcf_to_ni"), "roe": g("roe")})
     return out
+
+
+def check_stop_loss(cfg, state, held, infos, today, month_key):
+    """檢查持股是否跌破停損。會就地修改 held（移除停損股）與 state（冷卻期、本月停損名單）。
+
+    參考價優先用 config/positions.yaml 的實際買進成本；沒有的話用系統建議買進當天的收盤價。
+    報酬含息：除息造成的帳面下跌不算虧損。
+    """
+    sl = (cfg.get("risk", {}) or {}).get("stop_loss", {}) or {}
+    status, lines = {}, []
+    if not sl.get("enabled"):
+        return status, lines
+    pct = float(sl.get("pct", 0.15))
+    trail = sl.get("basis", "entry") in ("trailing", "vol")
+    use_vol = sl.get("basis") == "vol"
+    cool_m = int(sl.get("cooldown_months", 3)) if sl.get("reentry", "cooldown") == "cooldown" else 1
+    pos = load_positions()
+    ent = state.get("entry", {})
+    tick = {}
+    for mkt in sl.get("apply_to", ["tw", "us"]):
+        for sid in held.get(mkt, []):
+            if mkt in infos and sid in infos[mkt].index:
+                tick[(mkt, sid)] = infos[mkt].at[sid, "yahoo"]
+    if not tick:
+        return status, lines
+    try:
+        d = prices.fetch_daily(sorted(set(tick.values())), period="5y")
+    except Exception as e:  # noqa
+        log.warning("stop-loss prices failed: %s", e)
+        return status, lines
+    if d.empty:
+        return status, lines
+    g = {t: x.sort_values("date").set_index("date") for t, x in d.groupby("ticker")}
+    if state.get("stopped_month", {}).get("month") != month_key:
+        state["stopped_month"] = {"month": month_key}
+    for (mkt, sid), yt in tick.items():
+        x = g.get(yt)
+        if x is None or x.empty:
+            continue
+        p = pos.get(mkt, {}).get(sid) or {}
+        e = ent.get(mkt, {}).get(sid) or {}
+        d0 = pd.Timestamp(p.get("date") or e.get("date") or today)
+        after = x[x.index >= d0]
+        if after.empty:
+            continue
+        c_now, a_now = float(after["close"].iloc[-1]), float(after["adj_close"].iloc[-1])
+        c0, a0 = float(after["close"].iloc[0]), float(after["adj_close"].iloc[0])
+        if p.get("cost"):
+            # 你的實際成本 × 期間股息還原倍數
+            divf = (a_now / a0) / (c_now / c0) if c0 and c_now else 1.0
+            ret = c_now / float(p["cost"]) * divf - 1
+        else:
+            ret = a_now / a0 - 1
+        if trail:  # 移動停損：從持有期間最高點（含息）算回檔
+            ret = a_now / float(after["adj_close"].max()) - 1
+        pct_i = pct
+        if use_vol:  # 停損幅度 = 進場前 12 個月的月報酬標準差 × vol_mult
+            mh = x["adj_close"].loc[:d0].resample("ME").last().dropna().iloc[-13:]
+            sd = mh.pct_change().dropna().std()
+            if np.isfinite(sd) and len(mh) >= 7:
+                pct_i = float(np.clip(float(sl.get("vol_mult", 2.5)) * sd, float(sl.get("vol_min", 0.08)),
+                                      float(sl.get("vol_max", 0.35))))
+        dist = ret + pct_i
+        name = infos[mkt].at[sid, "name"]
+        stt = {"name": name, "entry_date": d0.strftime("%Y-%m-%d"), "ret": ret, "dist": dist,
+               "triggered": bool(ret <= -pct_i), "cost": p.get("cost"), "pct": pct_i}
+        status[(mkt, sid)] = stt
+        if stt["triggered"]:
+            held[mkt] = [h for h in held[mkt] if h != sid]
+            until = (today + pd.DateOffset(months=cool_m)).strftime("%Y-%m-%d")
+            state.setdefault("cooldown", {}).setdefault(mkt, {})[sid] = until
+            state["stopped_month"].setdefault(mkt, [])
+            if sid not in state["stopped_month"][mkt]:
+                state["stopped_month"][mkt].append(sid)
+            ref = "最高點" if trail else ("你的成本" if p.get("cost") else f"{d0.date()} 買進價")
+            again = f"{cool_m} 個月內不再買回" if sl.get("reentry", "cooldown") == "cooldown" else "至少 1 個月後、且站上 10 個月均線才會再買回"
+            lines.append(f"🛑 停損觸發：{sid} {name} 自{ref}已 {ret:+.1%}，請賣出（{again}）")
+        elif dist < 0.03:
+            lines.append(f"⚠️ 接近停損：{sid} {name} 目前 {ret:+.1%}（再跌約 {dist:.1%} 觸發）")
+    return status, lines
+
+
+def load_positions() -> dict:
+    """config/positions.yaml：填你實際的買進成本與日期（選填）。"""
+    import yaml
+    p = ROOT / "config" / "positions.yaml"
+    if not p.exists():
+        return {}
+    d = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    return {m: {str(k): v for k, v in (d.get(m) or {}).items()} for m in ("tw", "us")}
 
 
 def main():
@@ -143,22 +233,43 @@ def main():
     write_json(SITE_DATA / "etf.json", table(er, ETF_COLS))
     meta["counts"]["etf"] = {"universe": len(etfs), "passed": int(er["pass_all"].sum())}
 
+    # ---------- 停損檢查（每天收盤後，含息報酬） ----------
+    month_key = today.strftime("%Y-%m")
+    held_prev = {k: list(v) for k, v in state.get("held", {}).items()}
+    sl_status, stop_lines = check_stop_loss(cfg, state, held_prev, infos, today, month_key)
+
     # ---------- 目前建議投資組合 ----------
     pw = cfg["portfolio"]["weights"]
     max_n = cfg["portfolio"]["max_holdings_per_stock_sleeve"]
     port = []
     mult = cfg.get("buffer", {}).get("rank_multiple", 2)
-    held_prev = state.get("held", {})
     new_held = {}
+    cool = state.get("cooldown", {})
+    stopped_now = state.get("stopped_month", {}) if state.get("stopped_month", {}).get("month") == month_key else {}
     for mkt, sleeve in (("tw", "tw_stock"), ("us", "us_stock")):
         if mkt in results:
             rk = results[mkt][1]
-            ids = select_with_buffer(rk, held_prev.get(mkt, []), max_n, mult)
+            blocked = {k for k, until in cool.get(mkt, {}).items() if until > today.strftime("%Y-%m-%d")}
+            if ((cfg.get("risk") or {}).get("stop_loss") or {}).get("reentry") == "ma":
+                ma_n = int(cfg["risk"]["stop_loss"].get("reentry_ma_months", 10))
+                for k in list(cool.get(mkt, {})):
+                    yt = infos[mkt].at[k, "yahoo"] if k in infos[mkt].index else None
+                    s_ = adj[yt].dropna().iloc[-ma_n:] if yt in adj else pd.Series(dtype=float)
+                    if len(s_) < ma_n or s_.iloc[-1] <= s_.mean():
+                        blocked.add(k)   # 還沒站上均線，不買回
+            if blocked and len(rk):
+                rk = rk[~rk["id"].isin(blocked)]
+            ids = select_with_buffer(rk, [h for h in held_prev.get(mkt, []) if h not in blocked], max_n, mult)
             new_held[mkt] = ids
             top = rk.set_index("id").loc[ids].reset_index() if ids else rk.iloc[0:0]
+            # 本月停損賣出的名額先放現金，不加碼其他股票
+            slots = len(top) + len(stopped_now.get(mkt, []))
             for r in top.itertuples():
-                port.append({"sleeve": mkt, "id": r.id, "name": r.name, "weight": pw[sleeve] / len(top),
-                             "score": r.score, "cross_ok": bool(r.cross_ok), "industry": r.industry})
+                st_ = sl_status.get((mkt, r.id), {})
+                port.append({"sleeve": mkt, "id": r.id, "name": r.name, "weight": pw[sleeve] / slots,
+                             "score": r.score, "cross_ok": bool(r.cross_ok), "industry": r.industry,
+                             "entry_date": st_.get("entry_date"), "since_entry": st_.get("ret"),
+                             "stop_dist": st_.get("dist")})
     erp = er[er["pass_all"]].copy()
     erp["rank"] = np.arange(1, len(erp) + 1)
     erp["id"] = erp["ticker"]
@@ -168,7 +279,12 @@ def main():
     for r in top_etf.itertuples():
         port.append({"sleeve": "etf", "id": r.ticker, "name": r.name, "weight": pw["etf"] / len(top_etf),
                      "score": r.score, "cross_ok": None, "industry": r.style})
-    write_json(SITE_DATA / "portfolio.json", {"as_of": meta["updated"], "holdings": port})
+    write_json(SITE_DATA / "portfolio.json", {
+        "as_of": meta["updated"], "holdings": port,
+        "stop_loss": (cfg.get("risk", {}) or {}).get("stop_loss", {}),
+        "stopped": [{"market": m_, "id": i_, **v_} for (m_, i_), v_ in sl_status.items() if v_.get("triggered")],
+        "cooldown": [{"market": m_, "id": k_, "until": u_} for m_, d_ in cool.items() for k_, u_ in d_.items()
+                     if u_ > today.strftime("%Y-%m-%d")]})
 
     # ---------- 個股詳情（通過者、差 1~2 條者、追蹤清單） ----------
     wl = load_watchlist()
@@ -283,7 +399,9 @@ def main():
     if ev_lines:
         lines += ev_lines
         changed = True
-    month_key = today.strftime("%Y-%m")
+    if stop_lines:
+        lines = stop_lines + [""] + lines
+        changed = True
     rebalance = state.get("last_rebalance_month") != month_key
     # ---------- 下單清單：依投入金額算出每檔目標股數，與上月目標比較 ----------
     acct = float(cfg["portfolio"].get("account_value_twd", cfg["portfolio"]["initial_capital"]))
@@ -307,8 +425,17 @@ def main():
                        "price": round(px, 2), "target_amount_twd": round(amt_twd), "target_shares": sh,
                        "prev_shares": prev, "trade_shares": sh - prev,
                        "lots": f"{sh // 1000} 張 + {sh % 1000} 股" if is_tw else ""})
+    stop_keys = set()
+    for (mkt, sid), st_ in sl_status.items():
+        if st_.get("triggered"):
+            key = f"{mkt}:{sid}"
+            stop_keys.add(key)
+            prev = int(state.get("targets", {}).get(key, prev_t.get(key, 0)))
+            orders.append({"sleeve": mkt, "id": sid, "name": st_.get("name", ""), "currency": "", "price": None,
+                           "target_amount_twd": 0, "target_shares": 0, "prev_shares": prev,
+                           "trade_shares": -prev, "lots": f"停損賣出（{st_['ret']:+.1%}）", "stop": True})
     for key, prev in prev_t.items():
-        if key not in new_targets and prev:
+        if key not in new_targets and key not in stop_keys and prev:
             sl, sid = key.split(":", 1)
             orders.append({"sleeve": sl, "id": sid, "name": "", "currency": "", "price": None,
                            "target_amount_twd": 0, "target_shares": 0, "prev_shares": int(prev),
@@ -348,6 +475,21 @@ def main():
     state["targets"] = new_targets      # 本月內每天依最新價格微調目標股數
     if rebalance or not held_prev:
         state["held"] = new_held
+    else:
+        state["held"] = held_prev            # 月中只移除停損的股票，不換股
+    ent = state.setdefault("entry", {})
+    for mkt, ids in state["held"].items():
+        if mkt == "etf":
+            continue
+        e = ent.setdefault(mkt, {})
+        for sid in ids:
+            if sid not in e:
+                yt = infos[mkt].at[sid, "yahoo"] if mkt in infos and sid in infos[mkt].index else None
+                pxe = float(last_close.get(yt, np.nan)) if yt else np.nan
+                e[sid] = {"date": today.strftime("%Y-%m-%d"), "px": pxe if np.isfinite(pxe) else None}
+        for sid in list(e):
+            if sid not in ids:
+                del e[sid]
     state_p.write_text(json.dumps(state, ensure_ascii=False))
     print("\n".join(lines))
 

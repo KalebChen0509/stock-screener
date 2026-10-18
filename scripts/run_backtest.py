@@ -10,7 +10,7 @@ import pandas as pd  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from screener import prices  # noqa: E402
-from screener.backtest import perf_stats, run_backtest  # noqa: E402
+from screener.backtest import perf_stats, run_backtest, screen_key  # noqa: E402
 from screener.common import SITE_DATA, load_etf_universe, load_strategy, log, write_json  # noqa: E402
 from screener.etf import static_frame  # noqa: E402
 from screener.loaders import load_infos, load_panels  # noqa: E402
@@ -20,6 +20,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default=None)
     ap.add_argument("--out", default=str(SITE_DATA / "backtest.json"))
+    ap.add_argument("--no-variants", action="store_true")
+    ap.add_argument("--no-stress", action="store_true")
+    ap.add_argument("--no-daily", action="store_true", help="不抓日線，停損只在月底檢查")
     args = ap.parse_args()
     cfg = load_strategy()
     monthly = prices.load_monthly()
@@ -34,7 +37,37 @@ def main():
         events = {"us": load_us_events(load_universe()), "tw": load_tw_events()}
     except Exception as e:  # noqa
         log.warning("events not loaded: %s", e)
-    out = run_backtest(cfg, panels, infos, monthly, etf_static, start=args.start, events=events)
+    from screener.common import apply_patch
+    import json as _json
+    screen_cache, collected, done = {}, {}, {}
+    daily_box = {"df": pd.DataFrame()}
+
+    def run_cfg(c):
+        """跑一組設定。第一次遇到某種選股設定時，先跑一次「不停損」收集排名名單，再補抓日線。"""
+        key = _json.dumps(c, sort_keys=True, default=str)
+        if key in done:
+            return done[key]
+        sk = screen_key(c)
+        stop_on = bool(((c.get("risk") or {}).get("stop_loss") or {}).get("enabled"))
+        if sk not in collected:
+            col = set()
+            c0 = apply_patch(c, {"risk": {"stop_loss": {"enabled": False}}})
+            o0 = run_backtest(c0, panels, infos, monthly, etf_static, start=args.start, events=events,
+                              screen_cache=screen_cache, collect=col)
+            done[_json.dumps(c0, sort_keys=True, default=str)] = o0
+            collected[sk] = col
+            if not args.no_daily:
+                allt = set().union(*collected.values())
+                daily_box["df"] = prices.load_daily_adj(sorted(allt), start="2015-06-01")
+                log.info("daily for stop-loss: %d tickers", daily_box["df"].shape[1])
+            if not stop_on:
+                return o0
+        o = run_backtest(c, panels, infos, monthly, etf_static, start=args.start, events=events,
+                         daily=daily_box["df"], screen_cache=screen_cache)
+        done[key] = o
+        return o
+
+    out = run_cfg(cfg)
     m = out["monthly"]
     cap = cfg["portfolio"]["initial_capital"]
     rf = cfg["backtest"].get("risk_free", 0.0)
@@ -99,6 +132,30 @@ def main():
                          "bench": float((1 + w[bcol]).prod() - 1)}
         out["periods"] = cr
         return out
+    def crises_for(sub):
+        """危機區間：區間報酬、區間最大回撤、跌段（到大盤谷底）與反彈段報酬、停損次數。"""
+        bcol = "bench_混合基準(20/20/60)"
+        out = {}
+        for c in cfg["backtest"].get("crises", []) or []:
+            a, z = pd.Timestamp(c["start"]) + pd.offsets.MonthEnd(0), pd.Timestamp(c["end"]) + pd.offsets.MonthEnd(0)
+            w = sub.loc[(sub.index > a) & (sub.index <= z)]
+            if w.empty or bcol not in w:
+                continue
+            bn = (1 + w[bcol]).cumprod()
+            trough = bn.idxmin()
+            row = {}
+            for lab, col in (("strategy", "ret_net"), ("bench", bcol)):
+                nv = (1 + w[col]).cumprod()
+                full = pd.concat([pd.Series([1.0]), nv.reset_index(drop=True)])
+                row[lab] = {"total": float(nv.iloc[-1] - 1),
+                            "mdd": float((full / full.cummax() - 1).min()),
+                            "fall": float(nv.loc[trough] - 1),
+                            "rebound": float(nv.iloc[-1] / nv.loc[trough] - 1)}
+            row["stops"] = int(w["n_stops"].sum()) if "n_stops" in w else 0
+            row["trough"] = trough.strftime("%Y-%m")
+            out[c["name"]] = row
+        return out
+
     names = {mk: infos[mk]["name"].to_dict() for mk in infos}
     etf_names = {e["ticker"]: e["name"] for e in load_etf_universe()}
     hold = []
@@ -129,7 +186,50 @@ def main():
         "regimes_full": regimes_for(m), "regimes_5y": regimes_for(last5),
         "sleeve_nav": {labels[c]: list((cap * (1 + m[c].fillna(0)).cumprod()).round(0)) for c in sleeve_cols},
         "data_coverage": {mk: int(panels[mk]["id"].nunique()) for mk in panels},
+        "stop_loss": (cfg.get("risk", {}) or {}).get("stop_loss", {}),
+        "crises": crises_for(m),
+        "crisis_defs": cfg["backtest"].get("crises", []),
+        "daily_stop_tickers": int(daily_box["df"].shape[1]) if len(daily_box["df"]) else 0,
+        "stops": [{**s_, "name": names.get(s_["market"], {}).get(s_["id"], "")} for s_ in out.get("stops", [])],
     }
+    # ---------- 多方案比較 ----------
+    variants = {}
+    if not args.no_variants:
+        for v in cfg["backtest"].get("variants", []) or []:
+            name, patch = v["name"], v.get("patch") or {}
+            log.info("variant: %s", name)
+            vm = run_cfg(apply_patch(cfg, patch))["monthly"] if patch else m
+            v5 = vm[vm.index > vm.index[-1] - pd.DateOffset(years=5)]
+            sf, s5 = stats_for(vm), stats_for(v5)
+            variants[name] = {
+                "full": sf["策略（扣費後）"], "full_gross": sf["策略（未扣費）"], "y5": s5["策略（扣費後）"],
+                "regimes": regimes_for(vm), "sleeves": sleeves_for(vm),
+                "avg_tw": float(vm["n_tw"].mean()), "avg_us": float(vm["n_us"].mean()),
+                "n_stops": int(vm["n_stops"].sum()) if "n_stops" in vm else 0,
+                "crises": crises_for(vm),
+                "is_stop_variant": set(patch) <= {"risk"},
+                "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
+            }
+    res["variants"] = variants
+    # ---------- 第二層：指數壓力測試（只測停損規則） ----------
+    sc = cfg["backtest"].get("stress") or {}
+    if sc and not args.no_stress:
+        try:
+            from screener.backtest import StopRule
+            from screener.common import CACHE_DIR
+            from screener.stress import run_stress
+            rules = {"無停損": StopRule(apply_patch(cfg, {"risk": {"stop_loss": {"enabled": False}}}))}
+            for v in cfg["backtest"].get("variants", []) or []:
+                patch = v.get("patch") or {}
+                if set(patch) <= {"risk"} and v["name"] not in rules:
+                    rules[v["name"]] = StopRule(apply_patch(cfg, patch))
+            sd = prices.load_daily_adj(sc.get("assets", []), start="1999-01-01",
+                                       path=CACHE_DIR / "stress_daily.csv.gz")
+            res["stress"] = {"rules": list(rules), "episodes": sc.get("episodes", []),
+                             "results": run_stress(sd, rules, sc)}
+            log.info("stress test: %d assets", len(res["stress"]["results"]))
+        except Exception as e:  # noqa
+            log.warning("stress test failed: %s", e)
     write_json(Path(args.out), res)
     for k, v in res["stats_full"].items():
         log.info("%-22s CAGR %6.2f%%  MDD %6.2f%%  final %12.0f", k, 100 * v["cagr"],

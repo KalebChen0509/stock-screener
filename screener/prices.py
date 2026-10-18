@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import os
 import time
 
 import numpy as np
@@ -125,3 +126,61 @@ def future_split_factor(splits: pd.DataFrame, ticker_dates: pd.DataFrame) -> pd.
         if not after.empty:
             out[idx] = float(np.prod(after["split"].values))
     return out
+
+
+# ---------------------------------------------------------------------
+#  回測停損用的日線（只抓曾進入排名名單的股票，避免下載全市場）
+# ---------------------------------------------------------------------
+BT_DAILY_PATH = CACHE_DIR / "daily_bt.csv.gz"
+
+
+def _fetch_daily_adj(tickers: list[str], start: str, chunk: int = 100) -> pd.DataFrame:
+    frames = []
+    for i in range(0, len(tickers), chunk):
+        part = tickers[i:i + chunk]
+        lf = _to_long(_download(part, start=start, interval="1d"), part)
+        if not lf.empty:
+            frames.append(lf[["ticker", "date", "adj_close"]])
+        log.info("daily (backtest) %d/%d", min(i + chunk, len(tickers)), len(tickers))
+        time.sleep(1.0)
+    if not frames:
+        return pd.DataFrame(columns=["ticker", "date", "adj_close"])
+    out = pd.concat(frames, ignore_index=True)
+    out["date"] = pd.to_datetime(out["date"]).dt.tz_localize(None).dt.normalize()
+    return out
+
+
+def load_daily_adj(tickers, start: str = "2015-06-01", path=None, max_age_days: int = 20) -> pd.DataFrame:
+    """回傳日線含息還原價寬表（index=日期, columns=代號）。
+
+    快取裡已有且夠新的代號不重抓；過舊的整段重抓（含息還原價會因新的除息回溯調整，不能只補尾巴）。
+    """
+    path = path or BT_DAILY_PATH
+    tickers = sorted({t for t in tickers if t})
+    cache = pd.read_csv(path, parse_dates=["date"]) if os.path.exists(path) else \
+        pd.DataFrame(columns=["ticker", "date", "adj_close"])
+    if len(cache):
+        cache["date"] = pd.to_datetime(cache["date"])
+    fresh_cut = pd.Timestamp.today().normalize() - pd.Timedelta(days=max_age_days)
+    first_need = pd.Timestamp(start) + pd.Timedelta(days=40)
+    st = cache.groupby("ticker")["date"].agg(["min", "max"]) if len(cache) else pd.DataFrame(columns=["min", "max"])
+    need = [t for t in tickers if t not in st.index or st.at[t, "max"] < fresh_cut or st.at[t, "min"] > first_need]
+    # 抓不到資料的代號（下市等）記在 .miss，不要每次重試
+    miss_p = str(path) + ".miss"
+    missed = set(open(miss_p).read().split()) if os.path.exists(miss_p) else set()
+    need = [t for t in need if t not in missed or t in st.index]
+    if need:
+        log.info("daily (backtest): fetching %d tickers", len(need))
+        new = _fetch_daily_adj(need, start)
+        got = set(new["ticker"])
+        missed |= {t for t in need if t not in got}
+        cache = pd.concat([cache[~cache["ticker"].isin(got)], new], ignore_index=True)
+        cache["adj_close"] = cache["adj_close"].astype(float).round(5)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        cache.to_csv(path, index=False, compression="gzip")
+        with open(miss_p, "w") as f:
+            f.write("\n".join(sorted(missed)))
+    sub = cache[cache["ticker"].isin(tickers)]
+    if sub.empty:
+        return pd.DataFrame()
+    return sub.pivot_table(index="date", columns="ticker", values="adj_close", aggfunc="last").sort_index()

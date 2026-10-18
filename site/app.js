@@ -252,7 +252,15 @@ function renderOverview() {
     html += `<div class="sleeve-h"><span>${names[sl]}　${fmt.pct(w, 0)}</span><span class="hint">${hs.length} 檔${hs.length ? "，每檔 " + fmt.pct(hs[0].weight, 2) : ""}</span></div>`;
     if (!hs.length) { html += `<p class="hint">目前沒有符合全部條件的標的 → 這部分持有現金</p>`; continue; }
     html += `<div class="table-wrap"><table class="data compact"><tbody>${hs.map((h) => `
-      <tr class="clickable" data-m="${sl}" data-id="${esc(h.id)}"><td>${h.cross ? "⭐ " : ""}<b>${esc(h.id)}</b></td><td>${esc(h.name)}</td><td class="hint">${esc(h.industry || "")}</td><td class="num">${h.score != null ? h.score.toFixed(1) : ""}</td></tr>`).join("")}</tbody></table></div>`;
+      <tr class="clickable" data-m="${sl}" data-id="${esc(h.id)}"><td>${h.cross ? "⭐ " : ""}<b>${esc(h.id)}</b></td><td>${esc(h.name)}</td><td class="hint">${esc(h.industry || "")}</td><td class="num">${h.score != null ? h.score.toFixed(1) : ""}</td>${sl !== "etf" ? `<td class="num ${h.since_entry == null ? "" : h.since_entry >= 0 ? "pos" : "neg"}" title="自買進（含息）">${h.since_entry != null ? fmt.pct(h.since_entry) : ""}</td><td class="num hint" title="距離停損">${h.stop_dist != null ? (h.stop_dist < 0.03 ? "⚠️ " : "") + "距停損 " + fmt.pct(h.stop_dist) : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+  }
+  const P = S.port || {};
+  const slc = P.stop_loss || {};
+  if (slc.enabled) {
+    const st = (P.stopped || []).map((x) => `<li>🛑 <b>${esc(x.id)}</b> ${esc(x.name || "")}：${fmt.pct(x.ret)} → 請賣出</li>`).join("");
+    const cd = (P.cooldown || []).map((x) => `${esc(x.id)}（至 ${esc(x.until)}）`).join("、");
+    html += `<p class="hint">停損：${slc.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${slc.vol_mult}」（${fmt.pct(slc.vol_min, 0)}～${fmt.pct(slc.vol_max, 0)}）即賣出` : `個股自${slc.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(slc.pct, 0)} 即賣出`}，含息計算；ETF 不設停損。實際成本可填在 config/positions.yaml。</p>` +
+      (st ? `<ul>${st}</ul>` : "") + (cd ? `<p class="hint">冷卻期（暫不買回）：${cd}</p>` : "");
   }
   $("#ovPortfolio").innerHTML = html;
   $$("#ovPortfolio tr.clickable").forEach((tr) => (tr.onclick = () => openDetail(tr.dataset.m, tr.dataset.id)));
@@ -542,6 +550,17 @@ function renderBacktest() {
     const t = c === "final_amount" ? fmt.ntd(v) : c === "sharpe" ? fmt.x(v, 2) : fmt.pct(v, c === "total_return" ? 0 : 1);
     return `<td class="num">${t}</td>`;
   }).join("")}</tr>`).join("")}</tbody>`;
+  // 方案比較
+  const V = bt.variants || {};
+  if (Object.keys(V).length) {
+    $("#varCard").hidden = false;
+    const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
+    const rows = Object.entries(V).map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${fmt.pct(v.full.cagr)}</td><td class="num">${fmt.pct(v.y5.cagr)}</td><td class="num">${fmt.ntd(v.full.final_amount)}</td><td class="num">${fmt.pct(v.full.max_drawdown)}</td><td class="num">${fmt.x(v.full.sharpe, 2)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bear, 0)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bull, 0)}</td><td class="num">${v.avg_tw.toFixed(1)}／${v.avg_us.toFixed(1)}</td><td class="num">${v.n_stops != null ? v.n_stops : "–"}</td></tr>`).join("");
+    $("#varTable").innerHTML = `<thead><tr><th>方案</th><th class="num">10年年化</th><th class="num">近5年年化</th><th class="num">期末金額</th><th class="num">最大回撤</th><th class="num">夏普</th><th class="num">空頭年勝率</th><th class="num">多頭年勝率</th><th class="num">平均檔數 台／美</th><th class="num">停損次數</th></tr></thead><tbody>${rows}
+      <tr class="dim"><td>混合基準</td><td class="num">${fmt.pct(bf.cagr)}</td><td class="num">${fmt.pct(b5.cagr)}</td><td class="num">${fmt.ntd(bf.final_amount)}</td><td class="num">${fmt.pct(bf.max_drawdown)}</td><td class="num">${fmt.x(bf.sharpe, 2)}</td><td></td><td></td><td></td><td></td></tr></tbody>`;
+  }
+  renderCrisis(bt);
+  renderStress(bt);
   // 各部位
   const sl = (S.btPeriod === "5y" ? bt.sleeves_5y : bt.sleeves_full) || {};
   $("#btSleeves").innerHTML = `<thead><tr><th>部位</th><th class="num">年化</th><th class="num">對照</th><th class="num">對照年化</th><th class="num">差距</th><th class="num">最大回撤</th></tr></thead><tbody>${Object.entries(sl).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.cagr)}</td><td class="num">${esc(v.bench || "")}</td><td class="num">${fmt.pct(v.bench_cagr)}</td><td class="num ${v.cagr - v.bench_cagr >= 0 ? "pos" : "neg"}">${v.bench_cagr != null ? fmt.pct(v.cagr - v.bench_cagr) : "–"}</td><td class="num">${fmt.pct(v.max_drawdown)}</td></tr>`).join("")}</tbody>`;
@@ -631,6 +650,7 @@ function renderRules() {
     <li><b>由上而下（Top-down）</b>：每個產業用「6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%」打分；大盤以 10 個月均線判斷多空（目前僅顯示，可在設定檔開啟「跌破均線股票部位減半」）。</li>
     <li><b>綜合排名</b>：候選池內以百分位計分，價值 40%＋品質 30%＋安全 10%＋產業分數 20%，另有加分。由下而上分數前 1/3 且產業分數前 1/2 的股票標為 ⭐「上下皆優」。</li>
     <li><b>組合</b>：台股、美股各取前 ${c.portfolio.max_holdings_per_stock_sleeve} 名等權重；ETF 不分市場取前 ${c.portfolio.etf_holdings} 名；每月初調整。</li>
+    ${c.risk && c.risk.stop_loss && c.risk.stop_loss.enabled ? `<li><b>停損</b>：${c.risk.stop_loss.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${c.risk.stop_loss.vol_mult}」` : `個股自${c.risk.stop_loss.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(c.risk.stop_loss.pct, 0)}`}（含息）就賣出，賣出的錢放現金到下次調倉；${c.risk.stop_loss.reentry === "ma" ? "至少 1 個月後、且股價站上 10 個月均線才買回" : c.risk.stop_loss.cooldown_months + " 個月內不買回同一檔"}。每日更新時以日收盤檢查並通知；回測以日線逐日模擬，觸發後隔一個交易日才以收盤價賣出。ETF 不設停損。</li>` : ""}
   </ol>
   <h2>一、個股硬性條件</h2>
   <div class="table-wrap"><table class="data compact"><thead><tr><th>條件</th><th>來源</th><th>計算方式／門檻</th></tr></thead><tbody>${c.hard_filters.map(fr).join("")}</tbody></table></div>
@@ -695,3 +715,50 @@ function bindUI() {
 }
 
 init();
+
+// ---------------------------------------------------------------- 危機壓力測試
+function renderCrisis(bt) {
+  const V = bt.variants || {};
+  const defs = bt.crisis_defs || [];
+  const stopV = Object.entries(V).filter(([, v]) => v.is_stop_variant && v.crises);
+  if (!stopV.length || !defs.length) return;
+  $("#crisisCard").hidden = false;
+  const view = S.crisisView || "total";
+  $$("#crisisView button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.v === view);
+    b.onclick = () => { S.crisisView = b.dataset.v; renderCrisis(bt); };
+  });
+  const cell = (r) => {
+    if (!r) return `<td class="num">–</td>`;
+    const a = view === "total" ? r.total : r.fall, b = view === "total" ? r.mdd : r.rebound;
+    return `<td class="num"><span class="${a >= 0 ? "pos" : "neg"}">${fmt.pct(a)}</span><span class="hint">／${fmt.pct(b)}</span></td>`;
+  };
+  const names = defs.map((d) => d.name);
+  const first = stopV[0][1].crises;
+  const head = `<thead><tr><th>方案</th>${names.map((n) => `<th class="num">${esc(n)}${first[n] ? `<br><span class="hint">谷底 ${esc(first[n].trough)}</span>` : ""}</th>`).join("")}<th class="num">停損次數</th></tr></thead>`;
+  const rows = stopV.map(([k, v]) => `<tr><td><b>${esc(k)}</b></td>${names.map((n) => cell(v.crises[n] && v.crises[n].strategy)).join("")}<td class="num">${v.n_stops}</td></tr>`).join("");
+  const bench = `<tr class="dim"><td>混合基準</td>${names.map((n) => cell(first[n] && first[n].bench)).join("")}<td></td></tr>`;
+  $("#crisisTable").innerHTML = head + `<tbody>${rows}${bench}</tbody>`;
+}
+
+function renderStress(bt) {
+  const st = bt.stress;
+  if (!st || !st.results || !Object.keys(st.results).length) return;
+  $("#stressCard").hidden = false;
+  const sel = $("#stressAsset");
+  const assets = Object.keys(st.results);
+  if (!sel.options.length) {
+    sel.innerHTML = assets.map((a) => `<option>${esc(a)}</option>`).join("");
+    sel.onchange = () => renderStress(bt);
+  }
+  const R = st.results[sel.value || assets[0]] || {};
+  const eps = Object.keys(R);
+  const head = `<thead><tr><th>規則</th>${eps.map((e) => `<th class="num">${esc(e)}<br><span class="hint">谷底 ${esc(Object.values(R[e])[0].trough)}</span></th>`).join("")}</tr></thead>`;
+  const rows = st.rules.map((rn) => `<tr><td><b>${esc(rn)}</b></td>${eps.map((e) => {
+    const r = R[e][rn], base = R[e]["無停損"];
+    if (!r) return `<td class="num">–</td>`;
+    const better = base && rn !== "無停損" ? (r.total >= base.total ? "pos" : "neg") : "";
+    return `<td class="num"><span class="${better}">${fmt.pct(r.total)}</span><br><span class="hint">回撤 ${fmt.pct(r.mdd)}・停損 ${r.stops} 次</span></td>`;
+  }).join("")}</tr>`).join("");
+  $("#stressTable").innerHTML = head + `<tbody>${rows}</tbody>`;
+}

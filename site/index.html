@@ -102,6 +102,23 @@
       <span class="hint" id="btMeta"></span>
     </div>
     <div class="tiles" id="btTiles"></div>
+    <div class="card" id="varCard" hidden>
+      <h2>方案比較（扣費後）</h2>
+      <p class="hint">同一段期間、同樣資料，只改一項設定。目前每日選股採用的是「目前版」；想改用哪一版請跟 Claude 說。</p>
+      <div class="table-wrap"><table id="varTable" class="data compact"></table></div>
+    </div>
+    <div class="card" id="crisisCard" hidden>
+      <h2>危機壓力測試 ① 完整策略（2016 年後）</h2>
+      <p class="hint">每格：區間報酬／區間最大回撤。跌段＝到混合基準谷底為止；反彈＝谷底之後到區間結束。停損逐日模擬，觸發後隔一個交易日才以收盤價賣出。</p>
+      <div class="seg" id="crisisView"><button data-v="total" class="on">區間報酬／回撤</button><button data-v="split">跌段／反彈</button></div>
+      <div class="table-wrap"><table id="crisisTable" class="data compact"></table></div>
+    </div>
+    <div class="card" id="stressCard" hidden>
+      <h2>危機壓力測試 ② 歷史大崩盤（只測停損規則）</h2>
+      <p class="hint">2016 年以前沒有完整財報可重跑選股，所以改用指數／ETF 日線，只看「同一套停損＋買回規則」在不同崩盤型態的效果：從崩盤前買進，持有到谷底後 12 個月。對整個指數停損等於擇時進出大盤，只能當作規則特性的參考。^TWII 為不含息的價格指數。</p>
+      <label>標的 <select id="stressAsset"></select></label>
+      <div class="table-wrap"><table id="stressTable" class="data compact"></table></div>
+    </div>
     <div class="card">
       <h2>資產淨值（新台幣）</h2>
       <div class="legend" id="btLegend"></div>

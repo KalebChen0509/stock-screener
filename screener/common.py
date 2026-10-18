@@ -95,3 +95,26 @@ def write_json(path: Path, obj, compact: bool = True) -> None:
 
 def month_end(ts) -> pd.Timestamp:
     return (pd.Timestamp(ts) + pd.offsets.MonthEnd(0)).normalize()
+
+
+def apply_patch(cfg: dict, patch: dict) -> dict:
+    """深層合併設定；hard_filters 以 id 為鍵修改個別條件。"""
+    import copy
+    out = copy.deepcopy(cfg)
+
+    def merge(a, b):
+        for k, v in b.items():
+            if isinstance(v, dict) and isinstance(a.get(k), dict):
+                merge(a[k], v)
+            else:
+                a[k] = copy.deepcopy(v)
+    for k, v in (patch or {}).items():
+        if k == "hard_filters" and isinstance(v, dict):
+            for f in out["hard_filters"]:
+                if f["id"] in v:
+                    merge(f, v[f["id"]])
+        elif isinstance(v, dict) and isinstance(out.get(k), dict):
+            merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out

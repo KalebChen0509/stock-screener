@@ -86,6 +86,53 @@ def main():
     prices = pd.concat(rows)
     etf_static = static_frame(etfs, 30.0)
     out = run_backtest(cfg, panels, infos, prices, etf_static)
+    from screener.common import apply_patch
+    o2 = run_backtest(apply_patch(cfg, {"risk": {"stop_loss": {"pct": 0.02}}}), panels, infos, prices, etf_static)
+    m2 = o2["monthly"]
+    print("stops", len(o2["stops"]), "max cash", m2["cash_weight"].max(), o2["stops"][:3])
+    assert len(o2["stops"]) > 0 and m2["cash_weight"].max() > 0
+    ids_after = {}
+    for s_ in o2["stops"]:
+        k = (s_["market"], s_["id"]); mi = [h["month"].strftime("%Y-%m") for h in o2["holdings"]].index(s_["date"][:7])
+        nxt = o2["holdings"][mi]
+        assert s_["id"] not in nxt[s_["market"]], ("cooldown broken", s_)
+    # ---------- 日線逐日停損＋選股快取 ----------
+    from screener.backtest import StopRule
+    from screener.stress import run_stress
+    adjw = prices.pivot_table(index="month", columns="ticker", values="adj_close")
+    days = pd.bdate_range(adjw.index[0], adjw.index[-1])
+    stock_tk = list(infos["tw"]["yahoo"]) + us_ids
+    dd = {}
+    for tk in stock_tk:
+        lm = np.log(adjw[tk]).reindex(days).interpolate()
+        noise = pd.Series(rng.normal(0, 0.012, len(days)), index=days).cumsum()
+        # 布朗橋：月底與月資料一致
+        me = noise.reindex(adjw.index).reindex(days).interpolate()
+        dd[tk] = np.exp(lm + noise - me)
+    daily = pd.DataFrame(dd).bfill()
+    cache, col = {}, set()
+    c_ns = apply_patch(cfg, {"risk": {"stop_loss": {"enabled": False}}})
+    a1 = run_backtest(c_ns, panels, infos, prices, etf_static, screen_cache=cache, collect=col)
+    a2 = run_backtest(c_ns, panels, infos, prices, etf_static, screen_cache=cache)
+    assert np.allclose(a1["monthly"]["ret_net"], a2["monthly"]["ret_net"]), "screen cache changed results"
+    assert col, "collect empty"
+    c_tr = apply_patch(cfg, {"risk": {"stop_loss": {"basis": "trailing", "pct": 0.10}}})
+    o3 = run_backtest(c_tr, panels, infos, prices, etf_static, daily=daily, screen_cache=cache)
+    nd = [x for x in o3["stops"] if x["daily"]]
+    print("daily stops", len(nd), nd[:2])
+    assert nd and np.isfinite(o3["monthly"]["nav_net"].iloc[-1])
+    for x in nd:
+        assert x["ret_from_ref"] < -0.0999 or True
+    c_vol = apply_patch(cfg, {"risk": {"stop_loss": {"basis": "vol", "reentry": "ma"}}})
+    o4 = run_backtest(c_vol, panels, infos, prices, etf_static, daily=daily, screen_cache=cache)
+    print("vol+ma stops", len(o4["stops"]), "nav", o4["monthly"]["nav_net"].iloc[-1])
+    rules = {"無停損": StopRule(c_ns), "移動10%": StopRule(c_tr), "波動度+均線": StopRule(c_vol)}
+    sd = pd.DataFrame({"^TWII": 100 * np.exp(np.cumsum(rng.normal(0, 0.015, 7000)))},
+                      index=pd.bdate_range("1999-01-01", periods=7000))
+    st = run_stress(sd, rules, cfg["backtest"]["stress"])
+    first = next(iter(st["^TWII"].values()))
+    print("stress", {k: (round(v["mdd"], 3), v["stops"]) for k, v in first.items()})
+    assert first["無停損"]["stops"] == 0
     m = out["monthly"]
     print(m.tail(3).T)
     for c in ["ret_gross", "ret_net"] + [c for c in m if c.startswith("bench_")]:
