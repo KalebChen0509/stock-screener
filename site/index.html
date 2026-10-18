@@ -107,6 +107,11 @@
       <p class="hint">同一段期間、同樣資料，只改一項設定。目前每日選股採用的是「目前版」；想改用哪一版請跟 Claude 說。</p>
       <div class="table-wrap"><table id="varTable" class="data compact"></table></div>
     </div>
+    <div class="card" id="frontierCard" hidden>
+      <h2>風險 vs 報酬（效率前緣參考）</h2>
+      <p class="hint">橫軸＝年化波動（風險），縱軸＝年化報酬（扣費後）。越往左上越有效率；同樣波動下報酬較低的點，代表「承擔了沒有回報的風險」。這是用過去 10 年資料畫的，只拿來排除明顯沒效率的配置，不代表未來的最佳比例。</p>
+      <div style="height:340px"><canvas id="btFrontier"></canvas></div>
+    </div>
     <div class="card" id="crisisCard" hidden>
       <h2>危機壓力測試 ① 完整策略（2016 年後）</h2>
       <p class="hint">每格：區間報酬／區間最大回撤。跌段＝到混合基準谷底為止；反彈＝谷底之後到區間結束。停損逐日模擬，觸發後隔一個交易日才以收盤價賣出。</p>

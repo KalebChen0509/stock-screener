@@ -22,6 +22,7 @@ portfolio:
     tw: "0050.TW"
     us: "SPY"
   rebalance: monthly                # 每月初依上月底資料換股，等權重
+  fixed_sleeves: []                 # 固定部位，例如 [{name: 全球大盤, weight: 0.5, holdings: {VT: 1.0}}]；weights 要相應調低
 
 # ---------------------------------------------------------------------
 #  風險控管：個股停損
@@ -32,7 +33,7 @@ risk:
   stop_loss:
     enabled: true
     pct: 0.15                       # 從參考價下跌 15% 即賣出
-    basis: trailing                 # entry = 買進價；trailing = 買進後最高價（移動停損）；vol = 移動停損，幅度依個股波動調整
+    basis: entry                    # entry = 買進價；trailing = 買進後最高價（移動停損）；vol = 移動停損，幅度依個股波動調整
     vol_mult: 2.5                   # basis=vol 時：停損幅度 = 個股近 12 個月月報酬標準差 × 2.5
     vol_min: 0.08                   #   下限 8%
     vol_max: 0.35                   #   上限 35%
@@ -408,6 +409,7 @@ etf:
     - {id: aum,       label: "規模 ≥ 3 億美元（約 100 億台幣）", metric: aum_usd, op: ">=", value: 3.0e8, enabled: true}
     - {id: liquidity, label: "日均成交值 ≥ 100 萬美元", metric: avg_traded_value_usd, op: ">=", value: 1.0e6, enabled: true}
     - {id: top10,     label: "前十大持股占比 ≤ 60%", metric: top10_weight, op: "<=", value: 0.60, enabled: true}
+    - {id: us_only,   label: "只選美國掛牌（分散台灣曝險）", metric: market, op: "==", value: us, enabled: false}
   ranking:
     expense_ratio: -0.30     # 負號 = 越低越好
     aum_usd: 0.10
@@ -460,37 +462,53 @@ backtest:
       - {name: "2022 升息空頭", start: "2022-01-01", trough_by: "2022-12-31"}
     rebound_months: 12              # 谷底後再看 12 個月，衡量「錯過的反彈」
   variants:
-    - name: "目前版（移動停損15%）"
+    # ---- 停損規則（配置不變：台 20／美 20／ETF 60）----
+    - name: "目前版（買進價停損15%）"
+      group: stop
       patch: {}
     - name: "無停損"
+      group: stop
       patch: {risk: {stop_loss: {enabled: false}}}
-    - name: "買進價停損15%"
-      patch: {risk: {stop_loss: {basis: entry}}}
-    - name: "移動停損20%"
-      patch: {risk: {stop_loss: {pct: 0.20}}}
-    - name: "移動停損25%"
-      patch: {risk: {stop_loss: {pct: 0.25}}}
-    - name: "波動度停損（2.5倍）"
-      patch: {risk: {stop_loss: {basis: vol}}}
-    - name: "移動20%＋均線買回"
-      patch: {risk: {stop_loss: {pct: 0.20, reentry: ma}}}
+    - name: "移動停損15%"
+      group: stop
+      patch: {risk: {stop_loss: {basis: trailing}}}
+    - name: "買進價15%＋均線買回"
+      group: stop
+      patch: {risk: {stop_loss: {reentry: ma}}}
     - name: "波動度＋均線買回"
+      group: stop
       patch: {risk: {stop_loss: {basis: vol, reentry: ma}}}
-    - name: "A 大盤補位"
+    # ---- 資產配置（都用買進價停損 15%；個股太少時用大盤補位）----
+    - name: "台20美20ETF60＋補位"
+      group: alloc
       patch:
         portfolio: {fill_with_index: {enabled: true}}
-    - name: "B 美股門檻"
+    - name: "VT50＋台美個股50"
+      group: alloc
       patch:
-        hard_filters:
-          cash_ratio: {value: {tw: 0.15, us: 0.08}}
-          equity_ratio: {value: {tw: 0.40, us: 0.30}}
-          current_ratio: {value: {tw: 1.5, us: 1.2}}
-          quick_ratio: {value: {tw: 1.0, us: 0.8}}
-    - name: "A+B"
+        portfolio:
+          weights: {tw_stock: 0.25, us_stock: 0.25, etf: 0.0}
+          fill_with_index: {enabled: true}
+          fixed_sleeves: [{name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}]
+    - name: "VT50＋個股25＋美價值ETF25"
+      group: alloc
       patch:
-        portfolio: {fill_with_index: {enabled: true}}
-        hard_filters:
-          cash_ratio: {value: {tw: 0.15, us: 0.08}}
-          equity_ratio: {value: {tw: 0.40, us: 0.30}}
-          current_ratio: {value: {tw: 1.5, us: 1.2}}
-          quick_ratio: {value: {tw: 1.0, us: 0.8}}
+        portfolio:
+          weights: {tw_stock: 0.125, us_stock: 0.125, etf: 0.25}
+          fill_with_index: {enabled: true}
+          fixed_sleeves: [{name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}]
+        etf: {hard_filters: {us_only: {enabled: true}}}
+    - name: "VT50＋美價值ETF50（不選股）"
+      group: alloc
+      patch:
+        portfolio:
+          weights: {tw_stock: 0.0, us_stock: 0.0, etf: 0.5}
+          fixed_sleeves: [{name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}]
+        etf: {hard_filters: {us_only: {enabled: true}}}
+    - name: "VT40＋債10＋台美個股50"
+      group: alloc
+      patch:
+        portfolio:
+          weights: {tw_stock: 0.25, us_stock: 0.25, etf: 0.0}
+          fill_with_index: {enabled: true}
+          fixed_sleeves: [{name: "全球大盤", weight: 0.4, holdings: {VT: 1.0}}, {name: "債券", weight: 0.1, holdings: {BND: 1.0}}]

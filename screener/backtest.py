@@ -20,7 +20,7 @@ def wide(prices: pd.DataFrame, col: str) -> pd.DataFrame:
 
 
 def _asset_class(ticker: str, kind: str) -> str:
-    if kind in ("etf", "fill"):
+    if kind in ("etf", "fill", "core"):
         return "tw_etf" if ticker.endswith((".TW", ".TWO")) else "us"
     return "tw_stock" if ticker.endswith((".TW", ".TWO")) else "us"
 
@@ -234,7 +234,16 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         held["etf"] = etf_ids
         picks["etf"] = etf_ids
         for tk in etf_ids:
-            targets[("etf", tk)] = pw["etf"] / len(etf_ids)
+            if pw.get("etf", 0) > 0:
+                targets[("etf", tk)] = pw["etf"] / len(etf_ids)
+        # 固定部位（例如全球大盤 VT、債券）：照設定比例持有，每月再平衡
+        for fs in cfg["portfolio"].get("fixed_sleeves", []) or []:
+            w_s = float(fs.get("weight", 0) or 0)
+            hs = fs.get("holdings") or {}
+            tot_h = sum(hs.values()) or 1.0
+            for tk, hw in hs.items():
+                if w_s > 0 and tk in adj and np.isfinite(adj.at[t, tk]):
+                    targets[("core", tk)] = targets.get(("core", tk), 0.0) + w_s * hw / tot_h
 
         # ---------- 月中逐日停損（有日線者） ----------
         mid_stop = {}  # key -> 出場時的累積報酬（當地幣、含息）
@@ -297,7 +306,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                         rate += costs.get("fx_spread", 0.0)
                     cost += abs(d) * rate
             port_r = 0.0
-            sleeve_r = {"tw": [0.0, 0.0], "us": [0.0, 0.0], "etf": [0.0, 0.0]}
+            sleeve_r = {"tw": [0.0, 0.0], "us": [0.0, 0.0], "etf": [0.0, 0.0], "core": [0.0, 0.0]}
             new_w = {}
             stop_cash = 0.0
             wht = 0.0
@@ -331,7 +340,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                     wht += w * costs.get("us_dividend_withholding", 0.0) * div
                 r = (1 + r_loc) * (fx_r if us else 1.0) - 1
                 port_r += w * r
-                sl = "etf" if k[0] == "etf" else ("us" if us else "tw")
+                sl = k[0] if k[0] in ("etf", "core") else ("us" if us else "tw")
                 sleeve_r[sl][0] += w * r
                 sleeve_r[sl][1] += w
                 new_w[k] = w * (1 + r)

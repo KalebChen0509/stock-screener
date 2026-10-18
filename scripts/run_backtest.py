@@ -74,8 +74,9 @@ def main():
 
     series_cols = ["ret_gross", "ret_net"] + [c for c in m.columns if c.startswith("bench_")]
     labels = {"ret_gross": "策略（未扣費）", "ret_net": "策略（扣費後）",
-              "sleeve_tw": "台股個股部位", "sleeve_us": "美股個股部位", "sleeve_etf": "ETF 部位"}
-    sleeve_cols = [c for c in ("sleeve_tw", "sleeve_us", "sleeve_etf") if c in m]
+              "sleeve_tw": "台股個股部位", "sleeve_us": "美股個股部位", "sleeve_etf": "ETF 部位",
+              "sleeve_core": "核心部位（大盤／債）"}
+    sleeve_cols = [c for c in ("sleeve_tw", "sleeve_us", "sleeve_etf", "sleeve_core") if c in m]
     for c in series_cols:
         if c.startswith("bench_"):
             labels[c] = c[6:]
@@ -88,8 +89,10 @@ def main():
 
     def sleeves_for(sub):
         res = {}
-        pairs = {"sleeve_tw": "bench_0050.TW", "sleeve_us": "bench_SPY", "sleeve_etf": "bench_VT"}
+        pairs = {"sleeve_tw": "bench_0050.TW", "sleeve_us": "bench_SPY", "sleeve_etf": "bench_VT", "sleeve_core": "bench_VT"}
         for c in sleeve_cols:
+            if c not in sub or (sub[c].fillna(0) == 0).all():
+                continue
             st = perf_stats(sub[c], rf)
             b = pairs.get(c)
             if b in sub:
@@ -184,7 +187,7 @@ def main():
         "holdings": hold,
         "sleeves_full": sleeves_for(m), "sleeves_5y": sleeves_for(last5),
         "regimes_full": regimes_for(m), "regimes_5y": regimes_for(last5),
-        "sleeve_nav": {labels[c]: list((cap * (1 + m[c].fillna(0)).cumprod()).round(0)) for c in sleeve_cols},
+        "sleeve_nav": {labels[c]: list((cap * (1 + m[c].fillna(0)).cumprod()).round(0)) for c in sleeve_cols if not (m[c].fillna(0) == 0).all()},
         "data_coverage": {mk: int(panels[mk]["id"].nunique()) for mk in panels},
         "stop_loss": (cfg.get("risk", {}) or {}).get("stop_loss", {}),
         "crises": crises_for(m),
@@ -201,16 +204,37 @@ def main():
             vm = run_cfg(apply_patch(cfg, patch))["monthly"] if patch else m
             v5 = vm[vm.index > vm.index[-1] - pd.DateOffset(years=5)]
             sf, s5 = stats_for(vm), stats_for(v5)
+            mid = vm.index[len(vm) // 2]
+            h1, h2 = vm[vm.index <= mid], vm[vm.index > mid]
+            half = {}
+            for lab, sub in (("h1", h1), ("h2", h2)):
+                st_ = stats_for(sub)
+                half[lab] = {"cagr": st_["策略（扣費後）"]["cagr"], "mdd": st_["策略（扣費後）"]["max_drawdown"],
+                             "bench_cagr": st_.get("混合基準(20/20/60)", {}).get("cagr"),
+                             "from": sub.index[0].strftime("%Y-%m"), "to": sub.index[-1].strftime("%Y-%m")}
             variants[name] = {
                 "full": sf["策略（扣費後）"], "full_gross": sf["策略（未扣費）"], "y5": s5["策略（扣費後）"],
                 "regimes": regimes_for(vm), "sleeves": sleeves_for(vm),
                 "avg_tw": float(vm["n_tw"].mean()), "avg_us": float(vm["n_us"].mean()),
                 "n_stops": int(vm["n_stops"].sum()) if "n_stops" in vm else 0,
                 "crises": crises_for(vm),
+                "halves": half,
+                "group": v.get("group", "stop" if set(patch) <= {"risk"} else "other"),
+                "weights": apply_patch(cfg, patch)["portfolio"]["weights"],
+                "fixed": apply_patch(cfg, patch)["portfolio"].get("fixed_sleeves", []),
                 "is_stop_variant": set(patch) <= {"risk"},
                 "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
             }
     res["variants"] = variants
+    # ---------- 風險／報酬散佈（效率前緣參考） ----------
+    pts = [{"name": k, "kind": "variant", "group": v.get("group"), "cagr": v["full"]["cagr"],
+            "vol": v["full"]["vol"], "mdd": v["full"]["max_drawdown"], "sharpe": v["full"]["sharpe"]}
+           for k, v in variants.items()]
+    for k, v in res["stats_full"].items():
+        if k not in ("策略（扣費後）", "策略（未扣費）"):
+            pts.append({"name": k, "kind": "bench", "cagr": v["cagr"], "vol": v["vol"],
+                        "mdd": v["max_drawdown"], "sharpe": v["sharpe"]})
+    res["frontier"] = pts
     # ---------- 第二層：指數壓力測試（只測停損規則） ----------
     sc = cfg["backtest"].get("stress") or {}
     if sc and not args.no_stress:

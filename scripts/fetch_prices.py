@@ -32,7 +32,25 @@ def all_tickers() -> list[str]:
             tk.add(e["tracking_index"])
     cfg = load_strategy()
     tk |= set(cfg["top_down"]["regime_indices"].values())
+    tk |= set(cfg["backtest"].get("benchmarks", []))
+    # 固定部位（全球大盤、債券）：本設定與各回測方案用到的代號
+    sleeves = list(cfg["portfolio"].get("fixed_sleeves", []) or [])
+    for v in cfg["backtest"].get("variants", []) or []:
+        sleeves += ((v.get("patch") or {}).get("portfolio") or {}).get("fixed_sleeves", []) or []
+    for fs in sleeves:
+        tk |= set((fs.get("holdings") or {}).keys())
     return sorted(t for t in tk if isinstance(t, str) and t)
+
+
+def key_tickers() -> list[str]:
+    cfg = load_strategy()
+    tk = set(cfg["backtest"].get("benchmarks", [])) | {e["ticker"] for e in load_etf_universe()}
+    sleeves = list(cfg["portfolio"].get("fixed_sleeves", []) or [])
+    for v in cfg["backtest"].get("variants", []) or []:
+        sleeves += ((v.get("patch") or {}).get("portfolio") or {}).get("fixed_sleeves", []) or []
+    for fs in sleeves:
+        tk |= set((fs.get("holdings") or {}).keys())
+    return sorted(tk)
 
 
 def main():
@@ -63,7 +81,16 @@ def main():
             g_old = g_old.assign(adj_close=g_old["adj_close"] * scale)
         g_old = g_old[g_old["month"] < overlap]
         merged.append(pd.concat([g_old, g_new]))
-    seen = set(new["ticker"])
+    # 新加入的 ETF／基準／固定部位代號：補抓完整歷史（個股不在此列，避免每天重抓下市股票）
+    missing = sorted(set(key_tickers()) - set(old["ticker"]))
+    if missing:
+        log.info("new tickers, fetching full history: %s", missing[:20])
+        full_new = prices.fetch_monthly(missing, start="2011-01-01", save=False)
+        if len(full_new):
+            got = set(full_new["ticker"])
+            merged = [g for g in merged if not (len(g) and g["ticker"].iloc[0] in got)]
+            merged.append(full_new)
+    seen = set(new["ticker"]) | set(missing)
     merged.append(old[~old["ticker"].isin(seen)])
     res = pd.concat(merged, ignore_index=True).sort_values(["ticker", "month"])
     res.to_csv(prices.MONTHLY_PATH, index=False, compression="gzip")

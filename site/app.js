@@ -555,12 +555,22 @@ function renderBacktest() {
   if (Object.keys(V).length) {
     $("#varCard").hidden = false;
     const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
-    const rows = Object.entries(V).map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td class="num">${fmt.pct(v.full.cagr)}</td><td class="num">${fmt.pct(v.y5.cagr)}</td><td class="num">${fmt.ntd(v.full.final_amount)}</td><td class="num">${fmt.pct(v.full.max_drawdown)}</td><td class="num">${fmt.x(v.full.sharpe, 2)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bear, 0)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bull, 0)}</td><td class="num">${v.avg_tw.toFixed(1)}／${v.avg_us.toFixed(1)}</td><td class="num">${v.n_stops != null ? v.n_stops : "–"}</td></tr>`).join("");
-    $("#varTable").innerHTML = `<thead><tr><th>方案</th><th class="num">10年年化</th><th class="num">近5年年化</th><th class="num">期末金額</th><th class="num">最大回撤</th><th class="num">夏普</th><th class="num">空頭年勝率</th><th class="num">多頭年勝率</th><th class="num">平均檔數 台／美</th><th class="num">停損次數</th></tr></thead><tbody>${rows}
-      <tr class="dim"><td>混合基準</td><td class="num">${fmt.pct(bf.cagr)}</td><td class="num">${fmt.pct(b5.cagr)}</td><td class="num">${fmt.ntd(bf.final_amount)}</td><td class="num">${fmt.pct(bf.max_drawdown)}</td><td class="num">${fmt.x(bf.sharpe, 2)}</td><td></td><td></td><td></td><td></td></tr></tbody>`;
+    const gname = { stop: "停損規則（台20／美20／ETF60）", alloc: "資產配置（買進價停損15%＋大盤補位）", other: "其他" };
+    let lastG = null;
+    const rows = Object.entries(V).map(([k, v]) => {
+      const h = v.halves || {};
+      const g = v.group || "other";
+      const sep = g !== lastG ? `<tr class="dim"><td colspan="12"><b>${esc(gname[g] || g)}</b></td></tr>` : "";
+      lastG = g;
+      return sep + `<tr><td><b>${esc(k)}</b></td><td class="num">${fmt.pct(v.full.cagr)}</td><td class="num">${fmt.pct(v.y5.cagr)}</td><td class="num">${fmt.ntd(v.full.final_amount)}</td><td class="num">${fmt.pct(v.full.max_drawdown)}</td><td class="num">${fmt.x(v.full.sharpe, 2)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bear, 0)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bull, 0)}</td><td class="num">${h.h1 ? fmt.pct(h.h1.cagr) : "–"}</td><td class="num">${h.h2 ? fmt.pct(h.h2.cagr) : "–"}</td><td class="num">${v.avg_tw.toFixed(1)}／${v.avg_us.toFixed(1)}</td><td class="num">${v.n_stops != null ? v.n_stops : "–"}</td></tr>`;
+    }).join("");
+    const h0 = (Object.values(V)[0] || {}).halves || {};
+    $("#varTable").innerHTML = `<thead><tr><th>方案</th><th class="num">10年年化</th><th class="num">近5年年化</th><th class="num">期末金額</th><th class="num">最大回撤</th><th class="num">夏普</th><th class="num">空頭年勝率</th><th class="num">多頭年勝率</th><th class="num">前半${h0.h1 ? `<br><span class="hint">${h0.h1.from}～${h0.h1.to}</span>` : ""}</th><th class="num">後半${h0.h2 ? `<br><span class="hint">${h0.h2.from}～${h0.h2.to}</span>` : ""}</th><th class="num">平均檔數 台／美</th><th class="num">停損次數</th></tr></thead><tbody>${rows}
+      <tr class="dim"><td>混合基準</td><td class="num">${fmt.pct(bf.cagr)}</td><td class="num">${fmt.pct(b5.cagr)}</td><td class="num">${fmt.ntd(bf.final_amount)}</td><td class="num">${fmt.pct(bf.max_drawdown)}</td><td class="num">${fmt.x(bf.sharpe, 2)}</td><td></td><td></td><td class="num">${h0.h1 && h0.h1.bench_cagr != null ? fmt.pct(h0.h1.bench_cagr) : ""}</td><td class="num">${h0.h2 && h0.h2.bench_cagr != null ? fmt.pct(h0.h2.bench_cagr) : ""}</td><td></td><td></td></tr></tbody>`;
   }
   renderCrisis(bt);
   renderStress(bt);
+  renderFrontier(bt);
   // 各部位
   const sl = (S.btPeriod === "5y" ? bt.sleeves_5y : bt.sleeves_full) || {};
   $("#btSleeves").innerHTML = `<thead><tr><th>部位</th><th class="num">年化</th><th class="num">對照</th><th class="num">對照年化</th><th class="num">差距</th><th class="num">最大回撤</th></tr></thead><tbody>${Object.entries(sl).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.cagr)}</td><td class="num">${esc(v.bench || "")}</td><td class="num">${fmt.pct(v.bench_cagr)}</td><td class="num ${v.cagr - v.bench_cagr >= 0 ? "pos" : "neg"}">${v.bench_cagr != null ? fmt.pct(v.cagr - v.bench_cagr) : "–"}</td><td class="num">${fmt.pct(v.max_drawdown)}</td></tr>`).join("")}</tbody>`;
@@ -761,4 +771,25 @@ function renderStress(bt) {
     return `<td class="num"><span class="${better}">${fmt.pct(r.total)}</span><br><span class="hint">回撤 ${fmt.pct(r.mdd)}・停損 ${r.stops} 次</span></td>`;
   }).join("")}</tr>`).join("");
   $("#stressTable").innerHTML = head + `<tbody>${rows}</tbody>`;
+}
+
+function renderFrontier(bt) {
+  const P = bt.frontier || [];
+  if (!P.length) return;
+  $("#frontierCard").hidden = false;
+  destroyChart("frontier");
+  const col = { stop: cssVar("--s1"), alloc: cssVar("--s2"), bench: cssVar("--text-2"), other: cssVar("--s3") };
+  const groups = [["停損規則", (p) => p.kind === "variant" && p.group === "stop", col.stop],
+                  ["資產配置", (p) => p.kind === "variant" && p.group === "alloc", col.alloc],
+                  ["基準（大盤）", (p) => p.kind === "bench", col.bench]];
+  S.charts.frontier = new Chart($("#btFrontier"), {
+    type: "scatter",
+    data: { datasets: groups.map(([label, f, c]) => ({ label, data: P.filter(f).map((p) => ({ x: p.vol, y: p.cagr, n: p.name, mdd: p.mdd })),
+      backgroundColor: c, borderColor: c, pointRadius: 6, pointHoverRadius: 8 })) },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: true, labels: { color: cssVar("--text-2") } },
+        tooltip: { callbacks: { label: (c) => ` ${c.raw.n}：報酬 ${fmt.pct(c.raw.y)}／波動 ${fmt.pct(c.raw.x)}／最大回撤 ${fmt.pct(c.raw.mdd)}` } } },
+      scales: { x: { title: { display: true, text: "年化波動", color: cssVar("--text-2") }, ticks: { color: cssVar("--text-2"), callback: (v) => fmt.pct(v, 0) }, grid: { color: cssVar("--grid") } },
+                y: { title: { display: true, text: "年化報酬（扣費後）", color: cssVar("--text-2") }, ticks: { color: cssVar("--text-2"), callback: (v) => fmt.pct(v, 0) }, grid: { color: cssVar("--grid") } } } },
+  });
 }
