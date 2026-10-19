@@ -8,21 +8,22 @@
 portfolio:
   base_currency: TWD
   initial_capital: 1000000          # 回測起始金額（新台幣）
-  account_value_twd: 1000000        # 下單清單用：你打算投入的總金額（新台幣），改這裡即可
-  weights:                          # 資產配置
-    tw_stock: 0.20
-    us_stock: 0.20
-    etf: 0.60
+  monthly_contribution_twd: 10000   # 下單清單用：每月新投入金額（新台幣）；用新資金補足低於目標的部位，原則上不賣股
+  weights:                          # 資產配置（另有 fixed_sleeves 的全球大盤 50%）
+    tw_stock: 0.25
+    us_stock: 0.25
+    etf: 0.0
   max_holdings_per_stock_sleeve: 30 # 通過條件的股票超過此數時，取排名前 N 檔
   etf_holdings: 6                   # ETF 不分市場，取綜合排名前 N 檔
   empty_sleeve: cash                # 某市場沒有股票通過時：cash = 持有現金
   fill_with_index:                  # 通過的股票太少時，空出來的名額改買大盤 ETF（不放現金、不重壓少數股票）
-    enabled: false
+    enabled: true
     min_holdings: 10
     tw: "0050.TW"
     us: "SPY"
   rebalance: monthly                # 每月初依上月底資料換股，等權重
-  fixed_sleeves: []                 # 固定部位，例如 [{name: 全球大盤, weight: 0.5, holdings: {VT: 1.0}}]；weights 要相應調低
+  fixed_sleeves:                    # 固定部位：核心 50% 全球大盤（永豐美股定期定額）
+    - {name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}
 
 # ---------------------------------------------------------------------
 #  風險控管：個股停損
@@ -462,7 +463,7 @@ backtest:
       - {name: "2022 升息空頭", start: "2022-01-01", trough_by: "2022-12-31"}
     rebound_months: 12              # 谷底後再看 12 個月，衡量「錯過的反彈」
   variants:
-    # ---- 停損規則（配置不變：台 20／美 20／ETF 60）----
+    # ---- 停損規則（目前配置：VT 50％＋台美個股 50％＋大盤補位）----
     - name: "目前版（買進價停損15%）"
       group: stop
       patch: {}
@@ -472,43 +473,21 @@ backtest:
     - name: "移動停損15%"
       group: stop
       patch: {risk: {stop_loss: {basis: trailing}}}
-    - name: "買進價15%＋均線買回"
-      group: stop
-      patch: {risk: {stop_loss: {reentry: ma}}}
-    - name: "波動度＋均線買回"
-      group: stop
-      patch: {risk: {stop_loss: {basis: vol, reentry: ma}}}
-    # ---- 資產配置（都用買進價停損 15%；個股太少時用大盤補位）----
-    - name: "台20美20ETF60＋補位"
-      group: alloc
-      patch:
-        portfolio: {fill_with_index: {enabled: true}}
-    - name: "VT50＋台美個股50"
+    # ---- 資產配置比較（都用買進價停損 15%）----
+    - name: "舊配置 台20美20ETF60＋補位"
       group: alloc
       patch:
         portfolio:
-          weights: {tw_stock: 0.25, us_stock: 0.25, etf: 0.0}
-          fill_with_index: {enabled: true}
-          fixed_sleeves: [{name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}]
-    - name: "VT50＋個股25＋美價值ETF25"
+          weights: {tw_stock: 0.2, us_stock: 0.2, etf: 0.6}
+          fixed_sleeves: []
+    - name: "VT40＋債10＋台美個股50"
       group: alloc
       patch:
         portfolio:
-          weights: {tw_stock: 0.125, us_stock: 0.125, etf: 0.25}
-          fill_with_index: {enabled: true}
-          fixed_sleeves: [{name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}]
-        etf: {hard_filters: {us_only: {enabled: true}}}
+          fixed_sleeves: [{name: "全球大盤", weight: 0.4, holdings: {VT: 1.0}}, {name: "債券", weight: 0.1, holdings: {BND: 1.0}}]
     - name: "VT50＋美價值ETF50（不選股）"
       group: alloc
       patch:
         portfolio:
           weights: {tw_stock: 0.0, us_stock: 0.0, etf: 0.5}
-          fixed_sleeves: [{name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}]
         etf: {hard_filters: {us_only: {enabled: true}}}
-    - name: "VT40＋債10＋台美個股50"
-      group: alloc
-      patch:
-        portfolio:
-          weights: {tw_stock: 0.25, us_stock: 0.25, etf: 0.0}
-          fill_with_index: {enabled: true}
-          fixed_sleeves: [{name: "全球大盤", weight: 0.4, holdings: {VT: 1.0}}, {name: "債券", weight: 0.1, holdings: {BND: 1.0}}]

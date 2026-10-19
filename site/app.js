@@ -244,15 +244,21 @@ function renderOverview() {
   $("#ovTiles").innerHTML = tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("");
 
   const H = (S.port && S.port.holdings) || [];
-  const names = { tw: "台股", us: "美股", etf: "ETF" };
+  const names = { core: "核心（全球大盤）", tw: "台股個股", us: "美股個股", etf: "ETF" };
   let html = "";
-  for (const sl of ["tw", "us", "etf"]) {
+  for (const sl of ["core", "tw", "us", "etf"]) {
     const hs = H.filter((h) => h.sleeve === sl);
-    const w = S.cfg.portfolio.weights[sl === "etf" ? "etf" : sl + "_stock"];
-    html += `<div class="sleeve-h"><span>${names[sl]}　${fmt.pct(w, 0)}</span><span class="hint">${hs.length} 檔${hs.length ? "，每檔 " + fmt.pct(hs[0].weight, 2) : ""}</span></div>`;
+    const w = hs.reduce((a, h) => a + (h.weight || 0), 0);
+    if (!hs.length && (sl === "core" || sl === "etf")) continue;
+    const nStock = hs.filter((h) => h.kind !== "fill").length;
+    const fillH = hs.find((h) => h.kind === "fill");
+    html += `<div class="sleeve-h"><span>${names[sl]}　${fmt.pct(w, 0)}</span><span class="hint">${sl === "core" ? "每月定期定額" : `${nStock} 檔${nStock ? "，每檔 " + fmt.pct(hs.find((h) => h.kind !== "fill").weight, 2) : ""}${fillH ? `；大盤補位 ${fmt.pct(fillH.weight, 1)}` : ""}`}</span></div>`;
     if (!hs.length) { html += `<p class="hint">目前沒有符合全部條件的標的 → 這部分持有現金</p>`; continue; }
-    html += `<div class="table-wrap"><table class="data compact"><tbody>${hs.map((h) => `
-      <tr class="clickable" data-m="${sl}" data-id="${esc(h.id)}"><td>${h.cross ? "⭐ " : ""}<b>${esc(h.id)}</b></td><td>${esc(h.name)}</td><td class="hint">${esc(h.industry || "")}</td><td class="num">${h.score != null ? h.score.toFixed(1) : ""}</td>${sl !== "etf" ? `<td class="num ${h.since_entry == null ? "" : h.since_entry >= 0 ? "pos" : "neg"}" title="自買進（含息）">${h.since_entry != null ? fmt.pct(h.since_entry) : ""}</td><td class="num hint" title="距離停損">${h.stop_dist != null ? (h.stop_dist < 0.03 ? "⚠️ " : "") + "距停損 " + fmt.pct(h.stop_dist) : ""}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+    html += `<div class="table-wrap"><table class="data compact"><tbody>${hs.map((h) => {
+      const click = h.kind === "stock" && h.score != null;
+      const stopCells = (sl === "tw" || sl === "us") && h.kind === "stock" ? `<td class="num ${h.since_entry == null ? "" : h.since_entry >= 0 ? "pos" : "neg"}" title="自買進（含息）">${h.since_entry != null ? fmt.pct(h.since_entry) : ""}</td><td class="num hint" title="距離停損">${h.stop_dist != null ? (h.stop_dist < 0.03 ? "⚠️ " : "") + "距停損 " + fmt.pct(h.stop_dist) : ""}</td>` : `<td></td><td></td>`;
+      return `<tr class="${click ? "clickable" : ""}" data-m="${sl}" data-id="${esc(h.id)}"><td>${h.cross_ok ? "⭐ " : ""}<b>${esc(h.id)}</b></td><td>${esc(h.name)}</td><td class="hint">${esc(h.industry || "")}</td><td class="num">${fmt.pct(h.weight, 1)}</td><td class="num">${h.score != null ? h.score.toFixed(1) : ""}</td>${stopCells}</tr>`;
+    }).join("")}</tbody></table></div>`;
   }
   const P = S.port || {};
   const slc = P.stop_loss || {};
@@ -293,15 +299,26 @@ function renderSectors() {
 function renderOrders() {
   const O = S.orders;
   if (!O || !O.orders) { $("#ordNote").textContent = "尚無資料"; return; }
-  $("#ordNote").textContent = `投入金額 ${fmt.ntd(O.account_value_twd)}（可在 config/strategy.yaml 的 account_value_twd 修改）；USD/TWD ${(+O.fx_usdtwd).toFixed(2)}。${O.note} 台股零股請用盤中零股交易；複委託多半只能買整股。`;
-  const names = { tw: "台股", us: "美股", etf: "ETF" };
-  const rows = O.orders.slice().sort((a, b) => (a.sleeve > b.sleeve ? 1 : -1));
-  $("#ordTable").innerHTML = `<thead><tr><th>部位</th><th>代號</th><th>名稱</th><th class="num">參考價</th><th class="num">目標金額</th><th class="num">目標股數</th><th class="num">上月股數</th><th class="num">本月買賣</th></tr></thead><tbody>${rows.map((o) => `
-    <tr><td>${names[o.sleeve] || o.sleeve}</td><td><b>${esc(o.id)}</b></td><td>${esc(o.name)}</td><td class="num">${o.price == null ? "–" : o.price + " " + (o.currency || "")}</td>
-    <td class="num">${fmt.ntd(o.target_amount_twd)}</td><td class="num">${o.target_shares.toLocaleString()}${o.lots && o.target_shares ? `<br><span class="hint">${esc(o.lots)}</span>` : ""}</td>
-    <td class="num">${o.prev_shares.toLocaleString()}</td><td class="num ${o.trade_shares > 0 ? "pos" : o.trade_shares < 0 ? "neg" : ""}"><b>${o.trade_shares > 0 ? "買 " : o.trade_shares < 0 ? "賣 " : ""}${Math.abs(o.trade_shares).toLocaleString()}</b></td></tr>`).join("")}</tbody>`;
+  const fx = +O.fx_usdtwd;
+  $("#ordNote").textContent = `${O.month} 本月投入 ${fmt.ntd(O.monthly_contribution_twd || 0)}（在 config/strategy.yaml 的 monthly_contribution_twd 修改）＋上月剩餘 ${fmt.ntd(O.cash_before_twd || 0)}${O.proceeds_twd ? `＋賣出所得 ${fmt.ntd(O.proceeds_twd)}` : ""}；用來補足低於目標比例的部位，原則上不賣股。USD/TWD ${fx.toFixed(2)}。${O.note}`;
+  const names = { core: "核心", tw: "台股", us: "美股", etf: "ETF" };
+  const act = (o) => {
+    if (o.action === "sell") return `<b class="neg">賣出全部</b><br><span class="hint">${esc(o.reason || "")}</span>`;
+    if (o.action === "buy") {
+      const sh = Number.isInteger(o.shares) ? o.shares.toLocaleString() : o.shares;
+      const amt = o.market === "us" ? `US$${(+o.amount_local).toFixed(2)}` : fmt.ntd(o.amount_twd);
+      return `<b class="pos">買 ${sh} 股</b>（約 ${amt}）<br><span class="hint">${esc(o.reason || "")}</span>`;
+    }
+    return `<span class="hint">${esc(o.reason || "不動")}</span>`;
+  };
+  const order = { sell: 0, buy: 1, hold: 2 };
+  const rows = O.orders.slice().sort((a, b) => order[a.action] - order[b.action] || (a.sleeve > b.sleeve ? 1 : -1));
+  $("#ordTable").innerHTML = `<thead><tr><th>部位</th><th>代號</th><th>名稱</th><th class="num">參考價</th><th class="num">目標比重</th><th class="num">下單後比重</th><th>本月動作</th></tr></thead><tbody>${rows.map((o) => `
+    <tr><td>${names[o.sleeve] || o.sleeve}${o.kind === "fill" ? "<br><span class=\"hint\">大盤補位</span>" : ""}</td><td><b>${esc(o.id)}</b></td><td>${esc(o.name || "")}</td><td class="num">${o.price == null ? "–" : o.price + " " + (o.currency || "")}</td>
+    <td class="num">${fmt.pct(o.target_weight, 1)}</td><td class="num">${o.weight_after == null ? "–" : fmt.pct(o.weight_after, 1)}</td><td>${act(o)}</td></tr>`).join("")}
+    <tr class="dim"><td colspan="6">下單後剩餘現金（留到下個月）</td><td>${fmt.ntd(O.cash_after_twd || 0)}</td></tr></tbody>`;
   $("#ordCsv").onclick = () => {
-    const cols = ["sleeve", "id", "name", "currency", "price", "target_amount_twd", "target_shares", "prev_shares", "trade_shares"];
+    const cols = ["sleeve", "kind", "id", "name", "currency", "price", "action", "shares", "amount_local", "amount_twd", "target_weight", "weight_after", "reason"];
     const csv = [cols.join(",")].concat(rows.map((o) => cols.map((c) => (typeof o[c] === "string" ? `"${o[c]}"` : o[c] ?? "")).join(","))).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" }));
@@ -555,7 +572,7 @@ function renderBacktest() {
   if (Object.keys(V).length) {
     $("#varCard").hidden = false;
     const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
-    const gname = { stop: "停損規則（台20／美20／ETF60）", alloc: "資產配置（買進價停損15%＋大盤補位）", other: "其他" };
+    const gname = { stop: "停損規則（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
     let lastG = null;
     const rows = Object.entries(V).map(([k, v]) => {
       const h = v.halves || {};
@@ -659,7 +676,7 @@ function renderRules() {
     <li><b>由下而上（Bottom-up）硬性條件</b>：個股要通過下表所有條件才進入候選池。流量項目（營收、利潤、現金流）用近四季合計，資產負債用最新一季。</li>
     <li><b>由上而下（Top-down）</b>：每個產業用「6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%」打分；大盤以 10 個月均線判斷多空（目前僅顯示，可在設定檔開啟「跌破均線股票部位減半」）。</li>
     <li><b>綜合排名</b>：候選池內以百分位計分，價值 40%＋品質 30%＋安全 10%＋產業分數 20%，另有加分。由下而上分數前 1/3 且產業分數前 1/2 的股票標為 ⭐「上下皆優」。</li>
-    <li><b>組合</b>：台股、美股各取前 ${c.portfolio.max_holdings_per_stock_sleeve} 名等權重；ETF 不分市場取前 ${c.portfolio.etf_holdings} 名；每月初調整。</li>
+    <li><b>組合</b>：${(c.portfolio.fixed_sleeves || []).map((f) => `${esc(f.name)} ${fmt.pct(f.weight, 0)}（${Object.keys(f.holdings).join("、")}）`).join("＋")}${(c.portfolio.fixed_sleeves || []).length ? "＋" : ""}台股個股 ${fmt.pct(c.portfolio.weights.tw_stock, 0)}＋美股個股 ${fmt.pct(c.portfolio.weights.us_stock, 0)}${c.portfolio.weights.etf ? `＋ETF ${fmt.pct(c.portfolio.weights.etf, 0)}` : ""}。個股各取前 ${c.portfolio.max_holdings_per_stock_sleeve} 名等權重${c.portfolio.fill_with_index && c.portfolio.fill_with_index.enabled ? `；通過的股票少於 ${c.portfolio.fill_with_index.min_holdings} 檔時，空名額改買大盤（台股 ${esc(c.portfolio.fill_with_index.tw)}、美股 ${esc(c.portfolio.fill_with_index.us)}）` : ""}。每月用新投入的錢補足低於目標的部位，原則上不賣股。</li>
     ${c.risk && c.risk.stop_loss && c.risk.stop_loss.enabled ? `<li><b>停損</b>：${c.risk.stop_loss.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${c.risk.stop_loss.vol_mult}」` : `個股自${c.risk.stop_loss.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(c.risk.stop_loss.pct, 0)}`}（含息）就賣出，賣出的錢放現金到下次調倉；${c.risk.stop_loss.reentry === "ma" ? "至少 1 個月後、且股價站上 10 個月均線才買回" : c.risk.stop_loss.cooldown_months + " 個月內不買回同一檔"}。每日更新時以日收盤檢查並通知；回測以日線逐日模擬，觸發後隔一個交易日才以收盤價賣出。ETF 不設停損。</li>` : ""}
   </ol>
   <h2>一、個股硬性條件</h2>
