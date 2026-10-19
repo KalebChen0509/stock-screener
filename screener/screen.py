@@ -110,6 +110,8 @@ def apply_hard_filters(df: pd.DataFrame, filters: list[dict], market: str,
                     continue
                 if isinstance(v, bool):
                     res.append(bool(x) == v)
+                elif isinstance(v, str) and f["op"] == "==":   # 文字比對，例如 market == "us"
+                    res.append(str(x) == v)
                 else:
                     try:
                         res.append(bool(OPS[f["op"]](float(x), _relax(f["op"], float(v), tol))))
