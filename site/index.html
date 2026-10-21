@@ -107,6 +107,13 @@
       <p class="hint">同一段期間、同樣資料，只改一項設定。目前每日選股採用的是「目前版」；想改用哪一版請跟 Claude 說。</p>
       <div class="table-wrap"><table id="varTable" class="data compact"></table></div>
     </div>
+    <div class="card" id="tradeCard" hidden>
+      <h2>每筆持股的結果分布（目前版）</h2>
+      <p class="hint">每一筆持股＝從買進到賣出（或停損、或回測結束時仍持有），台股對照同期 0050、美股對照同期 SPY，未扣交易成本。大賺＝賺且贏大盤；小賺＝賺但輸大盤；持平＝報酬在 ±3% 內；小跌＝賠但比大盤少跌；大跌＝賠且輸大盤。</p>
+      <div class="seg" id="tradeGroup"><button data-g="全部" class="on">全部</button><button data-g="台股">台股</button><button data-g="美股">美股</button><button data-g="已賣出">只看已賣出</button></div>
+      <div id="tradeSummary" class="hint" style="margin:8px 0"></div>
+      <div class="table-wrap"><table id="tradeTable" class="data compact"></table></div>
+    </div>
     <div class="card" id="frontierCard" hidden>
       <h2>風險 vs 報酬（效率前緣參考）</h2>
       <p class="hint">橫軸＝年化波動（風險），縱軸＝年化報酬（扣費後）。越往左上越有效率；同樣波動下報酬較低的點，代表「承擔了沒有回報的風險」。這是用過去 10 年資料畫的，只拿來排除明顯沒效率的配置，不代表未來的最佳比例。</p>

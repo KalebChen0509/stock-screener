@@ -65,7 +65,7 @@ def main():
             done[_json.dumps(c0, sort_keys=True, default=str)] = o0
             collected[sk] = col
             if not args.no_daily:
-                allt = set().union(*collected.values())
+                allt = set().union(*collected.values()) | {"0050.TW", "SPY"}
                 daily_box["df"] = prices.load_daily_adj(sorted(allt), start="2015-06-01")
                 log.info("daily for stop-loss: %d tickers", daily_box["df"].shape[1])
             if not stop_on:
@@ -167,6 +167,43 @@ def main():
             out[c["name"]] = row
         return out
 
+    def outcomes_for(spells, flat=0.03):
+        """每筆持股分五類：大賺（賺且贏大盤）、小賺（賺但輸大盤）、持平（±3%）、小跌（賠但比大盤少跌）、大跌（賠且輸大盤）。"""
+        cats = ["大賺", "小賺", "持平", "小跌", "大跌"]
+
+        def cat(r, b):
+            if abs(r) <= flat:
+                return "持平"
+            if r > 0:
+                return "大賺" if (b is None or not np.isfinite(b) or r > b) else "小賺"
+            return "小跌" if (b is not None and np.isfinite(b) and r > b) else "大跌"
+        out = {}
+        groups = {"全部": spells, "台股": [x for x in spells if x["market"] == "tw"],
+                  "美股": [x for x in spells if x["market"] == "us"],
+                  "已賣出": [x for x in spells if x["reason"] != "持有中"]}
+        for g, lst in groups.items():
+            lst = [x for x in lst if x["ret"] is not None and np.isfinite(x["ret"])]
+            n = len(lst)
+            row = {"n": n, "cats": {}}
+            for c in cats:
+                sub = [x for x in lst if cat(x["ret"], x["bench"]) == c]
+                row["cats"][c] = {"n": len(sub), "share": len(sub) / n if n else None,
+                                  "avg_ret": float(np.mean([x["ret"] for x in sub])) if sub else None,
+                                  "avg_excess": float(np.mean([x["ret"] - x["bench"] for x in sub if np.isfinite(x["bench"])])) if sub else None,
+                                  "avg_months": float(np.mean([x["months"] for x in sub])) if sub else None}
+            if n:
+                row["win_rate"] = float(np.mean([x["ret"] > 0 for x in lst]))
+                bb = [x for x in lst if np.isfinite(x["bench"])]
+                row["beat_rate"] = float(np.mean([x["ret"] > x["bench"] for x in bb])) if bb else None
+                row["avg_ret"] = float(np.mean([x["ret"] for x in lst]))
+                row["median_ret"] = float(np.median([x["ret"] for x in lst]))
+                row["avg_months"] = float(np.mean([x["months"] for x in lst]))
+                row["stop_exits"] = int(sum(x["reason"].startswith("停損") for x in lst))
+                row["best"] = max(lst, key=lambda x: x["ret"])
+                row["worst"] = min(lst, key=lambda x: x["ret"])
+            out[g] = row
+        return out
+
     names = {mk: infos[mk]["name"].to_dict() for mk in infos}
     etf_names = {e["ticker"]: e["name"] for e in load_etf_universe()}
     hold = []
@@ -199,6 +236,8 @@ def main():
         "data_coverage": {mk: int(panels[mk]["id"].nunique()) for mk in panels},
         "stop_loss": (cfg.get("risk", {}) or {}).get("stop_loss", {}),
         "crises": crises_for(m),
+        "trade_outcomes": outcomes_for([{**x, "name": names.get(x["market"], {}).get(x["id"], "")} for x in out.get("spells", [])]),
+        "trades": [{**x, "name": names.get(x["market"], {}).get(x["id"], "")} for x in out.get("spells", [])],
         "crisis_defs": cfg["backtest"].get("crises", []),
         "daily_stop_tickers": int(daily_box["df"].shape[1]) if len(daily_box["df"]) else 0,
         "stops": [{**s_, "name": names.get(s_["market"], {}).get(s_["id"], "")} for s_ in out.get("stops", [])],

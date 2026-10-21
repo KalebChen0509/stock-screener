@@ -111,6 +111,33 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     ref, spct = {"tw": {}, "us": {}}, {"tw": {}, "us": {}}
     cooldown = {"tw": {}, "us": {}}  # id -> 最早可再買進的月份序號
     stops_log = []
+    # 每一筆持股（買進到賣出）的紀錄，用來統計大賺／小賺／持平／小跌／大跌
+    bench_of = {"tw": "0050.TW", "us": "SPY"}
+    spells_open = {"tw": {}, "us": {}}   # sid -> {start, tk}
+    spells = []
+
+    def _span_ret(tk, d0, d1, use_daily):
+        """d0（月底）到 d1 的含息報酬；有日線時兩端都用日線，避免日線與月線的還原基準不同。"""
+        if use_daily and tk in dcols:
+            a, b = _dlast(tk, d0), _dlast(tk, d1)
+        else:
+            a = adj.at[d0, tk] if tk in adj and d0 in adj.index else np.nan
+            b = adj.at[d1, tk] if tk in adj and d1 in adj.index else np.nan
+        return float(b / a - 1) if np.isfinite(a) and np.isfinite(b) and a > 0 else np.nan
+
+    def _close_spell(mkt, sid, end, reason, use_daily=False):
+        sp = spells_open[mkt].pop(sid, None)
+        if not sp:
+            return
+        r = _span_ret(sp["tk"], sp["start"], end, use_daily)
+        bk = bench_of[mkt]
+        b = _span_ret(bk, sp["start"], end, use_daily and bk in dcols)
+        if not use_daily and not np.isfinite(b):
+            b = np.nan
+        spells.append({"market": mkt, "id": sid, "start": sp["start"].strftime("%Y-%m"),
+                       "end": pd.Timestamp(end).strftime("%Y-%m-%d"),
+                       "months": round((pd.Timestamp(end) - sp["start"]).days / 30.44, 1),
+                       "ret": r, "bench": b, "reason": reason})
 
     def _madj(tk, t):
         return adj.at[t, tk] if tk in adj and t in adj.index else np.nan
@@ -164,6 +191,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             if mkt not in panels or panels[mkt].empty:
                 continue
             ym = y_maps[mkt]
+            prev_held = list(held[mkt])
             ck = (skey, mkt, t)
             if ck in screen_cache:
                 ranked = screen_cache[ck]
@@ -207,6 +235,12 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 ref[mkt] = {k: v for k, v in ref[mkt].items() if k in ids}
                 spct[mkt] = {k: v for k, v in spct[mkt].items() if k in ids}
             held[mkt] = ids
+            for sid in prev_held:
+                if sid not in ids:
+                    _close_spell(mkt, sid, t, "停損（月底）" if sid in stopped else "剔除")
+            for sid in ids:
+                if sid not in spells_open[mkt] and ym.get(sid):
+                    spells_open[mkt][sid] = {"start": t, "tk": ym[sid]}
             weight = pw[sleeve] * (co_scale if mkt in co_apply else 1.0)
             if td.get("regime_defensive"):
                 idx_t = td["regime_indices"][mkt]
@@ -292,6 +326,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                                   "ret_from_ref": float(p_exit / ref[mkt][sid] - 1) if not rule.trailing
                                   else float(p_exit / r0 - 1), "daily": True})
                 held[mkt] = [h for h in held[mkt] if h != sid]
+                _close_spell(mkt, sid, full.index[xj], "停損", use_daily=True)
                 ref[mkt].pop(sid, None)
                 spct[mkt].pop(sid, None)
                 n_stops_month += 1
@@ -384,6 +419,9 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             log.info("backtest %s nav gross %.3f net %.3f (tw %d us %d etf %d)", t1.date(),
                      nav["gross"], nav["net"], rec["n_tw"], rec["n_us"], rec["n_etf"])
 
+    for mkt in spells_open:
+        for sid in list(spells_open[mkt]):
+            _close_spell(mkt, sid, rebal[-1], "持有中")
     res = pd.DataFrame(records).set_index("month")
     # ---------- 基準 ----------
     bench = {}
@@ -403,7 +441,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     res.attrs["total_cost"] = total_cost
     res.attrs["total_withholding"] = total_wht
     res.attrs["stops"] = stops_log
-    return {"monthly": res, "holdings": holdings_log, "stops": stops_log}
+    return {"monthly": res, "holdings": holdings_log, "stops": stops_log, "spells": spells}
 
 
 def perf_stats(r: pd.Series, rf: float = 0.0) -> dict:

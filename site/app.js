@@ -590,6 +590,7 @@ function renderBacktest() {
   renderCrisis(bt);
   renderStress(bt);
   renderFrontier(bt);
+  renderTrades(bt);
   // 各部位
   const sl = (S.btPeriod === "5y" ? bt.sleeves_5y : bt.sleeves_full) || {};
   $("#btSleeves").innerHTML = `<thead><tr><th>部位</th><th class="num">年化</th><th class="num">對照</th><th class="num">對照年化</th><th class="num">差距</th><th class="num">最大回撤</th></tr></thead><tbody>${Object.entries(sl).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.cagr)}</td><td class="num">${esc(v.bench || "")}</td><td class="num">${fmt.pct(v.bench_cagr)}</td><td class="num ${v.cagr - v.bench_cagr >= 0 ? "pos" : "neg"}">${v.bench_cagr != null ? fmt.pct(v.cagr - v.bench_cagr) : "–"}</td><td class="num">${fmt.pct(v.max_drawdown)}</td></tr>`).join("")}</tbody>`;
@@ -811,4 +812,24 @@ function renderFrontier(bt) {
       scales: { x: { title: { display: true, text: "年化波動", color: cssVar("--text-2") }, ticks: { color: cssVar("--text-2"), callback: (v) => fmt.pct(v, 0) }, grid: { color: cssVar("--grid") } },
                 y: { title: { display: true, text: "年化報酬（扣費後）", color: cssVar("--text-2") }, ticks: { color: cssVar("--text-2"), callback: (v) => fmt.pct(v, 0) }, grid: { color: cssVar("--grid") } } } },
   });
+}
+
+function renderTrades(bt) {
+  const T = bt.trade_outcomes;
+  if (!T || !T["全部"] || !T["全部"].n) return;
+  $("#tradeCard").hidden = false;
+  const g = S.tradeGroup || "全部";
+  $$("#tradeGroup button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.g === g);
+    b.onclick = () => { S.tradeGroup = b.dataset.g; renderTrades(bt); };
+  });
+  const R = T[g] || { n: 0, cats: {} };
+  const cats = ["大賺", "小賺", "持平", "小跌", "大跌"];
+  const cls = { "大賺": "pos", "小賺": "pos", "持平": "", "小跌": "neg", "大跌": "neg" };
+  const nm = (x) => (x ? `${esc(x.id)} ${esc(x.name || "")}（${fmt.pct(x.ret, 0)}，${esc(x.start)}～${esc(String(x.end).slice(0, 7))}）` : "–");
+  $("#tradeSummary").innerHTML = R.n ? `共 ${R.n} 筆；<b>賺錢比例 ${fmt.pct(R.win_rate, 0)}</b>、<b>贏過大盤比例 ${fmt.pct(R.beat_rate, 0)}</b>；每筆平均報酬 ${fmt.pct(R.avg_ret)}（中位數 ${fmt.pct(R.median_ret)}），平均持有 ${R.avg_months.toFixed(1)} 個月；停損出場 ${R.stop_exits} 筆。<br>最好：${nm(R.best)}　最差：${nm(R.worst)}` : "沒有資料";
+  $("#tradeTable").innerHTML = `<thead><tr><th>結果</th><th class="num">筆數</th><th>占比</th><th class="num">平均報酬</th><th class="num">平均贏／輸大盤</th><th class="num">平均持有（月）</th></tr></thead><tbody>${cats.map((c) => {
+    const x = R.cats[c] || {};
+    return `<tr><td><b class="${cls[c]}">${c}</b></td><td class="num">${x.n || 0}</td><td><span class="bar" style="width:${Math.round(160 * (x.share || 0))}px"></span> <span class="hint">${x.share != null ? fmt.pct(x.share, 0) : "–"}</span></td><td class="num">${x.avg_ret != null ? fmt.pct(x.avg_ret) : "–"}</td><td class="num ${x.avg_excess == null ? "" : x.avg_excess >= 0 ? "pos" : "neg"}">${x.avg_excess != null ? fmt.pct(x.avg_excess) : "–"}</td><td class="num">${x.avg_months != null ? x.avg_months.toFixed(1) : "–"}</td></tr>`;
+  }).join("")}</tbody>`;
 }
