@@ -33,16 +33,29 @@ def fetch_fred(sid: str, max_age_hours: float = 20.0) -> pd.Series:
     path = Path(tempfile.gettempdir()) / f"fred_{sid}.csv"
     fresh = path.exists() and (time.time() - path.stat().st_mtime) < max_age_hours * 3600
     if not fresh:
-        try:
-            r = requests.get(FRED_CSV.format(sid=sid), timeout=60,
-                             headers={"User-Agent": "Mozilla/5.0 personal-research"})
-            r.raise_for_status()
-            df = pd.read_csv(io.StringIO(r.text))
-            if df.shape[1] >= 2 and len(df) > 100:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                df.to_csv(path, index=False)
-        except Exception as e:  # noqa
-            log.warning("FRED %s failed: %s (using cache if any)", sid, e)
+        import os
+        key = os.environ.get("FRED_API_KEY")
+        for attempt in range(4):
+            try:
+                if key:   # 有金鑰就走官方 API（較穩定）
+                    r = requests.get("https://api.stlouisfed.org/fred/series/observations",
+                                     params={"series_id": sid, "api_key": key, "file_type": "json"},
+                                     timeout=(15, 120))
+                    r.raise_for_status()
+                    obs = r.json().get("observations", [])
+                    df = pd.DataFrame({"date": [o["date"] for o in obs], sid: [o["value"] for o in obs]})
+                else:
+                    r = requests.get(FRED_CSV.format(sid=sid), timeout=(15, 120),
+                                     headers={"User-Agent": "Mozilla/5.0 (Macintosh) personal-research"})
+                    r.raise_for_status()
+                    df = pd.read_csv(io.StringIO(r.text))
+                if df.shape[1] >= 2 and len(df) > 100:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    df.to_csv(path, index=False)
+                    break
+            except Exception as e:  # noqa
+                log.warning("FRED %s attempt %d failed: %s", sid, attempt + 1, e)
+                time.sleep(10 * (attempt + 1))
     if not path.exists():
         return pd.Series(dtype=float)
     df = pd.read_csv(path)
