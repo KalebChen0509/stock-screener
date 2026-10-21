@@ -39,6 +39,14 @@ def main():
         log.warning("events not loaded: %s", e)
     from screener.common import apply_patch
     import json as _json
+    from screener.macro import load_macro
+    try:
+        macro = load_macro(prices.wide_adj(monthly) if hasattr(prices, "wide_adj") else
+                           monthly.pivot_table(index="month", columns="ticker", values="adj_close", aggfunc="last"))
+        log.info("macro: baa %d months, hyg/ief %d months", len(macro["baa"]), len(macro["hyg_ief"]))
+    except Exception as e:  # noqa
+        log.warning("macro not loaded: %s", e)
+        macro = {}
     screen_cache, collected, done = {}, {}, {}
     daily_box = {"df": pd.DataFrame()}
 
@@ -53,7 +61,7 @@ def main():
             col = set()
             c0 = apply_patch(c, {"risk": {"stop_loss": {"enabled": False}}})
             o0 = run_backtest(c0, panels, infos, monthly, etf_static, start=args.start, events=events,
-                              screen_cache=screen_cache, collect=col)
+                              screen_cache=screen_cache, collect=col, macro=macro)
             done[_json.dumps(c0, sort_keys=True, default=str)] = o0
             collected[sk] = col
             if not args.no_daily:
@@ -63,7 +71,7 @@ def main():
             if not stop_on:
                 return o0
         o = run_backtest(c, panels, infos, monthly, etf_static, start=args.start, events=events,
-                         daily=daily_box["df"], screen_cache=screen_cache)
+                         daily=daily_box["df"], screen_cache=screen_cache, macro=macro)
         done[key] = o
         return o
 
@@ -222,7 +230,8 @@ def main():
                 "group": v.get("group", "stop" if set(patch) <= {"risk"} else "other"),
                 "weights": apply_patch(cfg, patch)["portfolio"]["weights"],
                 "fixed": apply_patch(cfg, patch)["portfolio"].get("fixed_sleeves", []),
-                "is_stop_variant": set(patch) <= {"risk"},
+                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro"),
+                "credit_off_months": int(vm["credit_off"].sum()) if "credit_off" in vm else 0,
                 "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
             }
     res["variants"] = variants
@@ -245,7 +254,7 @@ def main():
             rules = {"無停損": StopRule(apply_patch(cfg, {"risk": {"stop_loss": {"enabled": False}}}))}
             for v in cfg["backtest"].get("variants", []) or []:
                 patch = v.get("patch") or {}
-                if set(patch) <= {"risk"} and v["name"] not in rules:
+                if v.get("group", "stop") == "stop" and set(patch) <= {"risk"} and v["name"] not in rules:
                     rules[v["name"]] = StopRule(apply_patch(cfg, patch))
             sd = prices.load_daily_adj(sc.get("assets", []), start="1999-01-01",
                                        path=CACHE_DIR / "stress_daily.csv.gz")

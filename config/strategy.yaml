@@ -44,6 +44,20 @@ risk:
     reentry_ma_months: 10
     exit_delay_days: 1              # 回測：觸發後「隔 1 個交易日」才以收盤價賣出（模擬跳空、來不及成交）
     proceeds: cash                  # 停損賣出的錢先放現金，下次月初調倉再重新分配
+  # 信用利差風險訊號（企業信用）：訊號成立的月份，把指定部位按比例減碼、放現金
+  # 先回測驗證，確定有效再把 enabled 改成 true（每日系統也會照做）
+  credit_overlay:
+    enabled: false
+    rule: hyg_ma                    # jump = 利差 3 個月內急升；z = 利差偏高且擴大；hyg_ma = HYG/IEF 跌破均線
+    jump_pp: 0.5                    # jump：3 個月上升幾個百分點算急升
+    z_min: 1.0                      # z：高於近 36 個月平均幾個標準差
+    ma_months: 6                    # hyg_ma：均線月數
+    scale: 0.5                      # 減碼到原本的幾成（0.5 = 減半）
+    apply_to: [tw, us]              # 套用的部位：tw、us、core（核心 VT）
+
+# 總經資料需要額外抓的價格代號
+macro:
+  tickers: [HYG, IEF]
 
 # ---------------------------------------------------------------------
 #  一、個股 Hard Filters（全部通過才入選）
@@ -473,6 +487,19 @@ backtest:
     - name: "移動停損15%"
       group: stop
       patch: {risk: {stop_loss: {basis: trailing}}}
+    # ---- 信用利差減碼（先驗證再決定要不要啟用）----
+    - name: "利差急升→個股減半"
+      group: macro
+      patch: {risk: {credit_overlay: {enabled: true, rule: jump}}}
+    - name: "利差偏高擴大→個股減半"
+      group: macro
+      patch: {risk: {credit_overlay: {enabled: true, rule: z}}}
+    - name: "HYG/IEF 走弱→個股減半"
+      group: macro
+      patch: {risk: {credit_overlay: {enabled: true, rule: hyg_ma}}}
+    - name: "HYG/IEF 走弱→全部股票減半"
+      group: macro
+      patch: {risk: {credit_overlay: {enabled: true, rule: hyg_ma, apply_to: [tw, us, core]}}}
     # ---- 資產配置比較（都用買進價停損 15%）----
     - name: "舊配置 台20美20ETF60＋補位"
       group: alloc

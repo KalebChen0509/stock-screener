@@ -71,7 +71,8 @@ class StopRule:
 def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                  etf_static: pd.DataFrame, start: str | None = None, end: str | None = None,
                  progress=None, events: dict | None = None, daily: pd.DataFrame | None = None,
-                 screen_cache: dict | None = None, collect: set | None = None) -> dict:
+                 screen_cache: dict | None = None, collect: set | None = None,
+                 macro: dict | None = None) -> dict:
     """daily：日線含息還原價寬表（index=日期, columns=yahoo 代號），有的話停損逐日模擬。
     screen_cache：跨方案共用的選股結果快取。collect：收集曾進入排名名單的代號（用來決定要抓哪些日線）。"""
     close, adj, vol = wide(prices, "close"), wide(prices, "adj_close"), wide(prices, "volume")
@@ -151,6 +152,14 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         picks = {}
         n_stops_month = 0
         stock_meta = {}  # targets key -> (mkt, sid)
+        # 信用利差風險訊號：成立時把指定部位按比例減碼（減下來的放現金）
+        co = (cfg.get("risk", {}) or {}).get("credit_overlay", {}) or {}
+        credit_off = False
+        if co.get("enabled") and macro:
+            from .macro import credit_signal
+            credit_off = bool(credit_signal(macro, t, co).get("risk_off"))
+        co_scale = float(co.get("scale", 0.5)) if credit_off else 1.0
+        co_apply = set(co.get("apply_to", ["tw", "us"]))
         for mkt, sleeve in (("tw", "tw_stock"), ("us", "us_stock")):
             if mkt not in panels or panels[mkt].empty:
                 continue
@@ -198,7 +207,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 ref[mkt] = {k: v for k, v in ref[mkt].items() if k in ids}
                 spct[mkt] = {k: v for k, v in spct[mkt].items() if k in ids}
             held[mkt] = ids
-            weight = pw[sleeve]
+            weight = pw[sleeve] * (co_scale if mkt in co_apply else 1.0)
             if td.get("regime_defensive"):
                 idx_t = td["regime_indices"][mkt]
                 if idx_t in close:
@@ -238,7 +247,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 targets[("etf", tk)] = pw["etf"] / len(etf_ids)
         # 固定部位（例如全球大盤 VT、債券）：照設定比例持有，每月再平衡
         for fs in cfg["portfolio"].get("fixed_sleeves", []) or []:
-            w_s = float(fs.get("weight", 0) or 0)
+            w_s = float(fs.get("weight", 0) or 0) * (co_scale if "core" in co_apply else 1.0)
             hs = fs.get("holdings") or {}
             tot_h = sum(hs.values()) or 1.0
             for tk, hw in hs.items():
@@ -364,6 +373,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         rec["n_us"] = len(picks.get("us", []))
         rec["n_etf"] = len(picks.get("etf", []))
         rec["n_stops"] = n_stops_month
+        rec["credit_off"] = int(credit_off)
         rec["cash_weight"] = max(0.0, 1.0 - sum(targets.values()))
         records.append(rec)
         holdings_log.append({"month": t, "tw": picks.get("tw", []), "us": picks.get("us", []),

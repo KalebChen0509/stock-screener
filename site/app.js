@@ -277,7 +277,9 @@ function renderOverview() {
     if (!r || r.bull == null) return `<div>${label}：資料不足</div>`;
     return `<div>${label}：<b class="${r.bull ? "ok" : "ng"}">${r.bull ? "▲ 多頭（指數在 10 個月均線之上）" : "▼ 偏空（指數跌破 10 個月均線）"}</b> <span class="hint">指數 ${r.last.toFixed(0)}／均線 ${r.ma.toFixed(0)}</span></div>`;
   };
-  $("#ovRegime").innerHTML = rtxt("tw", "台股加權") + rtxt("us", "美股 S&P 500") + `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
+  const cr = m.credit;
+  const ctxt = cr && cr.available !== undefined ? `<div>企業信用：<b class="${cr.risk_off ? "ng" : "ok"}">${cr.risk_off ? "▼ 偏空（信用轉差）" : "▲ 正常"}</b> <span class="hint">${esc(cr.text || "")}${cr.enabled ? "；已啟用減碼" : "；目前只提示、不調整部位"}</span></div>` : "";
+  $("#ovRegime").innerHTML = rtxt("tw", "台股加權") + rtxt("us", "美股 S&P 500") + ctxt + `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
   renderSectors();
   renderOrders();
   const N = S.news || { news: [], events: [] };
@@ -572,7 +574,7 @@ function renderBacktest() {
   if (Object.keys(V).length) {
     $("#varCard").hidden = false;
     const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
-    const gname = { stop: "停損規則（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
+    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
     let lastG = null;
     const rows = Object.entries(V).map(([k, v]) => {
       const h = v.halves || {};

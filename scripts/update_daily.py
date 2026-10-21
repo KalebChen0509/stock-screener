@@ -250,6 +250,24 @@ def main():
                                "passed": int(df["pass_all"].sum())}
         log.info("%s: %d with data, %d passed", mkt, len(df), int(df["pass_all"].sum()))
 
+    # ---------- 信用利差（企業信用風險）----------
+    co = (cfg.get("risk", {}) or {}).get("credit_overlay", {}) or {}
+    credit_line = None
+    try:
+        from screener.macro import credit_signal, describe, load_macro
+        mac = load_macro(adj)
+        sig = credit_signal(mac, last_month, co)
+        sig_all = {r: credit_signal(mac, last_month, {**co, "rule": r})["risk_off"] for r in ("jump", "z", "hyg_ma")}
+        meta["credit"] = {**{k: v for k, v in sig.items() if k != "level"},   # 不公開原始利差數值
+                          "text": describe(sig), "enabled": bool(co.get("enabled")), "rules": sig_all}
+        prev_off = state.get("credit_off")
+        if sig.get("available") and prev_off is not None and bool(prev_off) != bool(sig["risk_off"]):
+            credit_line = ("⚠️ 信用利差訊號轉為偏空：" if sig["risk_off"] else "✅ 信用利差訊號解除：") + meta["credit"]["text"]
+        if sig.get("available"):
+            state["credit_off"] = bool(sig["risk_off"])
+    except Exception as e:  # noqa
+        log.warning("credit signal failed: %s", e)
+
     # ---------- ETF ----------
     etfs = load_etf_universe()
     base = static_frame(etfs, fx_now) if args.no_live_etf else enrich_live(etfs, fx_now)
@@ -466,6 +484,9 @@ def main():
         changed = True
     if stop_lines:
         lines = stop_lines + [""] + lines
+        changed = True
+    if credit_line:
+        lines = [credit_line, ""] + lines
         changed = True
     rebalance = state.get("last_rebalance_month") != month_key
     # ---------- 下單清單：每月新投入的錢補足低於目標的部位，原則上不賣 ----------

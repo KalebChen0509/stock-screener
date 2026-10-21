@@ -133,6 +133,20 @@ def main():
     first = next(iter(st["^TWII"].values()))
     print("stress", {k: (round(v["mdd"], 3), v["stops"]) for k, v in first.items()})
     assert first["無停損"]["stops"] == 0
+    # ---------- 信用利差減碼 ----------
+    idx = adjw.index
+    baa = pd.Series(2.0, index=idx); baa.loc[(idx >= '2018-10-31') & (idx <= '2019-01-31')] = 3.0
+    ratio = pd.Series(np.linspace(1, 1.2, len(idx)), index=idx); ratio.loc[(idx >= '2020-02-29') & (idx <= '2020-05-31')] *= 0.8
+    mac = {"baa": baa, "hyg_ief": ratio}
+    from screener.macro import credit_signal
+    assert credit_signal(mac, pd.Timestamp('2018-12-31'), {"rule": "jump"})["risk_off"]
+    assert not credit_signal(mac, pd.Timestamp('2017-12-31'), {"rule": "jump"})["risk_off"]
+    assert credit_signal(mac, pd.Timestamp('2020-03-31'), {"rule": "hyg_ma"})["risk_off"]
+    c_co = apply_patch(cfg, {"risk": {"credit_overlay": {"enabled": True, "rule": "jump"}}})
+    o5 = run_backtest(c_co, panels, infos, prices, etf_static, screen_cache=cache, macro=mac)
+    m5 = o5["monthly"]
+    print("credit_off months", int(m5["credit_off"].sum()), "max cash", round(m5["cash_weight"].max(), 3))
+    assert m5["credit_off"].sum() > 0 and m5.loc[m5["credit_off"] == 1, "cash_weight"].min() > 0.1
     m = out["monthly"]
     print(m.tail(3).T)
     for c in ["ret_gross", "ret_net"] + [c for c in m if c.startswith("bench_")]:

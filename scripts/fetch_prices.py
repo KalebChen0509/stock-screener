@@ -33,6 +33,7 @@ def all_tickers() -> list[str]:
     cfg = load_strategy()
     tk |= set(cfg["top_down"]["regime_indices"].values())
     tk |= set(cfg["backtest"].get("benchmarks", []))
+    tk |= set((cfg.get("macro") or {}).get("tickers", []))
     # 固定部位（全球大盤、債券）：本設定與各回測方案用到的代號
     sleeves = list(cfg["portfolio"].get("fixed_sleeves", []) or [])
     for v in cfg["backtest"].get("variants", []) or []:
@@ -45,6 +46,7 @@ def all_tickers() -> list[str]:
 def key_tickers() -> list[str]:
     cfg = load_strategy()
     tk = set(cfg["backtest"].get("benchmarks", [])) | {e["ticker"] for e in load_etf_universe()}
+    tk |= set((cfg.get("macro") or {}).get("tickers", []))
     sleeves = list(cfg["portfolio"].get("fixed_sleeves", []) or [])
     for v in cfg["backtest"].get("variants", []) or []:
         sleeves += ((v.get("patch") or {}).get("portfolio") or {}).get("fixed_sleeves", []) or []
