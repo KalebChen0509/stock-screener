@@ -12,7 +12,7 @@ from .screen import apply_hard_filters, assign_groups, rank_stocks, sector_score
 def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
                   ret6: pd.Series, date: pd.Timestamp, cfg: dict, market: str,
                   ret12: pd.Series | None = None, events: pd.DataFrame | None = None,
-                  pledge: pd.Series | None = None) -> dict:
+                  pledge: pd.Series | None = None, month_rev: pd.DataFrame | None = None) -> dict:
     """
     panel：該市場的 fundamental_panel
     info：index=id，欄位 name, industry, is_financial, yahoo
@@ -45,6 +45,14 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
         df["event_veto"] = False
         df["event_flags"] = None
     df["pledge_ratio"] = df["id"].map(pledge) if pledge is not None else np.nan
+    # 台股月營收動能（到上個月為止已公布的資料）
+    if market == "tw" and month_rev is not None and len(month_rev):
+        from .month_rev import metrics_asof
+        rm = metrics_asof(month_rev, date)
+        for c_ in ("rev_yoy_3m", "rev_yoy_12m", "rev_accel"):
+            df[c_] = df["id"].map(rm[c_]) if c_ in rm else np.nan
+    else:
+        df["rev_yoy_3m"] = df["rev_yoy_12m"] = df["rev_accel"] = np.nan
     # 景氣循環但書群組
     df["groups"] = assign_groups(df, cfg.get("groups", {}), market)
     ov = cfg.get("overrides", {})
@@ -58,6 +66,15 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
         cutoff = sectors["score"].quantile(excl)
         bad = set(sectors.index[sectors["score"] < cutoff])
         cand = cand[~cand["industry"].isin(bad)]
+    # 金融股（若啟用專屬條件而入選）：一般公司的現金流、毛利、流動性指標不適用 → 設為中性；價值改用 E/P
+    fin = cand["is_financial"].astype(bool) if "is_financial" in cand else pd.Series(False, index=cand.index)
+    if fin.any():
+        cand = cand.copy()
+        cand.loc[fin, "earnings_yield"] = cand.loc[fin, "net_income"] / cand.loc[fin, "market_cap"]
+        for c_ in ("fcf_yield", "cfo_to_ni", "fcf_to_ni", "op_margin", "cash_ratio", "equity_ratio"):
+            if c_ in cand:
+                cand.loc[fin, c_] = np.nan
+        cand.loc[fin, "cf_type"] = None
     ranked = rank_stocks(cand, cfg["ranking"], cfg["top_down"], sectors)
     if len(ranked):
         ranked["rank"] = np.arange(1, len(ranked) + 1)

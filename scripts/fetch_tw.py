@@ -20,6 +20,13 @@ def main():
     uni.to_csv(CACHE_DIR / "tw_universe.csv", index=False)
     log.info("TW universe: %d common stocks", len(uni))
     data_tw.update_fundamentals(uni, cfg["reporting_lag"]["tw"], fm)
+    # 月營收：OpenAPI 補最新月份，剩餘 FinMind 額度回填歷史
+    try:
+        from screener import month_rev
+        mp = month_rev.update(uni, fm, data_tw._liquidity_rank(uni))
+        write_json(CACHE_DIR / "tw_month_rev_progress.json", mp)
+    except Exception as e:  # noqa
+        log.warning("month revenue update failed: %s", e)
     prog = data_tw.backfill_progress(uni)
     log.info("TW backfill progress: %s", prog)
     write_json(CACHE_DIR / "tw_progress.json", prog)

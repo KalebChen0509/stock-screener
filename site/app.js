@@ -34,7 +34,7 @@ const METRICS = {
   tracking_vol: ["追蹤波動", "pct"], value_tilt: ["價值傾向", "pctile"], div_yield_ttm: ["近12月殖利率", "pct"],
 };
 const mlabel = (m) => (METRICS[m] ? METRICS[m][0] : m);
-const GROUP_SHORT = { rd_heavy: "研發密集", cyclicals: "循環股", discretionary: "非必需消費", staples: "必需消費", healthcare: "醫療", utilities_telecom: "公用/電信" };
+const GROUP_SHORT = { financials: "金融", rd_heavy: "研發密集", cyclicals: "循環股", discretionary: "非必需消費", staples: "必需消費", healthcare: "醫療", utilities_telecom: "公用/電信" };
 const groupTags = (r) => (r.groups || []).map((g) => `<span class="pill" title="${esc((S.cfg.groups[g] || {}).label || g)}">${GROUP_SHORT[g] || g}</span>`).join(" ");
 
 const fmt = {
@@ -239,6 +239,8 @@ function renderOverview() {
     ["ETF 通過", c.etf ? c.etf.passed + " 檔" : "–", c.etf ? `候選 ${c.etf.universe} 檔` : ""],
     ["回測年化（扣費後）", bt ? fmt.pct(bt.cagr) : "–", S.bt ? `${S.bt.start} ~ ${S.bt.end}` : "尚未回測"],
   ];
+  if (m.tw_month_rev && m.tw_month_rev.have < m.tw_month_rev.total)
+    tiles.push(["台股月營收回填中", `${Math.round((100 * m.tw_month_rev.have) / m.tw_month_rev.total)}%`, `${m.tw_month_rev.have} / ${m.tw_month_rev.total} 家（每天用剩餘額度補）`]);
   if (m.tw_backfill && m.tw_backfill.have < m.tw_backfill.total)
     tiles.push(["台股財報回填中", `${Math.round((100 * m.tw_backfill.have) / m.tw_backfill.total)}%`, `${m.tw_backfill.have} / ${m.tw_backfill.total} 家`]);
   $("#ovTiles").innerHTML = tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("");
@@ -335,6 +337,8 @@ const STOCK_COLS = [
   ["score", "綜合分數", (r) => (r.score == null ? "–" : (r.cross ? "⭐ " : "") + r.score.toFixed(1)), "num"],
   ["close", "收盤", (r) => fmt.price(r.close), "num"], ["market_cap", "市值", (r, i, m) => fmt.money(r.market_cap, m), "num"],
   ["pe", "本益比", (r) => fmt.x(r.pe), "num"], ["pb", "P/B", (r) => fmt.x(r.pb, 2), "num"],
+  ["fair_base", "合理價", (r) => (r.fair_base == null ? "–" : fmt.price(r.fair_base)), "num"],
+  ["mos", "安全邊際", (r) => (r.mos == null ? "–" : `<span class="${r.mos >= 0.3 ? "pos" : r.mos <= -0.2 ? "neg" : ""}" title="${esc(r.val_label || "")}（可信度 ${esc(r.val_conf || "")}）">${fmt.pct(r.mos, 0)}</span>`), "num"],
   ["earnings_yield", "EBIT/EV", (r) => fmt.pct(r.earnings_yield), "num"], ["fcf_yield", "FCF殖利率", (r) => fmt.pct(r.fcf_yield), "num"],
   ["cash_ratio", "現金/資產", (r) => fmt.pct(r.cash_ratio), "num"], ["equity_ratio", "權益比", (r) => fmt.pct(r.equity_ratio), "num"],
   ["op_margin", "營益率", (r) => fmt.pct(r.op_margin), "num"], ["fcf_to_ni", "FCF/淨利", (r) => fmt.pct(r.fcf_to_ni, 0), "num"],
@@ -453,6 +457,8 @@ async function openDetail(mkt, id) {
   let html = "";
   if (row && mkt !== "etf") {
     html += `<div class="tiles">${[["綜合分數", row.score != null ? row.score.toFixed(1) : "未通過"], ["本益比", fmt.x(row.pe)], ["P/B", fmt.x(row.pb, 2)], ["FCF 殖利率", fmt.pct(row.fcf_yield)], ["市值", fmt.money(row.market_cap, mkt)], ["產業", esc(row.industry)]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("")}</div>`;
+    if (d && d.valuation) html += valuationCard(d.valuation, row, mkt);
+    else if (row.fair_base != null) html += valuationCard(row, row, mkt);
     html += `<div class="card"><h2>條件檢查</h2><div class="checklist">${S.cfg.hard_filters.filter((f) => S.settings.filters[f.id]?.enabled).map((f) => {
       const ok = row["f_" + f.id];
       const m = row["_m_" + f.id] || f.metric;
@@ -574,7 +580,7 @@ function renderBacktest() {
   if (Object.keys(V).length) {
     $("#varCard").hidden = false;
     const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
-    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
+    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", factor: "新因子與金融股（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
     let lastG = null;
     const rows = Object.entries(V).map(([k, v]) => {
       const h = v.halves || {};
@@ -682,6 +688,15 @@ function renderRules() {
     <li><b>組合</b>：${(c.portfolio.fixed_sleeves || []).map((f) => `${esc(f.name)} ${fmt.pct(f.weight, 0)}（${Object.keys(f.holdings).join("、")}）`).join("＋")}${(c.portfolio.fixed_sleeves || []).length ? "＋" : ""}台股個股 ${fmt.pct(c.portfolio.weights.tw_stock, 0)}＋美股個股 ${fmt.pct(c.portfolio.weights.us_stock, 0)}${c.portfolio.weights.etf ? `＋ETF ${fmt.pct(c.portfolio.weights.etf, 0)}` : ""}。個股各取前 ${c.portfolio.max_holdings_per_stock_sleeve} 名等權重${c.portfolio.fill_with_index && c.portfolio.fill_with_index.enabled ? `；通過的股票少於 ${c.portfolio.fill_with_index.min_holdings} 檔時，空名額改買大盤（台股 ${esc(c.portfolio.fill_with_index.tw)}、美股 ${esc(c.portfolio.fill_with_index.us)}）` : ""}。每月用新投入的錢補足低於目標的部位，原則上不賣股。</li>
     ${c.risk && c.risk.stop_loss && c.risk.stop_loss.enabled ? `<li><b>停損</b>：${c.risk.stop_loss.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${c.risk.stop_loss.vol_mult}」` : `個股自${c.risk.stop_loss.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(c.risk.stop_loss.pct, 0)}`}（含息）就賣出，賣出的錢放現金到下次調倉；${c.risk.stop_loss.reentry === "ma" ? "至少 1 個月後、且股價站上 10 個月均線才買回" : c.risk.stop_loss.cooldown_months + " 個月內不買回同一檔"}。每日更新時以日收盤檢查並通知；回測以日線逐日模擬，觸發後隔一個交易日才以收盤價賣出。ETF 不設停損。</li>` : ""}
   </ol>
+  <h2>估值方法（合理價區間）</h2>
+  <ul>
+    <li><b>要求報酬率（CAPM）</b>：無風險利率＋β × 市場風險溢酬。β 用近 60 個月月報酬對大盤迴歸並做 Blume 調整；美股無風險利率自動取 FRED 10 年期美債，台股用設定值 ${fmt.pct((c.valuation || {}).rf ? c.valuation.rf.tw : 0.016, 1)}；市場風險溢酬 台股 ${fmt.pct(((c.valuation || {}).erp || {}).tw || 0.055, 1)}、美股 ${fmt.pct(((c.valuation || {}).erp || {}).us || 0.045, 1)}。</li>
+    <li><b>剩餘收益模型</b>：每股淨值＋未來超額報酬折現，ROE 在 ${(c.valuation || {}).fade_years || 10} 年內回到要求報酬率（保守）。</li>
+    <li><b>自由現金流折現</b>：近 3 年平均自由現金流，前 5 年以過去營收成長率成長（限制 −3%～12%），再降到永續成長率。</li>
+    <li><b>同業相對估值</b>：同產業本益比、股價淨值比、EV/EBIT 中位數。</li>
+    <li><b>合理價</b>＝三者中位數；<b>安全邊際</b>＝合理價 ÷ 股價 − 1，≥ 30% 標為低估、≤ −20% 標為高估。另外反推市場隱含成長率，跟公司過去成長比較。</li>
+    <li>缺少的資料：分析師預估（付費）、股利明細（以保留率代替）。估值目前只供參考，尚未納入選股排名；要納入請先回測。</li>
+  </ul>
   <h2>一、個股硬性條件</h2>
   <div class="table-wrap"><table class="data compact"><thead><tr><th>條件</th><th>來源</th><th>計算方式／門檻</th></tr></thead><tbody>${c.hard_filters.map(fr).join("")}</tbody></table></div>
   <p class="hint">說明：第 2 條「資產太多太雜」量化為商譽＋無形資產 ≤ 15% 與長期投資 ≤ 20%；第 4 條「股東出資佔比」解讀為股東權益占總資產；第 5 條「短期負債太多」量化為流動比率 ≥ 150% 與速動比率 ≥ 100%；第 6、7 條改為近 3 年每年都要達標；第 9 條由 5% 放寬到 10%，避免誤殺利息收入高的現金充裕公司。</p>
@@ -799,7 +814,10 @@ function renderFrontier(bt) {
   $("#frontierCard").hidden = false;
   destroyChart("frontier");
   const col = { stop: cssVar("--s1"), alloc: cssVar("--s2"), bench: cssVar("--text-2"), other: cssVar("--s3") };
+  col.macro = cssVar("--s4"); col.factor = cssVar("--s5");
   const groups = [["停損規則", (p) => p.kind === "variant" && p.group === "stop", col.stop],
+                  ["信用利差", (p) => p.kind === "variant" && p.group === "macro", col.macro],
+                  ["新因子／金融股", (p) => p.kind === "variant" && p.group === "factor", col.factor],
                   ["資產配置", (p) => p.kind === "variant" && p.group === "alloc", col.alloc],
                   ["基準（大盤）", (p) => p.kind === "bench", col.bench]];
   S.charts.frontier = new Chart($("#btFrontier"), {
@@ -832,4 +850,24 @@ function renderTrades(bt) {
     const x = R.cats[c] || {};
     return `<tr><td><b class="${cls[c]}">${c}</b></td><td class="num">${x.n || 0}</td><td><span class="bar" style="width:${Math.round(160 * (x.share || 0))}px"></span> <span class="hint">${x.share != null ? fmt.pct(x.share, 0) : "–"}</span></td><td class="num">${x.avg_ret != null ? fmt.pct(x.avg_ret) : "–"}</td><td class="num ${x.avg_excess == null ? "" : x.avg_excess >= 0 ? "pos" : "neg"}">${x.avg_excess != null ? fmt.pct(x.avg_excess) : "–"}</td><td class="num">${x.avg_months != null ? x.avg_months.toFixed(1) : "–"}</td></tr>`;
   }).join("")}</tbody>`;
+}
+
+function valuationCard(v, row, mkt) {
+  const px = row.close;
+  const cell = (x) => (x == null || !isFinite(x) ? "–" : fmt.price(x));
+  const vsPx = (x) => (x == null || !isFinite(x) || !px ? "" : `<span class="${x >= px ? "pos" : "neg"}">${fmt.pct(x / px - 1, 0)}</span>`);
+  const rows = [
+    ["剩餘收益模型（RIM）", v.val_rim, "以每股淨值為基礎，加上未來超額報酬（ROE − 要求報酬率）的折現；ROE 10 年內回到要求報酬率"],
+    ["自由現金流折現（DCF）", v.val_dcf, `近 3 年平均自由現金流；前 5 年成長 ${fmt.pct(v.g1, 1)}，之後降到永續成長`],
+    ["同業相對估值", v.val_rel, "同產業本益比、股價淨值比、EV/EBIT 中位數套用到這家公司"],
+  ];
+  const lbl = v.val_label || "";
+  const cls = lbl === "低估" ? "pos" : lbl === "高估" ? "neg" : "";
+  return `<div class="card"><h2>估值：合理價區間 ${cell(v.fair_low)}～${cell(v.fair_high)}（中位數 ${cell(v.fair_base)}）</h2>
+    <p>目前股價 ${fmt.price(px)}，安全邊際 <b class="${cls}">${v.mos == null ? "–" : fmt.pct(v.mos, 0)}（${esc(lbl)}）</b>，可信度：${esc(v.val_conf || "–")}</p>
+    <div class="table-wrap"><table class="data compact"><thead><tr><th>模型</th><th class="num">每股價值</th><th class="num">相對股價</th><th>說明</th></tr></thead><tbody>
+    ${rows.map(([n, x, h]) => `<tr><td>${n}</td><td class="num">${cell(x)}</td><td class="num">${vsPx(x)}</td><td class="hint">${h}</td></tr>`).join("")}</tbody></table></div>
+    <p class="hint">市場隱含成長率 <b>${v.implied_g == null ? "–" : fmt.pct(v.implied_g, 1)}</b>（要讓 DCF 等於目前市值，前 5 年每年要成長多少）vs 過去 3 年營收年成長 ${v.hist_g == null ? "–" : fmt.pct(v.hist_g, 1)}：${v.implied_g != null && v.hist_g != null ? (v.implied_g > v.hist_g + 0.05 ? "市場期待明顯高於過去表現。" : v.implied_g < v.hist_g - 0.05 ? "市場期待低於過去表現，若能維持成長就有上漲空間。" : "市場期待與過去表現相當。") : ""}<br>
+    要求報酬率 ${fmt.pct(v.r_e, 1)} ＝ 無風險利率＋β ${v.beta == null ? "（資料不足，以 1.0 計）" : (+v.beta).toFixed(2)} × 市場風險溢酬；保留率 ${fmt.pct(v.retention, 0)}。<br>
+    估值是區間不是預測：輸入假設（成長率、要求報酬率）稍微改變，價值就會變動不少。三個模型差距很大時，可信度標為「低」。</p></div>`;
 }

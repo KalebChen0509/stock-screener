@@ -27,6 +27,8 @@ STOCK_COLS = ["id", "name", "industry", "close", "market_cap", "pe", "pb", "earn
               "net_income", "cfo", "fcf", "cff", "cfo_to_ni", "fcf_to_ni", "roe", "profitable_3y",
               "share_growth", "cf_type", "cf_type_ok", "cfo_3y", "cfi_3y", "cff_3y", "cfo_positive_3y", "gross_margin_min3y", "gross_margin_avg3y", "op_margin_min3y",
               "op_margin_avg3y", "rd_to_revenue", "revenue_cagr_3y", "ret_12m", "mom_12m_pct", "pledge_ratio",
+              "fair_low", "fair_base", "fair_high", "mos", "val_rim", "val_dcf", "val_rel", "implied_g",
+              "hist_g", "beta", "r_e", "retention", "g1", "val_label", "val_conf", "sue", "rev_yoy_3m", "rev_accel",
               "event_veto", "event_flags", "groups", "avg_traded_value", "n_quarters", "is_financial", "period_end",
               "top_down_score", "score", "pass_all", "failed"]
 ETF_COLS = ["ticker", "name", "market", "style", "expense_ratio", "aum_usd", "avg_traded_value_usd",
@@ -232,13 +234,40 @@ def main():
         px = px_now(close, vol, ymap)
         r6 = ret_n_months(adj, last_month, cfg["top_down"]["sector_momentum_months"], ymap)
         r12 = ret_n_months(adj, last_month, 11, ymap, skip=1)
+        mrw = None
+        if mkt == "tw":
+            try:
+                from screener import month_rev as mrev
+                mrw = mrev.wide()
+            except Exception as e:  # noqa
+                log.warning("month revenue: %s", e)
         res = screen_market(panels[mkt], infos[mkt], px, r6, today, cfg, mkt, ret12=r12,
-                            events=ev_all.get(mkt), pledge=pledge if mkt == "tw" else None)
+                            events=ev_all.get(mkt), pledge=pledge if mkt == "tw" else None, month_rev=mrw)
         df = res["all"]
         rk = res["ranked"]
         df["top_down_score"] = df["industry"].map(res["sectors"]["score"]).fillna(50.0) \
             if len(res["sectors"]) else 50.0
         df["score"] = df["id"].map(rk.set_index("id")["score"]) if len(rk) else np.nan
+        # ---------- 估值：合理價區間、安全邊際、市場隱含成長率 ----------
+        try:
+            from screener import valuation as valmod
+            vcfg = cfg.get("valuation", {}) or {}
+            idx_t = cfg["top_down"]["regime_indices"][mkt]
+            bt_ = valmod.betas(adj, ymap, idx_t, last_month, int(vcfg.get("beta_months", 60)))
+            rf_live = None
+            if mkt == "us":
+                from screener.macro import fetch_fred
+                dgs = fetch_fred("DGS10")
+                rf_live = float(dgs.iloc[-1]) / 100 if len(dgs) else None
+            vf = valmod.value_frame(df, bt_, mkt, vcfg, rf=rf_live)
+            if len(vf):
+                df = df.join(vf, on="id")
+                meta.setdefault("valuation", {})[mkt] = {
+                    "rf": float(vf["rf"].iloc[0]), "erp": float(vf["erp"].iloc[0]),
+                    "terminal_g": float(vf["terminal_g"].iloc[0]), "n": int(len(vf)),
+                    "rf_source": "FRED DGS10" if rf_live else "設定檔"}
+        except Exception as e:  # noqa
+            log.warning("valuation %s failed: %s", mkt, e)
         results[mkt] = (df, rk)
         write_json(SITE_DATA / f"stocks_{mkt}.json", table(df, STOCK_COLS))
         sec = res["sectors"].reset_index().rename(columns={"index": "industry"})
@@ -394,6 +423,11 @@ def main():
                 "prices": [] if g is None else [[d.strftime("%Y-%m-%d"), round(float(c), 4)]
                                                 for d, c in zip(g["date"], g["close"])],
                 "quarters": quarterly_history(raws[mkt], panels[mkt], sid),
+                "valuation": ({k: (None if (isinstance(v, float) and not np.isfinite(v)) else v)
+                               for k, v in df.loc[sid, ["fair_low", "fair_base", "fair_high", "mos", "val_rim", "val_dcf",
+                                                        "val_rel", "implied_g", "hist_g", "beta", "r_e", "retention",
+                                                        "g1", "val_label", "val_conf"]].to_dict().items()}
+                              if sid in df.index and "fair_base" in df.columns and pd.notna(df.at[sid, "fair_base"]) else None),
                 "failed": df.at[sid, "failed"] if sid in df.index else None,
             })
     for e in etfs:
@@ -407,6 +441,9 @@ def main():
     prog = CACHE_DIR / "tw_progress.json"
     if prog.exists():
         meta["tw_backfill"] = json.loads(prog.read_text())
+    mp_ = CACHE_DIR / "tw_month_rev_progress.json"
+    if mp_.exists():
+        meta["tw_month_rev"] = json.loads(mp_.read_text())
     write_json(SITE_DATA / "meta.json", meta)
     cfg_out = dict(cfg)
     write_json(SITE_DATA / "config.json", cfg_out)

@@ -244,6 +244,22 @@ hard_filters:
     op: ">="
     value: 0
     enabled: true
+  - id: sue_positive
+    source: added
+    label: "最近一季財報驚喜 ≥ 0（淨利不低於去年同季的正常波動範圍）"
+    metric: sue
+    op: ">="
+    value: 0
+    na_pass: true
+    enabled: false
+  - id: rev_growth_3m
+    source: added
+    label: "台股近 3 個月營收年增率 ≥ 0（月營收動能；美股與資料不足者不檢查）"
+    metric: rev_yoy_3m
+    op: ">="
+    value: 0
+    na_pass: true
+    enabled: false
   - id: momentum
     source: added
     label: "防價值陷阱：近 12 個月股價表現不在市場最差 20%"
@@ -295,6 +311,10 @@ hard_filters:
 #  （群組可重疊，後面的覆寫前面的；沒列到的條件維持預設）
 # ---------------------------------------------------------------------
 groups:
+  financials:
+    enabled: false        # 回測驗證後再開啟；開啟時金融股改用下方「金融股專屬條件」，不再一律排除
+    label: "金融保險業（銀行、保險、金控、證券）：改用 ROE、淨值比、本益比、資本適足代理指標"
+    rule: {metric: is_financial, op: "==", value: true}
   rd_heavy:
     label: "研發密集（美股：研發費用 ≥ 營收 5%；台股財報摘要沒有研發費用，改用研發密集產業）"
     rule: {metric: rd_to_revenue, op: ">=", value: 0.05}
@@ -333,6 +353,28 @@ groups:
       tw: ["2412", "3045", "4904"]
 
 overrides:
+  financials:           # 金融業的資產負債表、現金流量表結構不同，一般公司的條件不適用
+    exclude_financials: {enabled: false}
+    cash_ratio: {enabled: false}
+    lt_invest_ratio: {enabled: false}       # 放款與投資本來就是本業
+    inventory_vs_peers: {enabled: false}
+    equity_ratio: {value: 0.06}             # 資本適足的代理：權益 ÷ 總資產 ≥ 6%（銀行常見 6～10%）
+    current_ratio: {enabled: false}
+    quick_ratio: {enabled: false}
+    gross_margin: {enabled: false}
+    op_margin: {enabled: false}
+    op_to_gross: {enabled: false}
+    nonop_share: {enabled: false}
+    cfo_positive: {enabled: false}          # 銀行的營業現金流隨存放款大幅波動，沒有意義
+    fcf_positive: {enabled: false}
+    cfo_to_ni: {enabled: false}
+    fcf_to_ni: {enabled: false}
+    cfo_positive_3y: {enabled: false}
+    cf_type: {enabled: false}
+    revenue_growth: {enabled: false}
+    roe: {value: 0.09}                      # 金融股主要看 ROE
+    pe: {value: 15}
+    pb: {value: 1.5}                        # 銀行股估值的核心：股價淨值比
   rd_heavy:
     op_to_gross: {value: 0.55}
   cyclicals:            # 看「景氣循環平均」而非最差年；用股價淨值比估值（循環高峰時本益比會假性便宜）
@@ -451,6 +493,21 @@ costs:
 reporting_lag:
   tw: {Q1: "05-15", Q2: "08-14", Q3: "11-14", Q4: "03-31"}
 
+# ---------------------------------------------------------------------
+#  估值（合理價區間）：CAPM 折現率 + 剩餘收益模型 + 自由現金流折現 + 同業相對估值
+#  以下為假設值，可依看法調整
+# ---------------------------------------------------------------------
+valuation:
+  rf: {tw: 0.016, us: 0.045}        # 無風險利率；美股會自動改用 FRED 10 年期美債最新值，台股用這裡（約為台灣 10 年期公債殖利率）
+  erp: {tw: 0.055, us: 0.045}       # 市場風險溢酬（股票比公債多要求的報酬）
+  terminal_g: {tw: 0.02, us: 0.025} # 永續成長率（不超過長期名目經濟成長）
+  beta_months: 60                   # β 用近幾個月的月報酬估
+  fade_years: 10                    # 剩餘收益模型：ROE 幾年內回到要求報酬率
+  g1_bounds: [-0.03, 0.12]          # DCF 第 1～5 年成長率上下限
+  re_bounds: [0.06, 0.16]           # 要求報酬率上下限
+  undervalued: 0.30                 # 安全邊際 ≥ 30% 標為「低估」
+  overvalued: -0.20                 # 安全邊際 ≤ −20% 標為「高估」
+
 backtest:
   start: "2016-10-01"
   end: "latest"
@@ -500,6 +557,17 @@ backtest:
     - name: "HYG/IEF 走弱→全部股票減半"
       group: macro
       patch: {risk: {credit_overlay: {enabled: true, rule: hyg_ma, apply_to: [tw, us, core]}}}
+    # ---- 新因子與金融股（先驗證再決定要不要啟用）----
+    # 註：目前通過條件的股票少於持股上限，「排名」幾乎不影響選股，所以新因子用「條件」來測
+    - name: "財報驚喜為負不買"
+      group: factor
+      patch: {hard_filters: {sue_positive: {enabled: true}}}
+    - name: "台股月營收衰退不買"
+      group: factor
+      patch: {hard_filters: {rev_growth_3m: {enabled: true}}}
+    - name: "納入金融股（專屬條件）"
+      group: factor
+      patch: {groups: {financials: {enabled: true}}}
     # ---- 資產配置比較（都用買進價停損 15%）----
     - name: "舊配置 台20美20ETF60＋補位"
       group: alloc

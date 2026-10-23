@@ -24,6 +24,8 @@ def assign_groups(df: pd.DataFrame, groups_cfg: dict, market: str,
     """依產業／代號／規則，把每檔股票歸入一或多個「但書群組」。回傳每列的群組清單。"""
     out = [[] for _ in range(len(df))]
     for name, g in (groups_cfg or {}).items():
+        if g.get("enabled") is False:
+            continue
         mask = pd.Series(False, index=df.index)
         inds = (g.get("industries") or {}).get(market) or []
         if inds:

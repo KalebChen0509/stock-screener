@@ -41,6 +41,13 @@ def main():
     import json as _json
     from screener.macro import load_macro
     try:
+        from screener import month_rev as mrev
+        mrw = mrev.wide()
+        log.info("month revenue: %d months x %d stocks", *(mrw.shape if len(mrw) else (0, 0)))
+    except Exception as e:  # noqa
+        log.warning("month revenue not loaded: %s", e)
+        mrw = None
+    try:
         macro = load_macro(prices.wide_adj(monthly) if hasattr(prices, "wide_adj") else
                            monthly.pivot_table(index="month", columns="ticker", values="adj_close", aggfunc="last"))
         log.info("macro: baa %d months, hyg/ief %d months", len(macro["baa"]), len(macro["hyg_ief"]))
@@ -61,7 +68,7 @@ def main():
             col = set()
             c0 = apply_patch(c, {"risk": {"stop_loss": {"enabled": False}}})
             o0 = run_backtest(c0, panels, infos, monthly, etf_static, start=args.start, events=events,
-                              screen_cache=screen_cache, collect=col, macro=macro)
+                              screen_cache=screen_cache, collect=col, macro=macro, month_rev=mrw)
             done[_json.dumps(c0, sort_keys=True, default=str)] = o0
             collected[sk] = col
             if not args.no_daily:
@@ -71,7 +78,7 @@ def main():
             if not stop_on:
                 return o0
         o = run_backtest(c, panels, infos, monthly, etf_static, start=args.start, events=events,
-                         daily=daily_box["df"], screen_cache=screen_cache, macro=macro)
+                         daily=daily_box["df"], screen_cache=screen_cache, macro=macro, month_rev=mrw)
         done[key] = o
         return o
 
@@ -269,7 +276,7 @@ def main():
                 "group": v.get("group", "stop" if set(patch) <= {"risk"} else "other"),
                 "weights": apply_patch(cfg, patch)["portfolio"]["weights"],
                 "fixed": apply_patch(cfg, patch)["portfolio"].get("fixed_sleeves", []),
-                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro"),
+                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro", "factor"),
                 "credit_off_months": int(vm["credit_off"].sum()) if "credit_off" in vm else 0,
                 "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
             }

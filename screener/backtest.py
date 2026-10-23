@@ -72,7 +72,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                  etf_static: pd.DataFrame, start: str | None = None, end: str | None = None,
                  progress=None, events: dict | None = None, daily: pd.DataFrame | None = None,
                  screen_cache: dict | None = None, collect: set | None = None,
-                 macro: dict | None = None) -> dict:
+                 macro: dict | None = None, month_rev: pd.DataFrame | None = None) -> dict:
     """daily：日線含息還原價寬表（index=日期, columns=yahoo 代號），有的話停損逐日模擬。
     screen_cache：跨方案共用的選股結果快取。collect：收集曾進入排名名單的代號（用來決定要抓哪些日線）。"""
     close, adj, vol = wide(prices, "close"), wide(prices, "adj_close"), wide(prices, "volume")
@@ -200,7 +200,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 r6 = ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym)
                 r12 = ret_n_months(adj, t, 11, ym, skip=1)
                 res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
-                                    events=(events or {}).get(mkt))
+                                    events=(events or {}).get(mkt), month_rev=month_rev)
                 ranked = res["ranked"][["id", "rank", "pass_all"]].copy() if len(res["ranked"]) else res["ranked"]
                 screen_cache[ck] = ranked
             if collect is not None and len(ranked):

@@ -52,9 +52,13 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
         df[f"{f}_ttm_lag4"] = lag(f"{f}_ttm", 4)
         df[f"{f}_ttm_lag8"] = lag(f"{f}_ttm", 8)
     df["revenue_ttm_lag12"] = lag("revenue_ttm", 12)
-    for f in ("cfo", "cfi", "cff"):
+    for f in ("cfo", "cfi", "cff", "capex"):
         df[f"{f}_ttm_lag4"] = lag(f"{f}_ttm", 4)
         df[f"{f}_ttm_lag8"] = lag(f"{f}_ttm", 8)
+    # 財報驚喜（SUE）：單季淨利與去年同季的差額 ÷ 過去 8 季這個差額的標準差
+    df["_ni_d4"] = df["net_income"] - lag("net_income", 4)
+    df["_ni_d4_sd"] = df.groupby("_key", sort=False)["_ni_d4"].transform(
+        lambda x: x.shift(1).rolling(8, min_periods=4).std())
     df["n_quarters"] = df.groupby("_key", sort=False).cumcount() + 1
 
     # 分割調整後股數（換成今天的股數基準）
@@ -125,6 +129,11 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     out["equity"] = df["equity"]
     out["cash_total"] = df["cash"].fillna(0) + df["st_inv"].fillna(0)
     out["debt"] = df["debt"].fillna(0)
+    out["equity_lag4"] = df["equity_lag4"]
+    capex3 = df["capex_ttm"] + df["capex_ttm_lag4"] + df["capex_ttm_lag8"]
+    out["fcf_3y_avg"] = (c3 - capex3) / 3
+    sd = df["_ni_d4_sd"]
+    out["sue"] = (df["_ni_d4"] / sd.where(sd > 0)).clip(-10, 10)
     return out
 
 
