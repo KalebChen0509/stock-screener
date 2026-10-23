@@ -139,6 +139,18 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                        "months": round((pd.Timestamp(end) - sp["start"]).days / 30.44, 1),
                        "ret": r, "bench": b, "reason": reason})
 
+    close_stack = [None]          # 月收盤價 stack 後的快取（產業規則的歷史股價淨值比用）
+
+    def _rf_at(mkt, t):
+        """估值用無風險利率：美股用當時的 10 年期美債殖利率（沒有資料時用設定檔）。"""
+        if mkt != "us" or not macro:
+            return None
+        s_ = (macro.get("dgs10") if isinstance(macro, dict) else None)
+        if s_ is None or not len(s_):
+            return None
+        s_ = s_.loc[:t]
+        return float(s_.iloc[-1]) / 100 if len(s_) else None
+
     def _madj(tk, t):
         return adj.at[t, tk] if tk in adj and t in adj.index else np.nan
 
@@ -199,8 +211,15 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 px = px_frame_monthly(close, vol, t, ym)
                 r6 = ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym)
                 r12 = ret_n_months(adj, t, 11, ym, skip=1)
+                if close_stack[0] is None and (cfg.get("industry_rules") or {}).get("enabled"):
+                    cs = close.stack()
+                    cs.index.names = ["m", "tk"]
+                    close_stack[0] = cs
+                ctx = {"adj": adj, "close": close_stack[0] if close_stack[0] is not None else close,
+                       "ymap": ym, "index": td["regime_indices"][mkt],
+                       "rf": _rf_at(mkt, t), "implied": False}
                 res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
-                                    events=(events or {}).get(mkt), month_rev=month_rev)
+                                    events=(events or {}).get(mkt), month_rev=month_rev, ctx=ctx)
                 ranked = res["ranked"][["id", "rank", "pass_all"]].copy() if len(res["ranked"]) else res["ranked"]
                 screen_cache[ck] = ranked
             if collect is not None and len(ranked):

@@ -5,26 +5,35 @@ import numpy as np
 import pandas as pd
 
 from .events import event_status
-from .metrics import add_valuation, asof_fundamentals
-from .screen import apply_hard_filters, assign_groups, rank_stocks, sector_scores
+from .industries import NOT_BUYABLE, assign as assign_industry
+from .metrics import add_valuation, asof_fundamentals, history_metrics
+from .screen import apply_hard_filters, assign_groups, flatten_weights, rank_stocks, sector_scores
 
 
 def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
                   ret6: pd.Series, date: pd.Timestamp, cfg: dict, market: str,
                   ret12: pd.Series | None = None, events: pd.DataFrame | None = None,
-                  pledge: pd.Series | None = None, month_rev: pd.DataFrame | None = None) -> dict:
+                  pledge: pd.Series | None = None, month_rev: pd.DataFrame | None = None,
+                  ctx: dict | None = None) -> dict:
     """
     panel：該市場的 fundamental_panel
-    info：index=id，欄位 name, industry, is_financial, yahoo
+    info：index=id，欄位 name, industry, is_financial, yahoo（美股另有 sic）
     px：index=id，欄位 close, avg_traded_value
     ret6 / ret12：index=id 的 6 個月報酬、12 個月（扣最近 1 個月）報酬
+    ctx：估值需要的資料 {"adj": 月含息還原價寬表, "close": 月收盤價寬表, "ymap": id→代號, "index": 大盤代號,
+         "rf": 無風險利率（None 用設定檔）, "implied": 是否算市場隱含成長率, "valuation": 舊規則也要估值（網站顯示用）}
     回傳 {"all": 全部股票指標＋過濾結果, "ranked": 候選排名（含放寬後仍通過者）, "sectors": 產業分數}
     """
-    f = asof_fundamentals(panel[panel["market"] == market], date)
+    ctx = ctx or {}
+    ir = cfg.get("industry_rules") or {}
+    use_ir = bool(ir.get("enabled"))
+    pm = panel[panel["market"] == market]
+    f = asof_fundamentals(pm, date)
     empty = {"all": pd.DataFrame(), "ranked": pd.DataFrame(), "sectors": pd.DataFrame()}
     if f.empty:
         return empty
-    f = f.join(info[["name", "industry", "is_financial"]], on="id", how="inner")
+    icols = [c_ for c_ in ("name", "industry", "is_financial", "sic") if c_ in info]
+    f = f.join(info[icols], on="id", how="inner")
     df = add_valuation(f, px)
     df = df[df["close"].notna() & df["market_cap"].notna()].copy()
     if df.empty:
@@ -53,12 +62,40 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
             df[c_] = df["id"].map(rm[c_]) if c_ in rm else np.nan
     else:
         df["rev_yoy_3m"] = df["rev_yoy_12m"] = df["rev_accel"] = np.nan
-    # 景氣循環但書群組
-    df["groups"] = assign_groups(df, cfg.get("groups", {}), market)
-    ov = cfg.get("overrides", {})
-    df = apply_hard_filters(df, cfg["hard_filters"], market, overrides=ov)
+    # 產業模板與同業比較群組（新舊規則都標示，網站顯示用）
+    df = assign_industry(df, market, int(ir.get("min_peers", 15)))
+    df["buyable"] = ~df["template"].isin(NOT_BUYABLE)
+    df["fin_allowed"] = (df["template"] != "financial") | bool(ir.get("financials", False))
+    # 長期指標（正常化 ROE、毛利高峰、歷史股價淨值比）與估值（新規則用安全邊際篩選）
+    if use_ir or ctx.get("valuation"):
+        hist = history_metrics(pm, date, ctx.get("close"), ctx.get("ymap"),
+                               df.set_index("id")["pb"].replace([np.inf, -np.inf], np.nan))
+        df = df.join(hist, on="id")
+        # 正常化 ROE：循環股用 10 年平均、其他用 5 年平均；年數不足時退回較短的平均或近四季
+        r5 = df["roe_avg5y"].fillna(df["roe"])
+        df["roe_norm"] = np.where(df["template"] == "cyclical", df["roe_avg10y"].fillna(r5), r5)
+        from .valuation import betas, value_frame
+        vcfg = cfg.get("valuation", {}) or {}
+        bt = betas(ctx["adj"], ctx.get("ymap") or {}, ctx.get("index"), date, int(vcfg.get("beta_months", 60))) \
+            if ctx.get("adj") is not None else pd.Series(dtype=float)
+        vf = value_frame(df, bt, market, vcfg, rf=ctx.get("rf"), implied=bool(ctx.get("implied", False)))
+        if len(vf):
+            df = df.join(vf, on="id")
+    df["groups_legacy"] = assign_groups(df, cfg.get("groups", {}), market)   # 舊規則的但書群組（網站比較用）
+    if use_ir:
+        # 新規則：依產業模板＋產業別覆寫門檻；估值與獲利條件用同業百分位
+        ov = dict(ir.get("template_overrides") or {})
+        for ind, o in ((ir.get("industry_overrides") or {}).get(market) or {}).items():
+            ov[f"ind:{ind}"] = o
+        df["groups"] = [[t_, f"ind:{i_}"] for t_, i_ in zip(df["template"], df["industry_norm"])]
+        filters, icol = ir["filters"], "peer_group"
+    else:
+        # 舊規則：景氣循環但書群組
+        df["groups"] = df["groups_legacy"]
+        ov, filters, icol = cfg.get("overrides", {}), cfg["hard_filters"], "industry"
+    df = apply_hard_filters(df, filters, market, industry_col=icol, overrides=ov)
     tol = cfg.get("buffer", {}).get("tolerance", 0.0)
-    df = apply_hard_filters(df, cfg["hard_filters"], market, overrides=ov, tol=tol, prefix="r_")
+    df = apply_hard_filters(df, filters, market, industry_col=icol, overrides=ov, tol=tol, prefix="r_")
     sectors = sector_scores(df[~df["is_financial"].astype(bool)], ret6, cfg["top_down"])
     cand = df[df["r_pass"]]
     excl = cfg["top_down"].get("exclude_bottom_sectors_pct", 0) or 0
@@ -66,9 +103,25 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
         cutoff = sectors["score"].quantile(excl)
         bad = set(sectors.index[sectors["score"] < cutoff])
         cand = cand[~cand["industry"].isin(bad)]
-    # 金融股（若啟用專屬條件而入選）：一般公司的現金流、毛利、流動性指標不適用 → 設為中性；價值改用 E/P
     fin = cand["is_financial"].astype(bool) if "is_financial" in cand else pd.Series(False, index=cand.index)
-    if fin.any():
+    if use_ir and len(cand):
+        # 新規則：排名也用「同業百分位」，避免便宜的產業整體占便宜
+        cand = cand.copy()
+        fin = cand["template"] == "financial"
+        for m_ in flatten_weights(cfg["ranking"]):
+            src = "ep" if m_ == "earnings_yield" else m_
+            if m_ in df:
+                pr = pd.to_numeric(df[m_], errors="coerce").replace([np.inf, -np.inf], np.nan) \
+                    .groupby(df["peer_group"]).rank(pct=True)
+                cand[m_] = pr.reindex(cand.index)
+            if fin.any() and src in df:
+                prf = pd.to_numeric(df[src], errors="coerce").replace([np.inf, -np.inf], np.nan) \
+                    .groupby(df["peer_group"]).rank(pct=True)
+                cand.loc[fin, m_] = prf.reindex(cand.index)[fin] if m_ in ("earnings_yield", "roe", "book_to_price") else np.nan
+        if fin.any():
+            cand.loc[fin, "cf_type"] = None
+    elif fin.any():
+        # 金融股（若啟用專屬條件而入選）：一般公司的現金流、毛利、流動性指標不適用 → 設為中性；價值改用 E/P
         cand = cand.copy()
         cand.loc[fin, "earnings_yield"] = cand.loc[fin, "net_income"] / cand.loc[fin, "market_cap"]
         for c_ in ("fcf_yield", "cfo_to_ni", "fcf_to_ni", "op_margin", "cash_ratio", "equity_ratio"):

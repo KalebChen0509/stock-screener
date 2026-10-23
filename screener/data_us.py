@@ -17,7 +17,7 @@ import pandas as pd
 import requests
 
 from .common import CACHE_DIR, ensure_dir, log
-from .schema import ALL_FIELDS
+from .schema import ALL_FIELDS, EXTRA_FLOW_FIELDS
 
 UA = os.environ.get("SEC_USER_AGENT", "stock-screener research contact@example.com")
 TICKERS_URL = "https://www.sec.gov/files/company_tickers_exchange.json"
@@ -53,6 +53,13 @@ FLOW_CONCEPTS = {
             "NetCashProvidedByUsedInInvestingActivitiesContinuingOperations"],
     "cff": ["NetCashProvidedByUsedInFinancingActivities",
             "NetCashProvidedByUsedInFinancingActivitiesContinuingOperations"],
+    # 額外欄位（EXTRA_FLOW_FIELDS）：股票酬勞、利息、折舊攤銷、現金股利、買回庫藏股
+    "sbc": ["ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"],
+    "interest": ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt", "InterestAndDebtExpense"],
+    "da": ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization",
+           "DepreciationAmortizationAndAccretionNet", "Depreciation"],
+    "div_paid": ["PaymentsOfDividendsCommonStock", "PaymentsOfDividends"],
+    "buyback": ["PaymentsForRepurchaseOfCommonStock"],
 }
 INSTANT_CONCEPTS = {
     "cash": ["CashAndCashEquivalentsAtCarryingValue",
@@ -296,6 +303,8 @@ def company_quarters(cf: dict, cik: int) -> pd.DataFrame:
     df["pretax"] = df["pretax"]
     df["nonop"] = df["nonop"].fillna(df["pretax"] - df["op_income"])
     df["capex"] = df["capex"].abs()
+    for k in ("sbc", "interest", "da", "div_paid", "buyback"):
+        df[k] = df[k].abs()
 
     # 流通股數：封面頁 dei:EntityCommonStockSharesOutstanding（多類股加總）
     dei = facts.get("dei", {}).get("EntityCommonStockSharesOutstanding", {}).get("units", {}).get("shares", [])
@@ -321,7 +330,7 @@ def company_quarters(cf: dict, cik: int) -> pd.DataFrame:
     df = df.reset_index()
     df["market"] = "us"
     df["id"] = str(cik)
-    return df[["market", "id", "period_end", "available_date"] + ALL_FIELDS + ["shares_date"]]
+    return df[["market", "id", "period_end", "available_date"] + ALL_FIELDS + EXTRA_FLOW_FIELDS + ["shares_date"]]
 
 
 def build_fundamentals(universe: pd.DataFrame, download: bool = True,

@@ -74,8 +74,9 @@ def to_monthly(s: pd.Series) -> pd.Series:
 
 
 def load_macro(adj_monthly: pd.DataFrame | None = None) -> dict:
-    """回傳 {'baa': 月底利差, 'hyg_ief': 月底含息價格比}（缺資料者為空）。"""
-    out = {"baa": to_monthly(fetch_fred("BAA10Y"))}
+    """回傳 {'baa': 月底利差, 'dgs10': 10 年期美債殖利率, 'hyg_ief': 月底含息價格比}（缺資料者為空）。"""
+    out = {"baa": to_monthly(fetch_fred("BAA10Y")),
+           "dgs10": to_monthly(fetch_fred("DGS10"))}       # 10 年期美債殖利率（%）：美股估值的無風險利率
     if adj_monthly is not None and {"HYG", "IEF"} <= set(adj_monthly.columns):
         r = (adj_monthly["HYG"] / adj_monthly["IEF"]).dropna()
         out["hyg_ief"] = r

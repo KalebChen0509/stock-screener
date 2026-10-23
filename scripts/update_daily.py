@@ -29,6 +29,10 @@ STOCK_COLS = ["id", "name", "industry", "close", "market_cap", "pe", "pb", "earn
               "op_margin_avg3y", "rd_to_revenue", "revenue_cagr_3y", "ret_12m", "mom_12m_pct", "pledge_ratio",
               "fair_low", "fair_base", "fair_high", "mos", "val_rim", "val_dcf", "val_rel", "implied_g",
               "hist_g", "beta", "r_e", "retention", "g1", "val_label", "val_conf", "sue", "rev_yoy_3m", "rev_accel",
+              "industry_norm", "template", "template_label", "peer_group", "peer_n", "roe_norm", "roe_avg5y", "roe_avg10y",
+              "roe_years", "gm_peak_ratio", "pb_hist_median", "pb_hist_pct", "val_pbh", "val_models", "roe_used",
+              "ep", "sbc", "fcf_after_sbc", "int_cover", "shareholder_yield", "ev_ebitda",
+              "peer_value_rel", "peer_roe_rel", "peer_op_margin_rel", "buyable", "fin_allowed", "groups_legacy",
               "event_veto", "event_flags", "groups", "avg_traded_value", "n_quarters", "is_financial", "period_end",
               "top_down_score", "score", "pass_all", "failed"]
 ETF_COLS = ["ticker", "name", "market", "style", "expense_ratio", "aum_usd", "avg_traded_value_usd",
@@ -241,33 +245,36 @@ def main():
                 mrw = mrev.wide()
             except Exception as e:  # noqa
                 log.warning("month revenue: %s", e)
+        idx_t = cfg["top_down"]["regime_indices"][mkt]
+        rf_live = None
+        if mkt == "us":
+            try:
+                from screener.macro import fetch_fred
+                dgs = fetch_fred("DGS10")
+                rf_live = float(dgs.iloc[-1]) / 100 if len(dgs) else None
+            except Exception as e:  # noqa
+                log.warning("DGS10: %s", e)
+        # 估值在篩選時一起算（新規則要用安全邊際篩選；舊規則只顯示）
+        ctx = {"adj": adj, "close": close, "ymap": ymap, "index": idx_t, "rf": rf_live,
+               "implied": True, "valuation": True}
         res = screen_market(panels[mkt], infos[mkt], px, r6, today, cfg, mkt, ret12=r12,
-                            events=ev_all.get(mkt), pledge=pledge if mkt == "tw" else None, month_rev=mrw)
+                            events=ev_all.get(mkt), pledge=pledge if mkt == "tw" else None, month_rev=mrw, ctx=ctx)
         df = res["all"]
         rk = res["ranked"]
         df["top_down_score"] = df["industry"].map(res["sectors"]["score"]).fillna(50.0) \
             if len(res["sectors"]) else 50.0
         df["score"] = df["id"].map(rk.set_index("id")["score"]) if len(rk) else np.nan
-        # ---------- 估值：合理價區間、安全邊際、市場隱含成長率 ----------
-        try:
-            from screener import valuation as valmod
-            vcfg = cfg.get("valuation", {}) or {}
-            idx_t = cfg["top_down"]["regime_indices"][mkt]
-            bt_ = valmod.betas(adj, ymap, idx_t, last_month, int(vcfg.get("beta_months", 60)))
-            rf_live = None
-            if mkt == "us":
-                from screener.macro import fetch_fred
-                dgs = fetch_fred("DGS10")
-                rf_live = float(dgs.iloc[-1]) / 100 if len(dgs) else None
-            vf = valmod.value_frame(df, bt_, mkt, vcfg, rf=rf_live)
-            if len(vf):
-                df = df.join(vf, on="id")
-                meta.setdefault("valuation", {})[mkt] = {
-                    "rf": float(vf["rf"].iloc[0]), "erp": float(vf["erp"].iloc[0]),
-                    "terminal_g": float(vf["terminal_g"].iloc[0]), "n": int(len(vf)),
-                    "rf_source": "FRED DGS10" if rf_live else "設定檔"}
-        except Exception as e:  # noqa
-            log.warning("valuation %s failed: %s", mkt, e)
+        # ---------- 估值摘要（合理價區間在 screen_market 已依產業模板算好）----------
+        if "fair_base" in df and df["fair_base"].notna().any():
+            vv = df[df["fair_base"].notna()]
+            meta.setdefault("valuation", {})[mkt] = {
+                "rf": float(vv["rf"].iloc[0]), "erp": float(vv["erp"].iloc[0]),
+                "terminal_g": float(vv["terminal_g"].iloc[0]), "n": int(len(vv)),
+                "rf_source": "FRED DGS10" if rf_live else "設定檔"}
+        meta.setdefault("industry_rules", {})[mkt] = {
+            "enabled": bool((cfg.get("industry_rules") or {}).get("enabled")),
+            "templates": df["template"].value_counts().to_dict() if "template" in df else {},
+            "peer_groups": int(df["peer_group"].nunique()) if "peer_group" in df else 0}
         results[mkt] = (df, rk)
         write_json(SITE_DATA / f"stocks_{mkt}.json", table(df, STOCK_COLS))
         sec = res["sectors"].reset_index().rename(columns={"index": "industry"})
@@ -424,9 +431,12 @@ def main():
                                                 for d, c in zip(g["date"], g["close"])],
                 "quarters": quarterly_history(raws[mkt], panels[mkt], sid),
                 "valuation": ({k: (None if (isinstance(v, float) and not np.isfinite(v)) else v)
-                               for k, v in df.loc[sid, ["fair_low", "fair_base", "fair_high", "mos", "val_rim", "val_dcf",
-                                                        "val_rel", "implied_g", "hist_g", "beta", "r_e", "retention",
-                                                        "g1", "val_label", "val_conf"]].to_dict().items()}
+                               for k, v in df.loc[sid, [c_ for c_ in ["fair_low", "fair_base", "fair_high", "mos", "val_rim", "val_dcf",
+                                                        "val_rel", "val_pbh", "implied_g", "hist_g", "beta", "r_e", "retention",
+                                                        "g1", "val_label", "val_conf", "val_models", "roe_used", "template",
+                                                        "template_label", "peer_group", "peer_n", "pb_hist_median",
+                                                        "pb_hist_pct", "gm_peak_ratio", "roe_avg5y", "roe_avg10y"]
+                                                        if c_ in df.columns]].to_dict().items()}
                               if sid in df.index and "fair_base" in df.columns and pd.notna(df.at[sid, "fair_base"]) else None),
                 "failed": df.at[sid, "failed"] if sid in df.index else None,
             })

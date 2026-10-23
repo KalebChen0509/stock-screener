@@ -57,7 +57,9 @@ def apply_hard_filters(df: pd.DataFrame, filters: list[dict], market: str,
                        tol: float = 0.0, prefix: str = "f_") -> pd.DataFrame:
     """在 df 加上 f_<id>（是否通過）、pass_all、fail_count、failed（未通過清單）。
     overrides：{群組: {filter_id: {value / metric / enabled}}}，需要 df 有 groups 欄位。
-    tol：放寬比例（換股緩衝區用），例如 0.1 = 門檻放寬 10%。"""
+    tol：放寬比例（換股緩衝區用），例如 0.1 = 門檻放寬 10%。
+    op 可用 >=、<=、>、<、==、<=peer（≤ 同業中位數＋k 個標準差），
+    以及 peer_pct>=、peer_pct<=（在同業比較群組 industry_col 裡的百分位，0～1）。"""
     df = df.copy()
     fcols = []
     groups = df["groups"] if "groups" in df else pd.Series([[] for _ in range(len(df))], index=df.index)
@@ -85,10 +87,21 @@ def apply_hard_filters(df: pd.DataFrame, filters: list[dict], market: str,
         if not enabled.any():
             continue
         vals = pd.Series(np.nan, index=df.index, dtype=object)
+        op = f["op"]
         for mname in metric.unique():
             sel = metric == mname
-            vals[sel] = df.loc[sel, mname] if mname in df else np.nan
-        if f["op"] == "<=peer":
+            if op.startswith("peer_pct"):
+                # 同業百分位：在同業比較群組裡（同一個指標）排第幾（0 = 最低、1 = 最高）
+                src = pd.to_numeric(df[mname], errors="coerce") if mname in df else pd.Series(np.nan, index=df.index)
+                grp_key = df[industry_col] if industry_col in df else pd.Series("all", index=df.index)
+                pr = src.groupby(grp_key).rank(pct=True, method="average")
+                vals[sel] = pr[sel]
+                df.loc[sel, f"peer_{f['id']}"] = pr[sel]
+            else:
+                vals[sel] = df.loc[sel, mname] if mname in df else np.nan
+        if op.startswith("peer_pct"):
+            op = op[len("peer_pct"):]          # 之後當一般的 >=、<= 比較
+        if op == "<=peer":
             s = pd.to_numeric(vals, errors="coerce")
             k = f.get("peer_k_std", 1.0)
             min_g = f.get("peer_min_group", 5)
@@ -112,11 +125,11 @@ def apply_hard_filters(df: pd.DataFrame, filters: list[dict], market: str,
                     continue
                 if isinstance(v, bool):
                     res.append(bool(x) == v)
-                elif isinstance(v, str) and f["op"] == "==":   # 文字比對，例如 market == "us"
+                elif isinstance(v, str) and op == "==":   # 文字比對，例如 market == "us"
                     res.append(str(x) == v)
                 else:
                     try:
-                        res.append(bool(OPS[f["op"]](float(x), _relax(f["op"], float(v), tol))))
+                        res.append(bool(OPS[op](float(x), _relax(op, float(v), tol))))
                     except (TypeError, ValueError):
                         res.append(False)
             ok = pd.Series(res, index=df.index)

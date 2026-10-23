@@ -32,10 +32,35 @@ const METRICS = {
   expense_ratio: ["費用率", "pct2"], aum_usd: ["規模(USD)", "usd"], avg_traded_value_usd: ["日均成交值(USD)", "usd"],
   age_years: ["成立年數", "x"], top10_weight: ["前十大占比", "pct"], is_value: ["價值型指數", "bool"],
   tracking_vol: ["追蹤波動", "pct"], value_tilt: ["價值傾向", "pctile"], div_yield_ttm: ["近12月殖利率", "pct"],
+  sue: ["財報驚喜", "x"], rev_yoy_3m: ["近3月營收年增", "pct"], mos: ["安全邊際", "pct"], ep: ["盈餘殖利率(E/P)", "pct"],
+  roe_norm: ["正常化 ROE", "pct"], roe_avg5y: ["ROE（5年平均）", "pct"], roe_avg10y: ["ROE（10年平均）", "pct"],
+  pb_hist_pct: ["P/B 在自己10年歷史的位置", "pctile"], gm_peak_ratio: ["毛利率÷長期平均", "x"],
+  buyable: ["模板可買進", "bool"], fin_allowed: ["金融股開放", "bool"], cfo_3y: ["近3年營業CF合計", "money"],
+  ev_ebitda: ["EV/EBITDA", "x"], shareholder_yield: ["股東回饋率（股利+買回）", "pct"], int_cover: ["利息保障倍數", "x"],
+  sbc: ["股票酬勞", "money"], fcf_after_sbc: ["扣股票酬勞的FCF", "money"],
 };
 const mlabel = (m) => (METRICS[m] ? METRICS[m][0] : m);
 const GROUP_SHORT = { financials: "金融", rd_heavy: "研發密集", cyclicals: "循環股", discretionary: "非必需消費", staples: "必需消費", healthcare: "醫療", utilities_telecom: "公用/電信" };
-const groupTags = (r) => (r.groups || []).map((g) => `<span class="pill" title="${esc((S.cfg.groups[g] || {}).label || g)}">${GROUP_SHORT[g] || g}</span>`).join(" ");
+const TEMPLATE_LABEL = { general: "一般", cyclical: "循環", financial: "金融", construction: "營建", utility: "公用", defensive: "防禦", growth_watch: "成長觀察", biotech_research: "新藥研究", exclude: "排除" };
+const TEMPLATE_NOTE = {
+  general: "一般公司：三種估值模型（RIM、DCF、同業）", cyclical: "循環股：看循環平均、股價淨值比、高峰警示；ROE 用 10 年平均",
+  financial: "金融股：看 ROE、股價淨值比、本益比；不用現金流條件", construction: "營建：完工才認列，看 5 年平均 ROE、歷史股價淨值比、近 3 年現金流合計",
+  utility: "公用：負債高、流動比低是常態；自由現金流條件不適用", defensive: "防禦：品牌與專利多來自併購，無形資產門檻放寬",
+  growth_watch: "成長觀察：只估值觀察，不自動買進", biotech_research: "新藥研究：還沒獲利，不自動篩，用研究工具估", exclude: "排除（創新板、空殼公司）",
+};
+// 規則版本：old = 原本 31 條；new = 市場 × 產業規則（設定檔 industry_rules）
+const ruleSet = () => (S.cfg.industry_rules ? (S.settings.ruleSet || (S.cfg.industry_rules.enabled ? "new" : "old")) : "old");
+const activeFilters = () => (ruleSet() === "new" ? S.cfg.industry_rules.filters : S.cfg.hard_filters);
+const allFilters = () => [...S.cfg.hard_filters, ...((S.cfg.industry_rules || {}).filters || [])];
+function activeOverrides(mkt) {
+  if (ruleSet() !== "new") return S.cfg.overrides || {};
+  const ir = S.cfg.industry_rules, o = { ...(ir.template_overrides || {}) };
+  for (const [k, v] of Object.entries((ir.industry_overrides || {})[mkt] || {})) o["ind:" + k] = v;
+  return o;
+}
+const rowGroups = (r) => (ruleSet() === "new" ? [r.template, "ind:" + r.industry_norm] : (r.groups_legacy || r.groups || []));
+const tplTag = (r) => (r.template ? `<span class="pill tpl-${esc(r.template)}" title="${esc(TEMPLATE_NOTE[r.template] || "")}${r.peer_group ? "；同業比較：" + esc(r.peer_group) + "（" + (r.peer_n ?? "") + " 家）" : ""}">${TEMPLATE_LABEL[r.template] || esc(r.template)}</span>` : "");
+const groupTags = (r) => (ruleSet() === "new" ? tplTag(r) : rowGroups(r).map((g) => `<span class="pill" title="${esc((S.cfg.groups[g] || {}).label || g)}">${GROUP_SHORT[g] || g}</span>`).join(" "));
 
 const fmt = {
   pct: (v, d = 1) => (v == null || !isFinite(v) ? "–" : (v * 100).toFixed(d) + "%"),
@@ -98,6 +123,8 @@ async function init() {
   S.news = await getJSON("data/news.json", true);
   S.orders = await getJSON("data/orders.json", true);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
+  // 舊的瀏覽器設定沒有新規則的條件：補上預設值
+  for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
   $("#updated").textContent = `資料更新：${S.meta.updated}（台北時間）　USD/TWD ${(+S.meta.fx_usdtwd).toFixed(2)}`;
   bindUI();
   route();
@@ -106,7 +133,7 @@ async function init() {
 
 function defaultSettings() {
   const f = {};
-  for (const x of S.cfg.hard_filters) f[x.id] = { enabled: x.enabled !== false, value: x.value };
+  for (const x of [...((S.cfg.industry_rules || {}).filters || []), ...S.cfg.hard_filters]) f[x.id] = { enabled: x.enabled !== false, value: x.value };
   const w = {};
   for (const grp of Object.values(S.cfg.ranking.bottom_up)) Object.assign(w, grp);
   w.top_down = S.cfg.ranking.top_down;
@@ -161,9 +188,10 @@ function resolveRule(f, r, mkt) {
   // 預設門檻（可在網站調整）＋景氣循環但書覆寫（依群組，後者優先）
   const st = S.settings.filters[f.id] || { enabled: f.enabled !== false, value: f.value };
   let metric = f.metric, t = thr(st.value, mkt), enabled = !!st.enabled;
-  if (S.settings.useOverrides !== false && r.groups && r.groups.length) {
-    for (const [g, ov] of Object.entries(S.cfg.overrides || {})) {
-      if (!r.groups.includes(g) || !ov[f.id]) continue;
+  const gs = rowGroups(r);
+  if (S.settings.useOverrides !== false && gs.length) {
+    for (const [g, ov] of Object.entries(activeOverrides(mkt))) {
+      if (!gs.includes(g) || !ov[f.id]) continue;
       const o = ov[f.id];
       if ("metric" in o) metric = o.metric;
       if ("value" in o) t = thr(o.value, mkt);
@@ -173,21 +201,55 @@ function resolveRule(f, r, mkt) {
   return { metric, t, enabled };
 }
 
+function pctRankNull(vals) {
+  // 平均名次百分位（同 pandas rank(pct=True)）；null 保持 null
+  const p = pctRank(vals);
+  return vals.map((v, i) => (v == null || !isFinite(v) ? null : p[i]));
+}
+function peerPct(rows, metric, col) {
+  const by = {};
+  rows.forEach((r, i) => (by[r[col] ?? "all"] ||= []).push(i));
+  const out = rows.map(() => null);
+  for (const idx of Object.values(by)) {
+    const pr = pctRankNull(idx.map((i) => rows[i][metric]));
+    idx.forEach((i, k) => (out[i] = pr[k]));
+  }
+  return out;
+}
+
 function runScreen(mkt) {
   const rows = S.stocks[mkt].map((r) => ({ ...r }));
-  const fs = S.cfg.hard_filters.filter((f) => S.settings.filters[f.id]?.enabled);
+  const isNew = ruleSet() === "new";
+  const pcol = isNew ? "peer_group" : "industry";
+  const fs = activeFilters().filter((f) => S.settings.filters[f.id]?.enabled);
   for (const f of fs) {
-    if (f.op === "<=peer") {
+    if (f.op.startsWith("peer_pct")) {
+      // 同業百分位：在同市場、同產業別（家數不足時同模板）裡排第幾，0 = 最低、1 = 最高
+      const op = f.op.slice(8);
+      const res = rows.map((r) => resolveRule(f, r, mkt));
+      const cache = {};
+      rows.forEach((r, i) => {
+        const { metric, t, enabled } = res[i];
+        r["_m_" + f.id] = metric; r["_t_" + f.id] = t;
+        if (!enabled || t == null) { r["f_" + f.id] = true; r["_off_" + f.id] = !enabled; return; }
+        const pc = (cache[metric] ||= peerPct(rows, metric, pcol));
+        const x = pc[i];
+        r["_pct_" + f.id] = x;
+        r["f_" + f.id] = x == null ? !!f.na_pass : OPS[op](x, t);
+      });
+    } else if (f.op === "<=peer") {
       const k = f.peer_k_std ?? 1, minG = f.peer_min_group ?? 5;
       const by = {};
-      for (const r of rows) if (r[f.metric] != null) (by[r.industry] ||= []).push(r[f.metric]);
+      for (const r of rows) if (r[f.metric] != null) (by[r[pcol]] ||= []).push(r[f.metric]);
       const all = rows.map((r) => r[f.metric]).filter((x) => x != null);
       const allLim = median(all) + k * stdev(all);
       const lim = {};
       for (const [g, a] of Object.entries(by)) lim[g] = a.length >= minG ? median(a) + k * stdev(a) : allLim;
       for (const r of rows) {
-        const L = lim[r.industry] ?? allLim;
+        const { enabled } = resolveRule(f, r, mkt);
+        const L = lim[r[pcol]] ?? allLim;
         r._peer = L;
+        if (!enabled) { r["f_" + f.id] = true; r["_off_" + f.id] = true; continue; }
         r["f_" + f.id] = r[f.metric] != null && r[f.metric] <= L;
       }
     } else {
@@ -211,7 +273,18 @@ function runScreen(mkt) {
   const keys = Object.keys(W).filter((k) => k !== "top_down");
   const tot = keys.reduce((s, k) => s + (+W[k] || 0), 0) + (+W.top_down || 0);
   const pcts = {};
-  for (const k of keys) pcts[k] = pctRank(passed.map((r) => r[k]));
+  if (isNew) {
+    // 新規則：先算同業百分位，再在通過者之間排名（避免便宜的產業整體占便宜）；金融股用 E/P、ROE、淨值市價比
+    const pk = {};
+    for (const k of keys) pk[k] = peerPct(rows, k, pcol);
+    const pep = peerPct(rows, "ep", pcol);
+    const pos = new Map(rows.map((r, i) => [r, i]));
+    for (const k of keys) pcts[k] = pctRank(passed.map((r) => {
+      const i = pos.get(r);
+      if (r.template === "financial") return k === "earnings_yield" ? pep[i] : (k === "roe" || k === "book_to_price") ? pk[k][i] : null;
+      return pk[k][i];
+    }));
+  } else for (const k of keys) pcts[k] = pctRank(passed.map((r) => r[k]));
   const bon = S.cfg.ranking.bonuses || {};
   passed.forEach((r, i) => {
     let s = 0;
@@ -219,7 +292,7 @@ function runScreen(mkt) {
     s += (+W.top_down || 0) * (r.top_down_score ?? 50);
     r.bu = keys.length ? (s - (+W.top_down || 0) * (r.top_down_score ?? 50)) / Math.max(tot - (+W.top_down || 0), 1e-9) : 0;
     r.score = tot ? s / tot : 0;
-    if (r.cf_type === "甲") r.score += bon.cf_type_a || 0;
+    if (r.cf_type === "甲" && !(isNew && r.template === "financial")) r.score += bon.cf_type_a || 0;
     if (r.cfo_to_ni != null && r.cfo_to_ni >= 1) r.score += bon.cfo_to_ni_100 || 0;
   });
   const cc = S.cfg.top_down.cross_check;
@@ -345,7 +418,7 @@ const STOCK_COLS = [
   ["roe", "ROE", (r) => fmt.pct(r.roe), "num"], ["cf_type", "現金流", (r) => esc(r.cf_type || "–")], ["top_down_score", "產業分數", (r) => (r.top_down_score == null ? "–" : r.top_down_score.toFixed(0)), "num"],
   ["failed", "狀態", (r) => (r.pass ? `<span class="ok">✔ 通過</span>` : `<span class="ng" title="${esc(r.failed.map(fname).join("、"))}">✘ ${r.failed.length} 條</span> <span class="hint">${esc(r.failed.slice(0, 2).map(fname).join("、"))}${r.failed.length > 2 ? "…" : ""}</span>`)],
 ];
-function fname(id) { const f = S.cfg.hard_filters.find((x) => x.id === id) || (S.cfg.etf.hard_filters || []).find((x) => x.id === id); return f ? f.label.replace(/^[\d]+[ab]?\.\s*/, "").split("：")[0] : id; }
+function fname(id) { const f = activeFilters().find((x) => x.id === id) || allFilters().find((x) => x.id === id) || (S.cfg.etf.hard_filters || []).find((x) => x.id === id); return f ? f.label.replace(/^[\d]+[ab']?\.\s*/, "").split("：")[0] : id; }
 
 function renderScreener() {
   buildFilterPanel();
@@ -364,7 +437,9 @@ function renderScreener() {
     return typeof x === "string" ? dir * x.localeCompare(y) : dir * (x - y);
   });
   const passN = rows.filter((r) => r.pass).length;
-  $("#screenSummary").textContent = `${S.mkt === "tw" ? "台股" : "美股"} ${rows.length} 檔有完整資料，${passN} 檔通過全部條件；部位取排名前 ${S.cfg.portfolio.max_holdings_per_stock_sleeve} 檔。點任一列看詳情。`;
+  const live = S.cfg.industry_rules && S.cfg.industry_rules.enabled ? "new" : "old";
+  const rsNote = ruleSet() === "new" ? "市場 × 產業規則" : "原本 31 條規則";
+  $("#screenSummary").textContent = `${S.mkt === "tw" ? "台股" : "美股"} ${rows.length} 檔有完整資料，${passN} 檔通過全部條件（${rsNote}${ruleSet() !== live ? "，預覽中，實際下單仍用另一套" : ""}）；部位取排名前 ${S.cfg.portfolio.max_holdings_per_stock_sleeve} 檔。點任一列看詳情。`;
   const shown = list.slice(0, 600);
   $("#stockTable").innerHTML = `<thead><tr>${STOCK_COLS.map(([k, l, , c]) => `<th data-k="${k}" class="${c || ""}">${l}${S.sort.key === k ? (S.sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>
   <tbody>${shown.map((r, i) => `<tr class="clickable ${r.pass ? "" : "dim"}" data-id="${esc(r.id)}">${STOCK_COLS.map(([, , f, c]) => `<td class="${c || ""}">${f(r, i, S.mkt)}</td>`).join("")}</tr>`).join("")}</tbody>`;
@@ -378,13 +453,15 @@ function renderScreener() {
 }
 
 function unitOf(f) {
+  if ((f.op || "").startsWith("peer_pct")) return ["%（同業百分位）", 0.01];
   const t = METRICS[f.metric] ? METRICS[f.metric][1] : "x";
+  if (t === "pctile") return ["%（百分位）", 0.01];
   if (t === "money") return S.mkt === "tw" ? ["億", 1e8] : ["百萬美元", 1e6];
   if (t === "pct") return ["%", 0.01];
   return ["", 1];
 }
 function buildFilterPanel() {
-  const fl = S.cfg.hard_filters.map((f) => {
+  const fl = activeFilters().map((f) => {
     const st = S.settings.filters[f.id] || { enabled: true, value: f.value };
     let input = "";
     if (f.op === "<=peer") input = `<span class="hint">中位數 + ${f.peer_k_std}σ</span>`;
@@ -392,17 +469,25 @@ function buildFilterPanel() {
     else {
       const [u, s] = unitOf(f);
       const v = thr(st.value, S.mkt);
-      input = `<span class="hint">${f.op}</span><input type="number" step="any" data-f="${f.id}" value="${+(v / s).toFixed(4)}"><span class="hint">${u}</span>`;
+      input = `<span class="hint">${f.op.replace("peer_pct", "")}</span><input type="number" step="any" data-f="${f.id}" value="${+(v / s).toFixed(4)}"><span class="hint">${u}</span>`;
     }
-    return `<div class="frow"><input type="checkbox" data-en="${f.id}" ${st.enabled ? "checked" : ""}><span class="lbl">${esc(f.label)}</span><span class="tag ${f.source}">${f.source === "user" ? "你的" : "補充"}</span>${input}</div>`;
+    const tag = f.source ? `<span class="tag ${f.source}">${f.source === "user" ? "你的" : "補充"}</span>` : "";
+    return `<div class="frow"><input type="checkbox" data-en="${f.id}" ${st.enabled ? "checked" : ""}><span class="lbl">${esc(f.label)}</span>${tag}${input}</div>`;
   }).join("");
-  $("#filterList").innerHTML = `<div class="frow" style="grid-column:1/-1"><input type="checkbox" id="useOv" ${S.settings.useOverrides !== false ? "checked" : ""}><span class="lbl"><b>套用景氣循環但書</b>（循環股、非必需消費、必需消費、醫療、公用／電信、研發密集公司改用調整後門檻，詳見「條件說明」）</span></div>` + fl;
+  const live = S.cfg.industry_rules && S.cfg.industry_rules.enabled ? "new" : "old";
+  const rs = S.cfg.industry_rules ? `<div class="frow" style="grid-column:1/-1"><span class="lbl"><b>規則版本</b>　
+    <label><input type="radio" name="ruleSet" value="old" ${ruleSet() === "old" ? "checked" : ""}> 原本 31 條${live === "old" ? "（目前下單用）" : ""}</label>　
+    <label><input type="radio" name="ruleSet" value="new" ${ruleSet() === "new" ? "checked" : ""}> 市場 × 產業規則${live === "new" ? "（目前下單用）" : "（預覽，回測驗證後才會用來下單）"}</label></span></div>` : "";
+  const ovText = ruleSet() === "new" ? "<b>套用產業模板覆寫</b>（循環、營建、金融、公用、防禦改用各自的條件，詳見「條件說明」）"
+    : "<b>套用景氣循環但書</b>（循環股、非必需消費、必需消費、醫療、公用／電信、研發密集公司改用調整後門檻，詳見「條件說明」）";
+  $("#filterList").innerHTML = rs + `<div class="frow" style="grid-column:1/-1"><input type="checkbox" id="useOv" ${S.settings.useOverrides !== false ? "checked" : ""}><span class="lbl">${ovText}</span></div>` + fl;
   $("#useOv").onchange = (e) => { S.settings.useOverrides = e.target.checked; saveSettings(); };
+  $$("#filterList [name=ruleSet]").forEach((el) => (el.onchange = () => { S.settings.ruleSet = el.value; saveSettings(); }));
   const W = S.settings.weights;
   $("#weightList").innerHTML = Object.keys(W).map((k) => `<div class="frow"><span class="lbl">${k === "top_down" ? "由上而下（產業分數）" : mlabel(k)}</span><input type="number" step="0.01" min="0" data-w="${k}" value="${W[k]}"></div>`).join("");
   $$("#filterList [data-en]").forEach((el) => (el.onchange = () => { S.settings.filters[el.dataset.en].enabled = el.checked; saveSettings(); }));
   $$("#filterList [data-f]").forEach((el) => (el.onchange = () => {
-    const f = S.cfg.hard_filters.find((x) => x.id === el.dataset.f);
+    const f = activeFilters().find((x) => x.id === el.dataset.f);
     const [, s] = unitOf(f);
     const st = S.settings.filters[f.id];
     const nv = +el.value * s;
@@ -415,7 +500,7 @@ function saveSettings() { store.set("vs_settings_v1", S.settings); renderScreene
 
 function exportCsv() {
   const rows = (S.lastRows || []).filter((r) => r.pass || $("#showAll").checked || ($("#showNear").checked && r.failed.length <= 2));
-  const cols = ["id", "name", "industry", "score", "close", "market_cap", "pe", "pb", "earnings_yield", "fcf_yield", "cash_ratio", "equity_ratio", "current_ratio", "quick_ratio", "gross_margin", "op_margin", "op_to_gross", "nonop_share", "cfo_to_ni", "fcf_to_ni", "roe", "top_down_score", "failed"];
+  const cols = ["id", "name", "industry", "template_label", "peer_group", "score", "close", "market_cap", "fair_base", "mos", "pe", "pb", "earnings_yield", "fcf_yield", "cash_ratio", "equity_ratio", "current_ratio", "quick_ratio", "gross_margin", "op_margin", "op_to_gross", "nonop_share", "cfo_to_ni", "fcf_to_ni", "roe", "top_down_score", "failed"];
   const lines = [cols.join(",")].concat(rows.map((r) => cols.map((c) => { const v = c === "failed" ? r.failed.join("|") : r[c]; return typeof v === "string" ? `"${v.replace(/"/g, '""')}"` : v ?? ""; }).join(",")));
   const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
@@ -459,17 +544,21 @@ async function openDetail(mkt, id) {
     html += `<div class="tiles">${[["綜合分數", row.score != null ? row.score.toFixed(1) : "未通過"], ["本益比", fmt.x(row.pe)], ["P/B", fmt.x(row.pb, 2)], ["FCF 殖利率", fmt.pct(row.fcf_yield)], ["市值", fmt.money(row.market_cap, mkt)], ["產業", esc(row.industry)]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("")}</div>`;
     if (d && d.valuation) html += valuationCard(d.valuation, row, mkt);
     else if (row.fair_base != null) html += valuationCard(row, row, mkt);
-    html += `<div class="card"><h2>條件檢查</h2><div class="checklist">${S.cfg.hard_filters.filter((f) => S.settings.filters[f.id]?.enabled).map((f) => {
+    const isNew = ruleSet() === "new";
+    html += `<div class="card"><h2>條件檢查${isNew ? "（市場 × 產業規則）" : ""}</h2>${isNew && row.template ? `<p class="hint">產業模板：${tplTag(row)} ${esc(TEMPLATE_NOTE[row.template] || "")}；同業比較群組：${esc(row.peer_group || "")}（${row.peer_n ?? "–"} 家）</p>` : ""}<div class="checklist">${activeFilters().filter((f) => S.settings.filters[f.id]?.enabled).map((f) => {
       const ok = row["f_" + f.id];
       const m = row["_m_" + f.id] || f.metric;
+      const peerOp = f.op.startsWith("peer_pct");
       let val = fmtMetric(m, row[m], mkt);
       if (f.op === "<=peer") val += ` ≤ ${fmt.pct(row._peer)}`;
+      if (peerOp) val += `<span class="hint">（同業第 ${row["_pct_" + f.id] == null ? "–" : Math.round(100 * row["_pct_" + f.id])} 百分位）</span>`;
       const t = row["_t_" + f.id], dflt = thr((S.settings.filters[f.id] || {}).value, mkt);
+      const word = isNew ? "產業覆寫" : "但書";
       let note = "";
-      if (row["_off_" + f.id]) note = `<span class="hint">（但書：不適用）</span>`;
-      else if (f.op !== "<=peer" && (t !== dflt || m !== f.metric)) note = `<span class="hint">（但書：${esc(mlabel(m))} ${f.op} ${fmtMetric(m, t, mkt)}）</span>`;
+      if (row["_off_" + f.id]) note = `<span class="hint">（${word}：不適用）</span>`;
+      else if (f.op !== "<=peer" && (t !== dflt || m !== f.metric)) note = `<span class="hint">（${word}：${esc(mlabel(m))} ${f.op.replace("peer_pct", "同業百分位 ")} ${peerOp ? Math.round(100 * t) + "%" : fmtMetric(m, t, mkt)}）</span>`;
       return `<div><span class="${ok ? "ok" : "ng"}">${ok ? "✔" : "✘"}</span><span>${esc(f.label)} ${note}</span><span class="val">${val}</span></div>`;
-    }).join("")}</div><p class="hint">財報期別：${esc(row.period_end || "")}（流量為近四季合計）${row.groups && row.groups.length ? "　但書群組：" + groupTags(row) : ""}${row.event_flags ? "<br>⚠️ 事件：" + esc(row.event_flags) : ""}</p></div>`;
+    }).join("")}</div><p class="hint">財報期別：${esc(row.period_end || "")}（流量為近四季合計）${!isNew && rowGroups(row).length ? "　但書群組：" + groupTags(row) : ""}${row.event_flags ? "<br>⚠️ 事件：" + esc(row.event_flags) : ""}</p></div>`;
   } else if (row) {
     html += `<div class="card"><h2>ETF 條件檢查</h2><div class="checklist">${S.cfg.etf.hard_filters.map((f) => {
       const ok = !(row.failed || []).includes(f.id);
@@ -580,7 +669,7 @@ function renderBacktest() {
   if (Object.keys(V).length) {
     $("#varCard").hidden = false;
     const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
-    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", factor: "新因子與金融股（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
+    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", factor: "新因子與金融股（目前配置）", rules: "市場 × 產業規則（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
     let lastG = null;
     const rows = Object.entries(V).map(([k, v]) => {
       const h = v.halves || {};
@@ -670,6 +759,36 @@ function renderWatchlist() {
 }
 
 // ---------------------------------------------------------------- 條件說明
+function industryRulesHtml(c) {
+  const ir = c.industry_rules;
+  const fv = (f) => {
+    if (f.op === "<=peer") return `同業中位數 + ${f.peer_k_std}σ`;
+    if (f.op.startsWith("peer_pct")) return `同業百分位 ${f.op.slice(8)} ${Math.round(100 * f.value)}%`;
+    const t = f.value;
+    return typeof t === "object" ? `台股 ${fmtMetric(f.metric, t.tw, "tw")}／美股 ${fmtMetric(f.metric, t.us, "us")}` : typeof t === "boolean" ? (t ? "是" : "否") : `${f.op} ${fmtMetric(f.metric, t, "tw")}`;
+  };
+  const ovText = (o) => Object.entries(o).map(([id, x]) => {
+    const f = ir.filters.find((y) => y.id === id);
+    const nm = f ? f.label.replace(/^[\d]+[ab']?\.\s*/, "") : id;
+    if (x.enabled === false) return `不檢查「${esc(nm)}」`;
+    if (x.enabled === true && !("value" in x) && !("metric" in x)) return `加上「${esc(nm)}」`;
+    const parts = [];
+    if ("metric" in x) parts.push(`改看${esc(mlabel(x.metric))}`);
+    if ("value" in x) parts.push(f && f.op.startsWith("peer_pct") ? `門檻 ${Math.round(100 * x.value)}%` : `門檻 ${fmtMetric(x.metric || (f || {}).metric, x.value, "tw")}`);
+    return `「${esc(nm)}」${parts.join("、")}`;
+  }).join("；");
+  const models = { general: "RIM、DCF、同業", defensive: "RIM、DCF、同業", utility: "RIM、DCF、同業", cyclical: "RIM（10 年 ROE）、歷史 P/B、同業 P/B", construction: "RIM（5 年 ROE）、歷史 P/B、同業 P/B", financial: "RIM、同業 P/B 與本益比", growth_watch: "DCF、EV/營收（只觀察）", biotech_research: "不估值（研究工具）", exclude: "—" };
+  const tpls = Object.keys(TEMPLATE_LABEL);
+  const tov = ir.template_overrides || {};
+  const iov = ir.industry_overrides || {};
+  return `<h2>市場 × 產業規則${ir.enabled ? "（目前使用中）" : "（新版，回測驗證後才會用來下單）"}</h2>
+  <p>每檔股票依「市場 × 產業別」歸入一個產業模板。估值與獲利條件改用<b>同業百分位</b>：在同市場、同產業別裡排第幾（0% 最低、100% 最高）；同產業別不到 ${ir.min_peers} 家時改跟同模板的公司比，模板也不足時跟全市場比。財務安全條件維持絕對門檻、依模板調整；最後要求估值安全邊際 ≥ 0。綜合排名也改用同業百分位，避免整體便宜的產業占便宜。金融股目前${ir.financials ? "開放" : "不開放"}買進（之後由景氣階段決定）。網站「個股篩選」可切換規則版本預覽。</p>
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>模板</th><th>適用</th><th>估值模型</th><th>跟基準條件不同的地方</th></tr></thead><tbody>${tpls.map((t) =>
+    `<tr><td><span class="pill">${TEMPLATE_LABEL[t]}</span></td><td class="hint">${esc(TEMPLATE_NOTE[t] || "")}</td><td class="hint">${models[t] || ""}</td><td class="hint">${tov[t] ? ovText(tov[t]) : (t === "growth_watch" || t === "biotech_research" || t === "exclude") ? "不自動買進" : "—"}</td></tr>`).join("")}</tbody></table></div>
+  ${Object.entries(iov).some(([, v]) => Object.keys(v || {}).length) ? `<p class="hint">個別產業別：${Object.entries(iov).flatMap(([m, v]) => Object.entries(v || {}).map(([ind, o]) => `${m === "tw" ? "台股" : "美股"}「${esc(ind)}」${ovText(o)}`)).join("；")}</p>` : ""}
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>條件（基準）</th><th>門檻</th></tr></thead><tbody>${ir.filters.map((f) => `<tr class="${f.enabled === false ? "dim" : ""}"><td>${esc(f.label)}${f.enabled === false ? ` <span class="hint">（預設關閉，由模板或產業別開啟）</span>` : ""}</td><td class="hint">${esc(mlabel(f.metric))}：${esc(fv(f))}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
 function renderRules() {
   const c = S.cfg;
   const fr = (f) => {
@@ -691,13 +810,15 @@ function renderRules() {
   <h2>估值方法（合理價區間）</h2>
   <ul>
     <li><b>要求報酬率（CAPM）</b>：無風險利率＋β × 市場風險溢酬。β 用近 60 個月月報酬對大盤迴歸並做 Blume 調整；美股無風險利率自動取 FRED 10 年期美債，台股用設定值 ${fmt.pct((c.valuation || {}).rf ? c.valuation.rf.tw : 0.016, 1)}；市場風險溢酬 台股 ${fmt.pct(((c.valuation || {}).erp || {}).tw || 0.055, 1)}、美股 ${fmt.pct(((c.valuation || {}).erp || {}).us || 0.045, 1)}。</li>
-    <li><b>剩餘收益模型</b>：每股淨值＋未來超額報酬折現，ROE 在 ${(c.valuation || {}).fade_years || 10} 年內回到要求報酬率（保守）。</li>
+    <li><b>剩餘收益模型</b>：每股淨值＋未來超額報酬折現，ROE 在 ${(c.valuation || {}).fade_years || 10} 年內回到要求報酬率（保守）。ROE 用「正常化 ROE」：一般公司近 5 年平均、循環股近 10 年平均，避免拿景氣高峰的獲利往後推。</li>
     <li><b>自由現金流折現</b>：近 3 年平均自由現金流，前 5 年以過去營收成長率成長（限制 −3%～12%），再降到永續成長率。</li>
-    <li><b>同業相對估值</b>：同產業本益比、股價淨值比、EV/EBIT 中位數。</li>
-    <li><b>合理價</b>＝三者中位數；<b>安全邊際</b>＝合理價 ÷ 股價 − 1，≥ 30% 標為低估、≤ −20% 標為高估。另外反推市場隱含成長率，跟公司過去成長比較。</li>
-    <li>缺少的資料：分析師預估（付費）、股利明細（以保留率代替）。估值目前只供參考，尚未納入選股排名；要納入請先回測。</li>
+    <li><b>同業相對估值</b>：同業比較群組（同市場、同產業別；家數不足時同模板）的倍數中位數。</li>
+    <li><b>依產業模板選模型</b>：一般／防禦／公用用 RIM、DCF、同業（本益比、股價淨值比、EV/EBIT）；循環用 RIM、歷史股價淨值比、同業股價淨值比（不用本益比，高峰時會假性便宜）；營建用 RIM、歷史股價淨值比；金融用 RIM（等同合理股價淨值比）與同業股價淨值比、本益比；成長觀察用 DCF 與 EV/營收；新藥研究不估值。美股股東權益為負或很薄（大量買回）時不用淨值類模型，DCF 的自由現金流再扣股票酬勞。</li>
+    <li><b>合理價</b>＝各模型中位數；<b>安全邊際</b>＝合理價 ÷ 股價 − 1，≥ 30% 標為低估、≤ −20% 標為高估。另外反推市場隱含成長率，跟公司過去成長比較。</li>
+    <li>缺少的資料：分析師預估（付費）、股利明細（以保留率代替）、台股利息費用與折舊。舊規則下估值只供參考；市場 × 產業規則要求安全邊際 ≥ 0。</li>
   </ul>
-  <h2>一、個股硬性條件</h2>
+  ${c.industry_rules ? industryRulesHtml(c) : ""}
+  <h2>一、個股硬性條件${c.industry_rules && c.industry_rules.enabled ? "（舊規則，比較用）" : ""}</h2>
   <div class="table-wrap"><table class="data compact"><thead><tr><th>條件</th><th>來源</th><th>計算方式／門檻</th></tr></thead><tbody>${c.hard_filters.map(fr).join("")}</tbody></table></div>
   <p class="hint">說明：第 2 條「資產太多太雜」量化為商譽＋無形資產 ≤ 15% 與長期投資 ≤ 20%；第 4 條「股東出資佔比」解讀為股東權益占總資產；第 5 條「短期負債太多」量化為流動比率 ≥ 150% 與速動比率 ≥ 100%；第 6、7 條改為近 3 年每年都要達標；第 9 條由 5% 放寬到 10%，避免誤殺利息收入高的現金充裕公司。</p>
   <h2>現金流量與公司類型（近 3 年合計）</h2>
@@ -813,11 +934,12 @@ function renderFrontier(bt) {
   if (!P.length) return;
   $("#frontierCard").hidden = false;
   destroyChart("frontier");
-  const col = { stop: cssVar("--s1"), alloc: cssVar("--s2"), bench: cssVar("--text-2"), other: cssVar("--s3") };
+  const col = { stop: cssVar("--s1"), alloc: cssVar("--s2"), bench: cssVar("--text-2"), other: cssVar("--s3"), macro: cssVar("--s3"), factor: cssVar("--s4"), rules: cssVar("--s4") };
   col.macro = cssVar("--s4"); col.factor = cssVar("--s5");
   const groups = [["停損規則", (p) => p.kind === "variant" && p.group === "stop", col.stop],
                   ["信用利差", (p) => p.kind === "variant" && p.group === "macro", col.macro],
                   ["新因子／金融股", (p) => p.kind === "variant" && p.group === "factor", col.factor],
+                  ["產業規則", (p) => p.kind === "variant" && p.group === "rules", col.rules || col.factor],
                   ["資產配置", (p) => p.kind === "variant" && p.group === "alloc", col.alloc],
                   ["基準（大盤）", (p) => p.kind === "bench", col.bench]];
   S.charts.frontier = new Chart($("#btFrontier"), {
@@ -856,15 +978,20 @@ function valuationCard(v, row, mkt) {
   const px = row.close;
   const cell = (x) => (x == null || !isFinite(x) ? "–" : fmt.price(x));
   const vsPx = (x) => (x == null || !isFinite(x) || !px ? "" : `<span class="${x >= px ? "pos" : "neg"}">${fmt.pct(x / px - 1, 0)}</span>`);
+  const tpl = v.template || row.template;
+  const roeYrs = tpl === "cyclical" ? "近 10 年" : "近 5 年";
+  const relHow = { cyclical: "同業股價淨值比", construction: "同業股價淨值比", financial: "同業股價淨值比、本益比", growth_watch: "同業 EV/營收" }[tpl] || "同業本益比、股價淨值比、EV/EBIT";
   const rows = [
-    ["剩餘收益模型（RIM）", v.val_rim, "以每股淨值為基礎，加上未來超額報酬（ROE − 要求報酬率）的折現；ROE 10 年內回到要求報酬率"],
-    ["自由現金流折現（DCF）", v.val_dcf, `近 3 年平均自由現金流；前 5 年成長 ${fmt.pct(v.g1, 1)}，之後降到永續成長`],
-    ["同業相對估值", v.val_rel, "同產業本益比、股價淨值比、EV/EBIT 中位數套用到這家公司"],
-  ];
+    ["剩餘收益模型（RIM）", v.val_rim, `以每股淨值為基礎，加上未來超額報酬（ROE − 要求報酬率）的折現；ROE 用${v.roe_used != null ? ` ${fmt.pct(v.roe_used, 1)}（${roeYrs}平均）` : "正常化 ROE"}，10 年內回到要求報酬率`],
+    ["自由現金流折現（DCF）", v.val_dcf, `近 3 年平均自由現金流${mkt === "us" ? "（扣股票酬勞）" : ""}；前 5 年成長 ${fmt.pct(v.g1, 1)}，之後降到永續成長`],
+    ["同業相對估值", v.val_rel, `${relHow}中位數套用到這家公司（同業：${esc(v.peer_group || row.peer_group || row.industry || "")}）`],
+    ["歷史股價淨值比", v.val_pbh, `自己近 10 年股價淨值比中位數 ${v.pb_hist_median == null ? "–" : (+v.pb_hist_median).toFixed(2)} 倍 × 目前淨值；目前位在歷史第 ${v.pb_hist_pct == null ? "–" : Math.round(100 * v.pb_hist_pct)} 百分位`],
+  ].filter(([, x], i) => i < 3 || x != null);
   const lbl = v.val_label || "";
   const cls = lbl === "低估" ? "pos" : lbl === "高估" ? "neg" : "";
   return `<div class="card"><h2>估值：合理價區間 ${cell(v.fair_low)}～${cell(v.fair_high)}（中位數 ${cell(v.fair_base)}）</h2>
-    <p>目前股價 ${fmt.price(px)}，安全邊際 <b class="${cls}">${v.mos == null ? "–" : fmt.pct(v.mos, 0)}（${esc(lbl)}）</b>，可信度：${esc(v.val_conf || "–")}</p>
+    <p>目前股價 ${fmt.price(px)}，安全邊際 <b class="${cls}">${v.mos == null ? "–" : fmt.pct(v.mos, 0)}（${esc(lbl)}）</b>，可信度：${esc(v.val_conf || "–")}${tpl ? `　產業模板：${tplTag({ ...row, template: tpl })}，使用模型：${esc(v.val_models || "")}` : ""}</p>
+    ${tpl === "cyclical" && v.gm_peak_ratio != null ? `<p class="hint">毛利率是長期平均的 ${(+v.gm_peak_ratio).toFixed(2)} 倍${v.gm_peak_ratio > 1.3 ? "：<b class=\"neg\">可能接近景氣高峰</b>，這時本益比看起來便宜是陷阱" : ""}。</p>` : ""}
     <div class="table-wrap"><table class="data compact"><thead><tr><th>模型</th><th class="num">每股價值</th><th class="num">相對股價</th><th>說明</th></tr></thead><tbody>
     ${rows.map(([n, x, h]) => `<tr><td>${n}</td><td class="num">${cell(x)}</td><td class="num">${vsPx(x)}</td><td class="hint">${h}</td></tr>`).join("")}</tbody></table></div>
     <p class="hint">市場隱含成長率 <b>${v.implied_g == null ? "–" : fmt.pct(v.implied_g, 1)}</b>（要讓 DCF 等於目前市值，前 5 年每年要成長多少）vs 過去 3 年營收年成長 ${v.hist_g == null ? "–" : fmt.pct(v.hist_g, 1)}：${v.implied_g != null && v.hist_g != null ? (v.implied_g > v.hist_g + 0.05 ? "市場期待明顯高於過去表現。" : v.implied_g < v.hist_g - 0.05 ? "市場期待低於過去表現，若能維持成長就有上漲空間。" : "市場期待與過去表現相當。") : ""}<br>

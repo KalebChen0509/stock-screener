@@ -8,6 +8,8 @@ from .prices import future_split_factor
 
 TTM_FIELDS = ["revenue", "gross_profit", "op_income", "nonop", "pretax", "net_income",
               "rd", "cfo", "capex", "cfi", "cff"]
+# 額外欄位（美股才有；台股為空值）
+EXTRA_FIELDS = ["sbc", "interest", "da", "div_paid", "buyback"]
 
 
 def _div(a, b, pos_den=True):
@@ -28,6 +30,10 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
         ["market", "id", "period_end"], keep="last")
     df = df.reset_index(drop=True)
     df["capex"] = df["capex"].fillna(0.0)
+    for f in EXTRA_FIELDS:
+        if f not in df:
+            df[f] = np.nan
+        df[f] = pd.to_numeric(df[f], errors="coerce")
     df["_key"] = df["market"].astype(str) + ":" + df["id"].astype(str)
 
     def grp(col):
@@ -36,7 +42,7 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     # 4 季是否連續（第 i 列與第 i-3 列相隔約 9 個月）
     span3 = (df["period_end"] - grp("period_end").shift(3)).dt.days
     ok4 = span3.between(240, 300)
-    for f in TTM_FIELDS:
+    for f in TTM_FIELDS + EXTRA_FIELDS:
         roll = grp(f).transform(lambda x: x.rolling(4, min_periods=4).sum())
         df[f + "_ttm"] = roll.where(ok4)
 
@@ -52,7 +58,7 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
         df[f"{f}_ttm_lag4"] = lag(f"{f}_ttm", 4)
         df[f"{f}_ttm_lag8"] = lag(f"{f}_ttm", 8)
     df["revenue_ttm_lag12"] = lag("revenue_ttm", 12)
-    for f in ("cfo", "cfi", "cff", "capex"):
+    for f in ("cfo", "cfi", "cff", "capex", "sbc"):
         df[f"{f}_ttm_lag4"] = lag(f"{f}_ttm", 4)
         df[f"{f}_ttm_lag8"] = lag(f"{f}_ttm", 8)
     # 財報驚喜（SUE）：單季淨利與去年同季的差額 ÷ 過去 8 季這個差額的標準差
@@ -134,6 +140,18 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     out["fcf_3y_avg"] = (c3 - capex3) / 3
     sd = df["_ni_d4_sd"]
     out["sue"] = (df["_ni_d4"] / sd.where(sd > 0)).clip(-10, 10)
+    # 額外欄位（美股）：股票酬勞、利息保障倍數、EBITDA、股東回饋
+    out["sbc"] = df["sbc_ttm"]
+    sbc3 = (df["sbc_ttm"].fillna(0) + df["sbc_ttm_lag4"].fillna(0) + df["sbc_ttm_lag8"].fillna(0)) / 3
+    out["fcf_after_sbc"] = out["fcf"] - df["sbc_ttm"].fillna(0)
+    out["fcf_3y_avg_adj"] = out["fcf_3y_avg"] - sbc3          # 美股估值用：自由現金流再扣股票酬勞
+    out["interest"] = df["interest_ttm"]
+    out["int_cover"] = _div(df["op_income_ttm"], df["interest_ttm"])
+    out["ebitda"] = df["op_income_ttm"] + df["da_ttm"]
+    out["payout_cash"] = df["div_paid_ttm"].fillna(0) + df["buyback_ttm"].fillna(0)
+    out.loc[df["div_paid_ttm"].isna() & df["buyback_ttm"].isna(), "payout_cash"] = np.nan
+    # 歷史股價淨值比用：每股淨值（分割還原）
+    out["bvps"] = _div(df["equity"], df["adj_shares"])
     return out
 
 
@@ -161,4 +179,74 @@ def add_valuation(f: pd.DataFrame, px: pd.DataFrame) -> pd.DataFrame:
     df["earnings_yield"] = _div(df["op_income"], ev)
     df["fcf_yield"] = _div(df["fcf"], df["market_cap"])
     df["book_to_price"] = _div(df["equity"], df["market_cap"])
+    df["ep"] = _div(df["net_income"], df["market_cap"])                 # 本益比倒數（金融股比便宜用）
+    if "payout_cash" in df:
+        df["shareholder_yield"] = _div(df["payout_cash"], df["market_cap"])   # 股利＋買回 ÷ 市值（美股）
+    if "ebitda" in df:
+        df["ev_ebitda"] = _div(ev, df["ebitda"])
     return df
+
+
+def history_metrics(panel: pd.DataFrame, date: pd.Timestamp, close: pd.DataFrame | pd.Series | None = None,
+                    ymap: dict | None = None, pb_now: pd.Series | None = None, years: int = 10) -> pd.DataFrame:
+    """景氣循環用的長期指標（只用 date 當下已公布的財報與當時的股價）。
+
+    roe_avg5y / roe_avg10y：近 5／10 年（每年取一個近四季 ROE）的平均，至少 3／5 年才計算
+    gm_avg_long：近 10 年平均毛利率（至少 3 年）；gm_peak_ratio：目前毛利率 ÷ 長期平均（> 1.3 = 可能是景氣高峰）
+    pb_hist_median：近 10 年每季（財報公布當月月底股價 ÷ 每股淨值）的中位數，至少 12 季
+    pb_hist_pct：目前股價淨值比在自己歷史中的百分位（0 = 史上最便宜，1 = 最貴）
+    """
+    cols = ["roe_avg5y", "roe_avg10y", "roe_years", "gm_avg_long", "gm_peak_ratio",
+            "pb_hist_median", "pb_hist_n", "pb_hist_pct"]
+    if panel is None or panel.empty:
+        return pd.DataFrame(columns=cols)
+    date = pd.Timestamp(date)
+    p = panel[(panel["available_date"] <= date) &
+              (panel["period_end"] > date - pd.DateOffset(years=years, months=3))]
+    if p.empty:
+        return pd.DataFrame(columns=cols)
+    p = p.sort_values(["id", "period_end"])
+    pos = p.groupby("id").cumcount(ascending=False)          # 0 = 最新一季
+    yearly = p[(pos % 4 == 0) & (pos < 4 * years)].copy()
+    yearly["k"] = pos[(pos % 4 == 0) & (pos < 4 * years)] // 4
+    g = yearly.groupby("id")
+    roe5 = yearly[yearly["k"] < 5].groupby("id")["roe"]
+    out = pd.DataFrame({
+        "roe_avg5y": roe5.mean().where(roe5.count() >= 3),
+        "roe_avg10y": g["roe"].mean().where(g["roe"].count() >= 5),
+        "roe_years": g["roe"].count(),
+        "gm_avg_long": g["gross_margin"].mean().where(g["gross_margin"].count() >= 3),
+    })
+    gm_now = yearly[yearly["k"] == 0].set_index("id")["gross_margin"]
+    out["gm_peak_ratio"] = _div(gm_now.reindex(out.index), out["gm_avg_long"])
+    # 歷史股價淨值比（需要月股價寬表）
+    out["pb_hist_median"] = np.nan
+    out["pb_hist_n"] = 0
+    out["pb_hist_pct"] = np.nan
+    if close is not None and ymap and "bvps" in p:
+        q = p[["id", "available_date", "bvps"]].copy()
+        q = q[q["bvps"] > 0]
+        q["tk"] = q["id"].map(ymap)
+        q["m"] = q["available_date"] + pd.offsets.MonthEnd(0)
+        q = q.dropna(subset=["tk"])
+        if isinstance(close, pd.Series):          # 已經 stack 好的（月, 代號）→ 收盤價，回測時重複使用
+            st, tks = close, True
+        else:
+            tks = [t for t in q["tk"].unique() if t in close.columns]
+            st = close[tks].stack() if tks else None
+        if tks:
+            st.index.names = ["m", "tk"]
+            q["px"] = st.reindex(pd.MultiIndex.from_frame(q[["m", "tk"]])).values
+            q["pbq"] = q["px"] / q["bvps"]
+            q = q[np.isfinite(q["pbq"]) & (q["pbq"] > 0)]
+            gq = q.groupby("id")["pbq"]
+            n = gq.count()
+            out["pb_hist_median"] = gq.median().where(n >= 12).reindex(out.index)
+            out["pb_hist_n"] = n.reindex(out.index).fillna(0).astype(int)
+            if pb_now is not None and len(pb_now):
+                q["now"] = q["id"].map(pb_now)
+                q = q[np.isfinite(q["now"])]
+                pct = (q["pbq"] <= q["now"]).groupby(q["id"]).mean()
+                out["pb_hist_pct"] = pct.where(n.reindex(pct.index) >= 12).reindex(out.index)
+    out.index.name = "id"
+    return out

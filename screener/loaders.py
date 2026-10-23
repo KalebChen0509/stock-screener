@@ -23,6 +23,7 @@ def load_infos() -> dict:
         infos["us"] = pd.DataFrame({
             "name": u["name"].values, "industry": u["industry"].values,
             "is_financial": u["is_financial"].astype(bool).values, "yahoo": u["yahoo"].values,
+            "sic": u["sic"].values if "sic" in u else None,
         }, index=u["ticker"].values)
     for k in infos:
         infos[k].index.name = "id"

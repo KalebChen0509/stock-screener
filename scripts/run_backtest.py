@@ -276,7 +276,7 @@ def main():
                 "group": v.get("group", "stop" if set(patch) <= {"risk"} else "other"),
                 "weights": apply_patch(cfg, patch)["portfolio"]["weights"],
                 "fixed": apply_patch(cfg, patch)["portfolio"].get("fixed_sleeves", []),
-                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro", "factor"),
+                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro", "factor", "rules"),
                 "credit_off_months": int(vm["credit_off"].sum()) if "credit_off" in vm else 0,
                 "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
             }
