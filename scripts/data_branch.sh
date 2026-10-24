@@ -40,7 +40,8 @@ case "$1" in
     pull_into databr_latest
     mkdir -p databr_latest/cache/tw_fin
     cp -r databr/cache/tw_fin/. databr_latest/cache/tw_fin/
-    for f in tw_fin_meta.json tw_progress.json tw_universe.csv tw_stock_info.csv backtest_triggered; do
+    for f in tw_fin_meta.json tw_progress.json tw_universe.csv tw_stock_info.csv backtest_triggered \
+             tw_month_rev.csv.gz tw_month_rev_meta.json tw_month_rev_progress.json; do
       [ -f "databr/cache/$f" ] && cp "databr/cache/$f" databr_latest/cache/ || true
     done
     push_dir databr_latest

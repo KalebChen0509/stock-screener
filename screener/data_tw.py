@@ -311,8 +311,11 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
         last_q = pd.Timestamp(m.get("last_period", "1900-01-01"))
         last_chk = datetime.fromisoformat(m.get("checked", "1900-01-01")).date()
         stale = (today - last_chk).days
-        if last_q < exp_q and stale >= 1:
-            todo.append((1, sid))
+        # 連續 2 次以上查不到應有的季報（下市、暫停交易、資料商缺漏）：改成每週才查一次，不要每天浪費額度
+        wait = 1 if m.get("miss", 0) < 2 else 7
+        if last_q < exp_q:
+            if stale >= wait:
+                todo.append((1, sid))
         elif last_q < in_window_q and stale >= recheck_days:
             todo.append((2, sid))
         elif stale >= 120:  # 偶爾全面刷新，抓到更正後數字
@@ -344,8 +347,11 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
                 last = new["period_end"].max()
             else:
                 last = old["period_end"].max() if not old.empty else pd.Timestamp("1900-01-01")
+            prev = meta.get(sid) or {}
+            prev_last = pd.Timestamp(prev.get("last_period", "1900-01-01"))
+            miss = prev.get("miss", 0) + 1 if (pd.Timestamp(last) <= prev_last and pd.Timestamp(last) < exp_q) else 0
             meta[sid] = {"last_period": str(pd.Timestamp(last).date()),
-                         "checked": today.isoformat(), "v": SCHEMA_VERSION}
+                         "checked": today.isoformat(), "v": SCHEMA_VERSION, "miss": miss}
             done += 1
             if done % 50 == 0:
                 _save_meta(meta)
