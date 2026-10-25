@@ -140,6 +140,19 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                        "ret": r, "bench": b, "reason": reason})
 
     close_stack = [None]          # 月收盤價 stack 後的快取（產業規則的歷史股價淨值比用）
+    # 景氣階段表（cycle.enabled 時依階段切換規則；未啟用也記錄階段供分析）
+    ph_tables = {}
+    if macro and macro.get("cycle_inputs"):
+        from .cycle import tables as _cyc_tables
+        try:
+            ph_tables = _cyc_tables(macro["cycle_inputs"], cfg)
+        except Exception as e:  # noqa
+            log.warning("cycle tables failed: %s", e)
+
+    def _phase(mkt, t):
+        from .cycle import phase_at
+        r = phase_at(ph_tables.get(mkt), t)
+        return r["phase"] if r else None
 
     def _rf_at(mkt, t):
         """估值用無風險利率：美股用當時的 10 年期美債殖利率（沒有資料時用設定檔）。"""
@@ -211,13 +224,14 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 px = px_frame_monthly(close, vol, t, ym)
                 r6 = ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym)
                 r12 = ret_n_months(adj, t, 11, ym, skip=1)
-                if close_stack[0] is None and (cfg.get("industry_rules") or {}).get("enabled"):
+                if close_stack[0] is None and ((cfg.get("industry_rules") or {}).get("enabled")
+                                               or (cfg.get("cycle") or {}).get("enabled")):
                     cs = close.stack()
                     cs.index.names = ["m", "tk"]
                     close_stack[0] = cs
                 ctx = {"adj": adj, "close": close_stack[0] if close_stack[0] is not None else close,
                        "ymap": ym, "index": td["regime_indices"][mkt],
-                       "rf": _rf_at(mkt, t), "implied": False}
+                       "rf": _rf_at(mkt, t), "implied": False, "phase": _phase(mkt, t)}
                 res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
                                     events=(events or {}).get(mkt), month_rev=month_rev, ctx=ctx)
                 ranked = res["ranked"][["id", "rank", "pass_all"]].copy() if len(res["ranked"]) else res["ranked"]
@@ -428,6 +442,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         rec["n_etf"] = len(picks.get("etf", []))
         rec["n_stops"] = n_stops_month
         rec["credit_off"] = int(credit_off)
+        rec["phase_tw"], rec["phase_us"] = _phase("tw", t), _phase("us", t)
         rec["cash_weight"] = max(0.0, 1.0 - sum(targets.values()))
         records.append(rec)
         holdings_log.append({"month": t, "tw": picks.get("tw", []), "us": picks.get("us", []),

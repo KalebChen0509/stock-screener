@@ -32,7 +32,7 @@ STOCK_COLS = ["id", "name", "industry", "close", "market_cap", "pe", "pb", "earn
               "industry_norm", "template", "template_label", "peer_group", "peer_n", "roe_norm", "roe_avg5y", "roe_avg10y",
               "roe_years", "gm_peak_ratio", "pb_hist_median", "pb_hist_pct", "val_pbh", "val_models", "roe_used",
               "ep", "sbc", "fcf_after_sbc", "int_cover", "shareholder_yield", "ev_ebitda",
-              "peer_value_rel", "peer_roe_rel", "peer_op_margin_rel", "buyable", "fin_allowed", "groups_legacy",
+              "peer_value_rel", "peer_roe_rel", "peer_op_margin_rel", "buyable", "fin_allowed", "groups_legacy", "phase",
               "event_veto", "event_flags", "groups", "avg_traded_value", "n_quarters", "is_financial", "period_end",
               "top_down_score", "score", "pass_all", "failed"]
 ETF_COLS = ["ticker", "name", "market", "style", "expense_ratio", "aum_usd", "avg_traded_value_usd",
@@ -230,6 +230,19 @@ def main():
     except Exception as e:  # noqa
         log.warning("TW pledge: %s", e)
         pledge = None
+    # ---------- 景氣階段（領先指標位置 × 方向；美股加殖利率曲線、信用利差）----------
+    ph_now, cyc_on = {}, bool((cfg.get("cycle") or {}).get("enabled"))
+    try:
+        from screener import cycle as cyc
+        from screener.macro import load_macro as _lm
+        cyc_tbl = cyc.tables(cyc.load_inputs(_lm(adj)), cfg)
+        meta["cycle"] = {"enabled": cyc_on, "rules": (cfg.get("cycle") or {}).get("phase_rules", {})}
+        for mkt_ in ("tw", "us"):
+            ph_now[mkt_] = cyc.phase_at(cyc_tbl.get(mkt_), today, live=True)
+            meta["cycle"][mkt_] = cyc.summary(cyc_tbl.get(mkt_))
+        log.info("cycle phase: %s", {k: (v or {}).get("label") for k, v in ph_now.items()})
+    except Exception as e:  # noqa
+        log.warning("cycle phase failed: %s", e)
     results = {}
     for mkt in ("tw", "us"):
         if mkt not in panels:
@@ -256,7 +269,8 @@ def main():
                 log.warning("DGS10: %s", e)
         # 估值在篩選時一起算（新規則要用安全邊際篩選；舊規則只顯示）
         ctx = {"adj": adj, "close": close, "ymap": ymap, "index": idx_t, "rf": rf_live,
-               "implied": True, "valuation": True}
+               "implied": True, "valuation": True,
+               "phase": (ph_now.get(mkt) or {}).get("phase") if cyc_on else None}
         res = screen_market(panels[mkt], infos[mkt], px, r6, today, cfg, mkt, ret12=r12,
                             events=ev_all.get(mkt), pledge=pledge if mkt == "tw" else None, month_rev=mrw, ctx=ctx)
         df = res["all"]

@@ -540,6 +540,27 @@ industry_rules:
         rev_growth_3m: {enabled: true}      # 月營收近 3 個月年增 ≥ 0：庫存去化結束
     us: {}
 
+# ---------------------------------------------------------------------
+#  一之四、景氣階段模組（回測驗證後再開啟）
+#  階段＝領先指標「位置 × 方向」：高於 100 往上＝擴張、高於 100 往下＝趨緩、低於 100 往上＝復甦、低於 100 往下＝衰退
+#  台股：國發會領先指標不含趨勢指數；美股：OECD 領先指標，再加殖利率曲線倒掛與信用利差急升（只會把階段往後推）
+#  各階段使用的篩選規則（理論版，2026/10/24 決定，不依回測結果調整）：
+#    復甦：市場 × 產業規則＋金融股    擴張：原本 31 條規則
+#    趨緩：市場 × 產業規則、不買金融股  衰退：市場 × 產業規則、不買金融股
+# ---------------------------------------------------------------------
+cycle:
+  enabled: false
+  lag_months: 1                     # 領先指標的公布時間差：月份 M 的數值在 M+1 月底才使用
+  confirm_months: 2                 # 連續 2 個月同一階段才切換
+  us_overlays:
+    curve_inversion: true           # 10 年 − 3 個月殖利率倒掛：擴張 → 趨緩
+    credit_jump_pp: 0.5             # Baa 信用利差 3 個月內擴大 ≥ 0.5 個百分點：往後推一個階段
+  phase_rules:
+    recovery:  {rule_set: new, financials: true}
+    expansion: {rule_set: old, financials: false}
+    slowdown:  {rule_set: new, financials: false}
+    recession: {rule_set: new, financials: false}
+
 # 換股緩衝區：新買進要通過全部條件；已持有的只要「門檻放寬 10% 仍通過」且排名在前 2 倍內就續抱
 buffer:
   tolerance: 0.10
@@ -709,6 +730,9 @@ backtest:
     - name: "產業規則＋金融股"
       group: rules
       patch: {industry_rules: {enabled: true, financials: true}}
+    - name: "景氣階段切換（理論版）"
+      group: rules
+      patch: {cycle: {enabled: true}}
     # ---- 資產配置比較（都用買進價停損 15%）----
     - name: "舊配置 台20美20ETF60＋補位"
       group: alloc

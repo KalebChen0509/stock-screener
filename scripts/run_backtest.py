@@ -54,6 +54,14 @@ def main():
     except Exception as e:  # noqa
         log.warning("macro not loaded: %s", e)
         macro = {}
+    try:
+        from screener import cycle as cyc
+        macro["cycle_inputs"] = cyc.load_inputs(macro)
+        ci = macro["cycle_inputs"]
+        log.info("cycle inputs: TW leading %d months, US leading %d months (%d initial releases), curve %d",
+                 len(ci["tw"]["lead"]), len(ci["us"]["lead"]), ci["us"].get("n_initial", 0), len(ci["us"]["curve"]))
+    except Exception as e:  # noqa
+        log.warning("cycle inputs not loaded: %s", e)
     screen_cache, collected, done = {}, {}, {}
     daily_box = {"df": pd.DataFrame()}
 
@@ -281,6 +289,26 @@ def main():
                 "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
             }
     res["variants"] = variants
+    # ---------- 景氣階段：各階段的月數與個股部位相對大盤的表現（目前配置） ----------
+    try:
+        from screener.cycle import LABEL
+        cp = {}
+        for mkt, sl, bk in (("tw", "sleeve_tw", "bench_0050.TW"), ("us", "sleeve_us", "bench_SPY")):
+            col = f"phase_{mkt}"
+            if col not in m or sl not in m:
+                continue
+            rows = []
+            for ph, g in m.groupby(col):
+                if not ph:
+                    continue
+                r_s, r_b = g[sl].astype(float), g[bk].astype(float) if bk in g else None
+                rows.append({"phase": ph, "label": LABEL.get(ph, ph), "months": int(len(g)),
+                             "sleeve_avg": float(r_s.mean()), "bench_avg": float(r_b.mean()) if r_b is not None else None,
+                             "beat_rate": float((r_s > r_b).mean()) if r_b is not None else None})
+            cp[mkt] = {"stats": rows, "series": [{"m": i.strftime("%Y-%m"), "phase": p_} for i, p_ in m[col].items()]}
+        res["cycle"] = cp
+    except Exception as e:  # noqa
+        log.warning("cycle stats failed: %s", e)
     # ---------- 風險／報酬散佈（效率前緣參考） ----------
     pts = [{"name": k, "kind": "variant", "group": v.get("group"), "cagr": v["full"]["cagr"],
             "vol": v["full"]["vol"], "mdd": v["full"]["max_drawdown"], "sharpe": v["full"]["sharpe"]}

@@ -25,6 +25,11 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
     回傳 {"all": 全部股票指標＋過濾結果, "ranked": 候選排名（含放寬後仍通過者）, "sectors": 產業分數}
     """
     ctx = ctx or {}
+    # 景氣階段：依階段決定用哪一套規則、金融股可否買（cycle.enabled 且有階段時）
+    phase = ctx.get("phase")
+    if phase and (cfg.get("cycle") or {}).get("enabled"):
+        from .cycle import apply_phase
+        cfg = apply_phase(cfg, phase)
     ir = cfg.get("industry_rules") or {}
     use_ir = bool(ir.get("enabled"))
     pm = panel[panel["market"] == market]
@@ -64,6 +69,7 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
         df["rev_yoy_3m"] = df["rev_yoy_12m"] = df["rev_accel"] = np.nan
     # 產業模板與同業比較群組（新舊規則都標示，網站顯示用）
     df = assign_industry(df, market, int(ir.get("min_peers", 15)))
+    df["phase"] = phase
     df["buyable"] = ~df["template"].isin(NOT_BUYABLE)
     df["fin_allowed"] = (df["template"] != "financial") | bool(ir.get("financials", False))
     # 長期指標（正常化 ROE、毛利高峰、歷史股價淨值比）與估值（新規則用安全邊際篩選）

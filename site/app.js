@@ -48,8 +48,20 @@ const TEMPLATE_NOTE = {
   utility: "公用：負債高、流動比低是常態；自由現金流條件不適用", defensive: "防禦：品牌與專利多來自併購，無形資產門檻放寬",
   growth_watch: "成長觀察：只估值觀察，不自動買進", biotech_research: "新藥研究：還沒獲利，不自動篩，用研究工具估", exclude: "排除（創新板、空殼公司）",
 };
-// 規則版本：old = 原本 31 條；new = 市場 × 產業規則（設定檔 industry_rules）
-const ruleSet = () => (S.cfg.industry_rules ? (S.settings.ruleSet || (S.cfg.industry_rules.enabled ? "new" : "old")) : "old");
+// 規則版本：old = 原本 31 條；new = 市場 × 產業規則（industry_rules）；cycle = 依景氣階段切換（cycle.phase_rules）
+const liveMode = () => ((S.cfg.cycle || {}).enabled ? "cycle" : (S.cfg.industry_rules || {}).enabled ? "new" : "old");
+const ruleMode = () => (S.cfg.industry_rules ? (S.settings.ruleSet || liveMode()) : "old");
+function phaseRule(mkt) {
+  const ph = ((S.meta.cycle || {})[mkt] || {}).phase;
+  return ((S.cfg.cycle || {}).phase_rules || {})[ph] || null;
+}
+const ruleSet = (mkt = S.curMkt || S.mkt) => {
+  const md = ruleMode();
+  if (md !== "cycle") return md;
+  const r = phaseRule(mkt);
+  return r && r.rule_set === "new" ? "new" : "old";
+};
+const finAllowed = (mkt = S.curMkt || S.mkt) => (ruleMode() === "cycle" ? !!(phaseRule(mkt) || {}).financials : !!(S.cfg.industry_rules || {}).financials);
 const activeFilters = () => (ruleSet() === "new" ? S.cfg.industry_rules.filters : S.cfg.hard_filters);
 const allFilters = () => [...S.cfg.hard_filters, ...((S.cfg.industry_rules || {}).filters || [])];
 function activeOverrides(mkt) {
@@ -218,8 +230,11 @@ function peerPct(rows, metric, col) {
 }
 
 function runScreen(mkt) {
+  S.curMkt = mkt;
   const rows = S.stocks[mkt].map((r) => ({ ...r }));
   const isNew = ruleSet() === "new";
+  const fin = finAllowed(mkt);
+  for (const r of rows) if (r.template) r.fin_allowed = r.template !== "financial" || fin;
   const pcol = isNew ? "peer_group" : "industry";
   const fs = activeFilters().filter((f) => S.settings.filters[f.id]?.enabled);
   for (const f of fs) {
@@ -354,7 +369,20 @@ function renderOverview() {
   };
   const cr = m.credit;
   const ctxt = cr && cr.available !== undefined ? `<div>企業信用：<b class="${cr.risk_off ? "ng" : "ok"}">${cr.risk_off ? "▼ 偏空（信用轉差）" : "▲ 正常"}</b> <span class="hint">${esc(cr.text || "")}${cr.enabled ? "；已啟用減碼" : "；目前只提示、不調整部位"}</span></div>` : "";
-  $("#ovRegime").innerHTML = rtxt("tw", "台股加權") + rtxt("us", "美股 S&P 500") + ctxt + `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
+  const cy = m.cycle || {};
+  const PH = { recovery: "復甦", expansion: "擴張", slowdown: "趨緩", recession: "衰退" };
+  const PHCLS = { recovery: "ok", expansion: "ok", slowdown: "ng", recession: "ng" };
+  const ptxt = (k, label, src) => {
+    const c = cy[k];
+    if (!c || !c.phase) return "";
+    const rule = (cy.rules || {})[c.phase] || {};
+    const ruleTxt = rule.rule_set === "new" ? `市場 × 產業規則${rule.financials ? "＋金融股" : ""}` : "原本 31 條規則";
+    const strip = (c.history || []).slice(-24).map((h) => `<span class="phs ph-${h.phase || "na"}" title="${esc(h.m)}：${esc(PH[h.phase] || "–")}（${h.level}）"></span>`).join("");
+    return `<div>${label}景氣階段：<b class="${PHCLS[c.phase] || ""}">${PH[c.phase]}</b> <span class="hint">${src} ${(+c.level).toFixed(2)}（${c.data_month}，近 3 月 ${c.chg3 >= 0 ? "↑" : "↓"} ${Math.abs(c.chg3).toFixed(2)}）${c.signal ? "；" + esc(c.signal) : ""}；此階段用${ruleTxt}${cy.enabled ? "" : "（模組尚未啟用）"}</span><div class="phstrip">${strip}</div></div>`;
+  };
+  let cytxt = ptxt("tw", "台股", "國發會領先指標") + ptxt("us", "美股", "OECD 領先指標");
+  if (cytxt) cytxt += `<p class="hint">色條為近 24 個月：<span class="phs ph-recovery"></span> 復甦　<span class="phs ph-expansion"></span> 擴張　<span class="phs ph-slowdown"></span> 趨緩　<span class="phs ph-recession"></span> 衰退</p>`;
+  $("#ovRegime").innerHTML = rtxt("tw", "台股加權") + rtxt("us", "美股 S&P 500") + ctxt + cytxt + `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
   renderSectors();
   renderOrders();
   const N = S.news || { news: [], events: [] };
@@ -437,9 +465,8 @@ function renderScreener() {
     return typeof x === "string" ? dir * x.localeCompare(y) : dir * (x - y);
   });
   const passN = rows.filter((r) => r.pass).length;
-  const live = S.cfg.industry_rules && S.cfg.industry_rules.enabled ? "new" : "old";
-  const rsNote = ruleSet() === "new" ? "市場 × 產業規則" : "原本 31 條規則";
-  $("#screenSummary").textContent = `${S.mkt === "tw" ? "台股" : "美股"} ${rows.length} 檔有完整資料，${passN} 檔通過全部條件（${rsNote}${ruleSet() !== live ? "，預覽中，實際下單仍用另一套" : ""}）；部位取排名前 ${S.cfg.portfolio.max_holdings_per_stock_sleeve} 檔。點任一列看詳情。`;
+  const rsNote = (ruleMode() === "cycle" ? "依景氣階段：" : "") + (ruleSet() === "new" ? "市場 × 產業規則" : "原本 31 條規則");
+  $("#screenSummary").textContent = `${S.mkt === "tw" ? "台股" : "美股"} ${rows.length} 檔有完整資料，${passN} 檔通過全部條件（${rsNote}${ruleMode() !== liveMode() ? "，預覽中，實際下單用另一種設定" : ""}）；部位取排名前 ${S.cfg.portfolio.max_holdings_per_stock_sleeve} 檔。點任一列看詳情。`;
   const shown = list.slice(0, 600);
   $("#stockTable").innerHTML = `<thead><tr>${STOCK_COLS.map(([k, l, , c]) => `<th data-k="${k}" class="${c || ""}">${l}${S.sort.key === k ? (S.sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>
   <tbody>${shown.map((r, i) => `<tr class="clickable ${r.pass ? "" : "dim"}" data-id="${esc(r.id)}">${STOCK_COLS.map(([, , f, c]) => `<td class="${c || ""}">${f(r, i, S.mkt)}</td>`).join("")}</tr>`).join("")}</tbody>`;
@@ -461,6 +488,7 @@ function unitOf(f) {
   return ["", 1];
 }
 function buildFilterPanel() {
+  S.curMkt = S.mkt;
   const fl = activeFilters().map((f) => {
     const st = S.settings.filters[f.id] || { enabled: true, value: f.value };
     let input = "";
@@ -474,10 +502,14 @@ function buildFilterPanel() {
     const tag = f.source ? `<span class="tag ${f.source}">${f.source === "user" ? "你的" : "補充"}</span>` : "";
     return `<div class="frow"><input type="checkbox" data-en="${f.id}" ${st.enabled ? "checked" : ""}><span class="lbl">${esc(f.label)}</span>${tag}${input}</div>`;
   }).join("");
-  const live = S.cfg.industry_rules && S.cfg.industry_rules.enabled ? "new" : "old";
+  const live = liveMode(), md = ruleMode();
+  const PHN = { recovery: "復甦", expansion: "擴張", slowdown: "趨緩", recession: "衰退" };
+  const phNow = ((S.meta.cycle || {})[S.mkt] || {}).phase;
+  const tag = (v) => (live === v ? "（目前下單用）" : "（預覽）");
   const rs = S.cfg.industry_rules ? `<div class="frow" style="grid-column:1/-1"><span class="lbl"><b>規則版本</b>　
-    <label><input type="radio" name="ruleSet" value="old" ${ruleSet() === "old" ? "checked" : ""}> 原本 31 條${live === "old" ? "（目前下單用）" : ""}</label>　
-    <label><input type="radio" name="ruleSet" value="new" ${ruleSet() === "new" ? "checked" : ""}> 市場 × 產業規則${live === "new" ? "（目前下單用）" : "（預覽，回測驗證後才會用來下單）"}</label></span></div>` : "";
+    <label><input type="radio" name="ruleSet" value="old" ${md === "old" ? "checked" : ""}> 原本 31 條${tag("old")}</label>　
+    <label><input type="radio" name="ruleSet" value="new" ${md === "new" ? "checked" : ""}> 市場 × 產業規則${tag("new")}</label>
+    ${S.cfg.cycle ? `　<label><input type="radio" name="ruleSet" value="cycle" ${md === "cycle" ? "checked" : ""}> 依景氣階段${phNow ? `（目前${PHN[phNow]} → ${ruleSet() === "new" ? "產業規則" : "原本 31 條"}${finAllowed() ? "＋金融股" : ""}）` : ""}${tag("cycle")}</label>` : ""}</span></div>` : "";
   const ovText = ruleSet() === "new" ? "<b>套用產業模板覆寫</b>（循環、營建、金融、公用、防禦改用各自的條件，詳見「條件說明」）"
     : "<b>套用景氣循環但書</b>（循環股、非必需消費、必需消費、醫療、公用／電信、研發密集公司改用調整後門檻，詳見「條件說明」）";
   $("#filterList").innerHTML = rs + `<div class="frow" style="grid-column:1/-1"><input type="checkbox" id="useOv" ${S.settings.useOverrides !== false ? "checked" : ""}><span class="lbl">${ovText}</span></div>` + fl;
@@ -533,6 +565,7 @@ function renderEtf() {
 
 // ---------------------------------------------------------------- 詳情
 async function openDetail(mkt, id) {
+  if (mkt !== "etf") S.curMkt = mkt;
   const dlg = $("#detail");
   const row = mkt === "etf" ? S.etf.find((r) => r.ticker === id) : (S.lastRows && S.mkt === mkt ? S.lastRows : runScreen(mkt)).find((r) => r.id === id);
   $("#dTitle").textContent = `${id}　${row ? row.name : ""}`;
@@ -699,6 +732,19 @@ function renderBacktest() {
       <div class="table-wrap"><table class="data compact"><thead><tr><th>期間</th><th class="num">策略</th><th class="num">混合基準</th><th class="num">差距</th></tr></thead><tbody>${per}</tbody></table></div>
       <p class="hint">滾動一年勝率 = 任選一個 12 個月區間，策略報酬 ≥ 基準的比例。你的目標「任何景氣下都持平或擊敗大盤」對應的是空頭年與多頭年兩個勝率都要高。</p>`;
   } else $("#btRegime").innerHTML = `<p class="hint">無資料</p>`;
+  // 各景氣階段：個股部位 vs 對應大盤（目前配置；階段由領先指標判斷）
+  if (bt.cycle && (bt.cycle.tw || bt.cycle.us)) {
+    const PH = { recovery: "復甦", expansion: "擴張", slowdown: "趨緩", recession: "衰退" };
+    const order = ["recovery", "expansion", "slowdown", "recession"];
+    const tbl = (mk, label, bk) => {
+      const c = bt.cycle[mk];
+      if (!c) return "";
+      const rows = order.map((p) => c.stats.find((x) => x.phase === p)).filter(Boolean).map((x) =>
+        `<tr><td>${PH[x.phase]}</td><td class="num">${x.months}</td><td class="num">${fmt.pct(x.sleeve_avg, 2)}</td><td class="num">${fmt.pct(x.bench_avg, 2)}</td><td class="num ${x.sleeve_avg >= x.bench_avg ? "pos" : "neg"}">${fmt.pct(x.sleeve_avg - x.bench_avg, 2)}</td><td class="num">${fmt.pct(x.beat_rate, 0)}</td></tr>`).join("");
+      return `<h3 style="margin-top:14px">${label}：各景氣階段的月平均報酬</h3><div class="table-wrap"><table class="data compact"><thead><tr><th>階段</th><th class="num">月數</th><th class="num">個股部位</th><th class="num">${bk}</th><th class="num">差距</th><th class="num">贏的月份</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    };
+    $("#btRegime").innerHTML += tbl("tw", "台股", "0050") + tbl("us", "美股", "SPY") + `<p class="hint">階段用領先指標判斷（台股國發會、美股 OECD），延後 1 個月、連續 2 個月才切換。這裡是目前配置在各階段的表現，用來看選股在哪個階段贏、哪個階段輸。</p>`;
+  }
   // 逐年
   const years = [...new Set(keys.flatMap((k) => Object.keys(st[k].yearly || {})))].sort();
   $("#btYearly").innerHTML = `<thead><tr><th>年度</th>${keys.map((k) => `<th class="num">${esc(k.replace("策略", "").replace(/[（）]/g, "") || k)}</th>`).join("")}</tr></thead><tbody>${years.map((y) => `<tr><td>${y}</td>${keys.map((k) => { const v = (st[k].yearly || {})[y]; return `<td class="num ${v >= 0 ? "pos" : "neg"}">${fmt.pct(v)}</td>`; }).join("")}</tr>`).join("")}</tbody>`;
@@ -759,6 +805,20 @@ function renderWatchlist() {
 }
 
 // ---------------------------------------------------------------- 條件說明
+function cycleRulesHtml(c) {
+  const cy = c.cycle, PH = { recovery: "復甦", expansion: "擴張", slowdown: "趨緩", recession: "衰退" };
+  const desc = { recovery: "低於 100、往上", expansion: "高於 100、往上", slowdown: "高於 100、往下", recession: "低於 100、往下" };
+  const rows = ["recovery", "expansion", "slowdown", "recession"].map((p) => {
+    const r = (cy.phase_rules || {})[p] || {};
+    return `<tr><td><b>${PH[p]}</b></td><td class="hint">${desc[p]}</td><td>${r.rule_set === "new" ? "市場 × 產業規則" : "原本 31 條規則"}</td><td>${r.financials ? "可買" : "不買"}</td></tr>`;
+  }).join("");
+  const ov = cy.us_overlays || {};
+  return `<h2>景氣階段模組${cy.enabled ? "（目前使用中）" : "（回測驗證後才會用來下單）"}</h2>
+  <p>每月底用領先指標判斷景氣階段：<b>位置</b>（領先指標去除長期趨勢後高於或低於 100）× <b>方向</b>（近 3 個月往上或往下）。台股用國發會領先指標不含趨勢指數，美股用 OECD 綜合領先指標${ov.curve_inversion ? "；美股另外在殖利率曲線倒掛（10 年 − 3 個月 < 0）時把擴張改判趨緩" : ""}${ov.credit_jump_pp ? `，信用利差 3 個月內擴大 ≥ ${ov.credit_jump_pp} 個百分點時往後推一個階段` : ""}。領先指標延後 ${cy.lag_months} 個月使用（公布時間差），連續 ${cy.confirm_months} 個月同一階段才切換。各階段只切換「篩選條件」，不調整台美比重。</p>
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>階段</th><th>領先指標</th><th>篩選規則</th><th>金融股</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <p class="hint">注意：國發會領先指標每月會回溯修正，沒有當時公布的版本，回測會稍微樂觀；美股有 FRED 金鑰時，回測用 OECD 領先指標的「第一次公布值」。</p>`;
+}
+
 function industryRulesHtml(c) {
   const ir = c.industry_rules;
   const fv = (f) => {
@@ -817,6 +877,7 @@ function renderRules() {
     <li><b>合理價</b>＝各模型中位數；<b>安全邊際</b>＝合理價 ÷ 股價 − 1，≥ 30% 標為低估、≤ −20% 標為高估。另外反推市場隱含成長率，跟公司過去成長比較。</li>
     <li>缺少的資料：分析師預估（付費）、股利明細（以保留率代替）、台股利息費用與折舊。舊規則下估值只供參考；市場 × 產業規則要求安全邊際 ≥ 0。</li>
   </ul>
+  ${c.cycle ? cycleRulesHtml(c) : ""}
   ${c.industry_rules ? industryRulesHtml(c) : ""}
   <h2>一、個股硬性條件${c.industry_rules && c.industry_rules.enabled ? "（舊規則，比較用）" : ""}</h2>
   <div class="table-wrap"><table class="data compact"><thead><tr><th>條件</th><th>來源</th><th>計算方式／門檻</th></tr></thead><tbody>${c.hard_filters.map(fr).join("")}</tbody></table></div>

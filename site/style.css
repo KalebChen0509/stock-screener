@@ -153,3 +153,9 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   input[type=search], #wlInput { min-width: 0; flex: 1; }
   .filter-grid { grid-template-columns: 1fr; }
 }
+
+/* 景氣階段色條 */
+.phstrip { display: flex; gap: 2px; margin: 4px 0 6px; }
+.phs { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--border); vertical-align: -1px; }
+.ph-recovery { background: var(--s3); } .ph-expansion { background: var(--s1); }
+.ph-slowdown { background: var(--s4); } .ph-recession { background: var(--s2); }
