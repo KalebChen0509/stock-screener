@@ -32,7 +32,7 @@ STOCK_COLS = ["id", "name", "industry", "close", "market_cap", "pe", "pb", "earn
               "industry_norm", "template", "template_label", "peer_group", "peer_n", "roe_norm", "roe_avg5y", "roe_avg10y",
               "roe_years", "gm_peak_ratio", "pb_hist_median", "pb_hist_pct", "val_pbh", "val_models", "roe_used",
               "ep", "sbc", "fcf_after_sbc", "int_cover", "shareholder_yield", "ev_ebitda",
-              "peer_value_rel", "peer_roe_rel", "peer_op_margin_rel", "buyable", "fin_allowed", "groups_legacy", "phase",
+              "peer_value_rel", "peer_roe_rel", "peer_op_margin_rel", "buyable", "fin_allowed", "groups_legacy", "phase", "roe_5y",
               "event_veto", "event_flags", "groups", "avg_traded_value", "n_quarters", "is_financial", "period_end",
               "top_down_score", "score", "pass_all", "failed"]
 ETF_COLS = ["ticker", "name", "market", "style", "expense_ratio", "aum_usd", "avg_traded_value_usd",

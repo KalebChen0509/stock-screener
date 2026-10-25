@@ -109,32 +109,27 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
         cutoff = sectors["score"].quantile(excl)
         bad = set(sectors.index[sectors["score"] < cutoff])
         cand = cand[~cand["industry"].isin(bad)]
-    fin = cand["is_financial"].astype(bool) if "is_financial" in cand else pd.Series(False, index=cand.index)
-    if use_ir and len(cand):
-        # 新規則：排名也用「同業百分位」，避免便宜的產業整體占便宜
+    # 綜合分數：每個排名指標用「在全市場（新規則：同業群組）排第幾」的百分位加權
+    # → 分數代表贏過全市場百分之幾，不會因為通過的股票少就被壓低
+    if len(cand):
         cand = cand.copy()
-        fin = cand["template"] == "financial"
+        grp = df["peer_group"] if use_ir else pd.Series("all", index=df.index)
+        fin = (cand["template"] == "financial") if use_ir else cand["is_financial"].astype(bool)
         for m_ in flatten_weights(cfg["ranking"]):
-            src = "ep" if m_ == "earnings_yield" else m_
-            if m_ in df:
-                pr = pd.to_numeric(df[m_], errors="coerce").replace([np.inf, -np.inf], np.nan) \
-                    .groupby(df["peer_group"]).rank(pct=True)
-                cand[m_] = pr.reindex(cand.index)
-            if fin.any() and src in df:
-                prf = pd.to_numeric(df[src], errors="coerce").replace([np.inf, -np.inf], np.nan) \
-                    .groupby(df["peer_group"]).rank(pct=True)
-                cand.loc[fin, m_] = prf.reindex(cand.index)[fin] if m_ in ("earnings_yield", "roe", "book_to_price") else np.nan
+            if m_ not in df:
+                continue
+            pr = pd.to_numeric(df[m_], errors="coerce").replace([np.inf, -np.inf], np.nan).groupby(grp).rank(pct=True)
+            cand[m_] = pr.reindex(cand.index)
+            if fin.any():
+                # 金融股：價值改用 E/P；現金流、毛利、流動性類指標不適用 → 中性
+                if m_ == "earnings_yield" and "ep" in df:
+                    prf = pd.to_numeric(df["ep"], errors="coerce").replace([np.inf, -np.inf], np.nan).groupby(grp).rank(pct=True)
+                    cand.loc[fin, m_] = prf.reindex(cand.index)[fin]
+                elif m_ not in ("roe", "roe_5y", "book_to_price"):
+                    cand.loc[fin, m_] = np.nan
         if fin.any():
             cand.loc[fin, "cf_type"] = None
-    elif fin.any():
-        # 金融股（若啟用專屬條件而入選）：一般公司的現金流、毛利、流動性指標不適用 → 設為中性；價值改用 E/P
-        cand = cand.copy()
-        cand.loc[fin, "earnings_yield"] = cand.loc[fin, "net_income"] / cand.loc[fin, "market_cap"]
-        for c_ in ("fcf_yield", "cfo_to_ni", "fcf_to_ni", "op_margin", "cash_ratio", "equity_ratio"):
-            if c_ in cand:
-                cand.loc[fin, c_] = np.nan
-        cand.loc[fin, "cf_type"] = None
-    ranked = rank_stocks(cand, cfg["ranking"], cfg["top_down"], sectors)
+    ranked = rank_stocks(cand, cfg["ranking"], cfg["top_down"], sectors, pre_pct=True)
     if len(ranked):
         ranked["rank"] = np.arange(1, len(ranked) + 1)
     return {"all": df, "ranked": ranked, "sectors": sectors}

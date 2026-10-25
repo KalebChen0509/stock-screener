@@ -115,6 +115,10 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     out["cfo_to_ni"] = _div(out["cfo"], out["net_income"])
     out["fcf_to_ni"] = _div(out["fcf"], out["net_income"])
     out["roe"] = _div(df["net_income_ttm"], (df["equity"] + df["equity_lag4"].fillna(df["equity"])) / 2)
+    # 近 5 年平均 ROE（每年取一個近四季 ROE，至少 3 年）：排名用，避免單一好年份衝高
+    df["_roe"] = out["roe"]
+    roes = pd.concat([df["_roe"]] + [lag("_roe", n) for n in (4, 8, 12, 16)], axis=1)
+    out["roe_5y"] = roes.mean(axis=1).where(roes.notna().sum(axis=1) >= 3)
     out["profitable_3y"] = (df["net_income_ttm"] > 0) & (df["ni_ttm_lag4"] > 0) & (df["ni_ttm_lag8"] > 0)
     # 現金流量與公司類型（近 3 年合計）：甲＝營+投−籌−、乙＝營+投−籌+，其餘不要碰
     c3 = df["cfo_ttm"] + df["cfo_ttm_lag4"] + df["cfo_ttm_lag8"]

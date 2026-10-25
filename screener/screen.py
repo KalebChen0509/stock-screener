@@ -186,9 +186,25 @@ def flatten_weights(rank_cfg: dict) -> dict:
     return w
 
 
+def market_pct(values: pd.Series, ref: pd.Series) -> pd.Series:
+    """values 在 ref（全市場）分布中的百分位（0～1，平均名次，同 rank(pct=True)）；缺值回傳 NaN。"""
+    r = pd.to_numeric(ref, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna().values
+    v = pd.to_numeric(values, errors="coerce").replace([np.inf, -np.inf], np.nan)
+    if len(r) == 0:
+        return pd.Series(np.nan, index=values.index)
+    r = np.sort(r)
+    lo = np.searchsorted(r, v.fillna(0).values, side="left")
+    hi = np.searchsorted(r, v.fillna(0).values, side="right")
+    pct = np.where(hi > lo, (lo + (hi - lo + 1) / 2) / len(r), lo / len(r) + 0.5 / len(r))
+    return pd.Series(np.clip(pct, 0, 1), index=values.index).where(v.notna())
+
+
 def rank_stocks(df: pd.DataFrame, rank_cfg: dict, td_cfg: dict,
-                sector_tbl: pd.DataFrame | None, industry_col: str = "industry") -> pd.DataFrame:
-    """對 df（通常是通過 hard filters 的股票）計算綜合分數。百分位在 df 內部計算。"""
+                sector_tbl: pd.DataFrame | None, industry_col: str = "industry",
+                ref: pd.DataFrame | None = None, pre_pct: bool = False) -> pd.DataFrame:
+    """對 df（通常是通過 hard filters 的股票）計算綜合分數。
+    ref：全市場資料，百分位改成「在全市場排第幾」（分數 = 贏過全市場百分之幾的加權）；沒給時在 df 內部排名。
+    pre_pct：df 的排名指標已經是 0～1 的百分位（新規則的同業百分位），直接使用。"""
     df = df.copy()
     if df.empty:
         df["score"] = []
@@ -199,7 +215,12 @@ def rank_stocks(df: pd.DataFrame, rank_cfg: dict, td_cfg: dict,
     for m, wt in w.items():
         if m not in df:
             continue
-        pct = df[m].replace([np.inf, -np.inf], np.nan).rank(pct=True).fillna(0.5)
+        if pre_pct:
+            pct = pd.to_numeric(df[m], errors="coerce").fillna(0.5)
+        elif ref is not None and m in ref:
+            pct = market_pct(df[m], ref[m]).fillna(0.5)
+        else:
+            pct = df[m].replace([np.inf, -np.inf], np.nan).rank(pct=True).fillna(0.5)
         df[f"pct_{m}"] = pct * 100
         score += wt * pct * 100
         total += wt

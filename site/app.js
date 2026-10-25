@@ -33,7 +33,7 @@ const METRICS = {
   age_years: ["成立年數", "x"], top10_weight: ["前十大占比", "pct"], is_value: ["價值型指數", "bool"],
   tracking_vol: ["追蹤波動", "pct"], value_tilt: ["價值傾向", "pctile"], div_yield_ttm: ["近12月殖利率", "pct"],
   sue: ["財報驚喜", "x"], rev_yoy_3m: ["近3月營收年增", "pct"], mos: ["安全邊際", "pct"], ep: ["盈餘殖利率(E/P)", "pct"],
-  roe_norm: ["正常化 ROE", "pct"], roe_avg5y: ["ROE（5年平均）", "pct"], roe_avg10y: ["ROE（10年平均）", "pct"],
+  roe_norm: ["正常化 ROE", "pct"], roe_5y: ["ROE（5年平均）", "pct"], roe_avg5y: ["ROE（5年平均）", "pct"], roe_avg10y: ["ROE（10年平均）", "pct"],
   pb_hist_pct: ["P/B 在自己10年歷史的位置", "pctile"], gm_peak_ratio: ["毛利率÷長期平均", "x"],
   buyable: ["模板可買進", "bool"], fin_allowed: ["金融股開放", "bool"], cfo_3y: ["近3年營業CF合計", "money"],
   ev_ebitda: ["EV/EBITDA", "x"], shareholder_yield: ["股東回饋率（股利+買回）", "pct"], int_cover: ["利息保障倍數", "x"],
@@ -137,6 +137,9 @@ async function init() {
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
+  // 排名指標跟著設定檔更新（例如 roe → roe_5y）；保留你改過、而且仍存在的權重
+  { const dw = defaultSettings().weights, old = S.settings.weights || {};
+    S.settings.weights = Object.fromEntries(Object.keys(dw).map((k) => [k, k in old ? old[k] : dw[k]])); }
   $("#updated").textContent = `資料更新：${S.meta.updated}（台北時間）　USD/TWD ${(+S.meta.fx_usdtwd).toFixed(2)}`;
   bindUI();
   route();
@@ -282,24 +285,26 @@ function runScreen(mkt) {
     r.failed = fs.filter((f) => !r["f_" + f.id]).map((f) => f.id);
     r.pass = r.failed.length === 0;
   }
-  // 排名（通過者內部百分位）
+  // 排名：每個指標在全市場（新規則：同業群組）的百分位加權 → 分數代表贏過全市場百分之幾
   const passed = rows.filter((r) => r.pass);
   const W = S.settings.weights;
   const keys = Object.keys(W).filter((k) => k !== "top_down");
   const tot = keys.reduce((s, k) => s + (+W[k] || 0), 0) + (+W.top_down || 0);
   const pcts = {};
-  if (isNew) {
-    // 新規則：先算同業百分位，再在通過者之間排名（避免便宜的產業整體占便宜）；金融股用 E/P、ROE、淨值市價比
+  {
+    const gcol = isNew ? pcol : "__all__";
     const pk = {};
-    for (const k of keys) pk[k] = peerPct(rows, k, pcol);
-    const pep = peerPct(rows, "ep", pcol);
+    for (const k of keys) pk[k] = peerPct(rows, k, gcol);
+    const pep = peerPct(rows, "ep", gcol);
     const pos = new Map(rows.map((r, i) => [r, i]));
-    for (const k of keys) pcts[k] = pctRank(passed.map((r) => {
+    const isFin = (r) => (isNew ? r.template === "financial" : !!r.is_financial);
+    for (const k of keys) pcts[k] = passed.map((r) => {
       const i = pos.get(r);
-      if (r.template === "financial") return k === "earnings_yield" ? pep[i] : (k === "roe" || k === "book_to_price") ? pk[k][i] : null;
-      return pk[k][i];
-    }));
-  } else for (const k of keys) pcts[k] = pctRank(passed.map((r) => r[k]));
+      let v = pk[k][i];
+      if (isFin(r)) v = k === "earnings_yield" ? pep[i] : (k === "roe" || k === "roe_5y" || k === "book_to_price") ? v : null;
+      return v == null ? 0.5 : v;
+    });
+  }
   const bon = S.cfg.ranking.bonuses || {};
   passed.forEach((r, i) => {
     let s = 0;
@@ -435,7 +440,7 @@ function renderOrders() {
 const STOCK_COLS = [
   ["rank", "#", (r, i) => i + 1, "num"], ["id", "代號", (r) => `<b>${esc(r.id)}</b>`],
   ["name", "名稱", (r) => esc(r.name)], ["industry", "產業", (r) => `<span class="hint">${esc(r.industry)}</span> ${groupTags(r)}`],
-  ["score", "綜合分數", (r) => (r.score == null ? "–" : (r.cross ? "⭐ " : "") + r.score.toFixed(1)), "num"],
+  ["score", "綜合分數", (r) => (r.score == null ? "–" : `<span title="各指標在全市場${ruleSet() === "new" ? "（同業群組）" : ""}的百分位加權：約等於贏過百分之幾的公司；另有現金流加分">${r.cross ? "⭐ " : ""}${r.score.toFixed(1)}</span>`), "num"],
   ["close", "收盤", (r) => fmt.price(r.close), "num"], ["market_cap", "市值", (r, i, m) => fmt.money(r.market_cap, m), "num"],
   ["pe", "本益比", (r) => fmt.x(r.pe), "num"], ["pb", "P/B", (r) => fmt.x(r.pb, 2), "num"],
   ["fair_base", "合理價", (r) => (r.fair_base == null ? "–" : fmt.price(r.fair_base)), "num"],
@@ -863,7 +868,7 @@ function renderRules() {
   <ol>
     <li><b>由下而上（Bottom-up）硬性條件</b>：個股要通過下表所有條件才進入候選池。流量項目（營收、利潤、現金流）用近四季合計，資產負債用最新一季。</li>
     <li><b>由上而下（Top-down）</b>：每個產業用「6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%」打分；大盤以 10 個月均線判斷多空（目前僅顯示，可在設定檔開啟「跌破均線股票部位減半」）。</li>
-    <li><b>綜合排名</b>：候選池內以百分位計分，價值 40%＋品質 30%＋安全 10%＋產業分數 20%，另有加分。由下而上分數前 1/3 且產業分數前 1/2 的股票標為 ⭐「上下皆優」。</li>
+    <li><b>綜合排名</b>：通過條件的股票才排名。每個指標用「在全市場排第幾」的百分位（市場 × 產業規則：在同業群組排第幾），價值 40%＋品質 30%（ROE 用近 5 年平均）＋安全 10%＋產業分數 20%，另有加分。分數約等於「贏過全市場百分之幾的公司」，不會因為通過的股票少就被壓低。由下而上分數在通過者前 1/3 且產業分數前 1/2 的股票標為 ⭐「上下皆優」。</li>
     <li><b>組合</b>：${(c.portfolio.fixed_sleeves || []).map((f) => `${esc(f.name)} ${fmt.pct(f.weight, 0)}（${Object.keys(f.holdings).join("、")}）`).join("＋")}${(c.portfolio.fixed_sleeves || []).length ? "＋" : ""}台股個股 ${fmt.pct(c.portfolio.weights.tw_stock, 0)}＋美股個股 ${fmt.pct(c.portfolio.weights.us_stock, 0)}${c.portfolio.weights.etf ? `＋ETF ${fmt.pct(c.portfolio.weights.etf, 0)}` : ""}。個股各取前 ${c.portfolio.max_holdings_per_stock_sleeve} 名等權重${c.portfolio.fill_with_index && c.portfolio.fill_with_index.enabled ? `；通過的股票少於 ${c.portfolio.fill_with_index.min_holdings} 檔時，空名額改買大盤（台股 ${esc(c.portfolio.fill_with_index.tw)}、美股 ${esc(c.portfolio.fill_with_index.us)}）` : ""}。每月用新投入的錢補足低於目標的部位，原則上不賣股。</li>
     ${c.risk && c.risk.stop_loss && c.risk.stop_loss.enabled ? `<li><b>停損</b>：${c.risk.stop_loss.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${c.risk.stop_loss.vol_mult}」` : `個股自${c.risk.stop_loss.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(c.risk.stop_loss.pct, 0)}`}（含息）就賣出，賣出的錢放現金到下次調倉；${c.risk.stop_loss.reentry === "ma" ? "至少 1 個月後、且股價站上 10 個月均線才買回" : c.risk.stop_loss.cooldown_months + " 個月內不買回同一檔"}。每日更新時以日收盤檢查並通知；回測以日線逐日模擬，觸發後隔一個交易日才以收盤價賣出。ETF 不設停損。</li>` : ""}
   </ol>
