@@ -135,6 +135,11 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
     out["cf_type"] = t
     out["cf_type_ok"] = pd.Series(t, index=df.index).isin(["甲", "乙"])
     out["share_growth"] = _div(df["adj_shares"], df["adj_shares_lag4"]) - 1
+    # 成長選股用：營收、每股盈餘近一年成長率（去年同期為負時不計算）；財務槓桿只看「借款」，不含應付帳款
+    out["rev_growth_1y"] = (_div(df["revenue_ttm"], df["revenue_ttm_lag4"]) - 1).clip(-0.9, 5)
+    eps, eps_l4 = _div(df["net_income_ttm"], df["adj_shares"]), _div(df["ni_ttm_lag4"], df["adj_shares_lag4"])
+    out["eps_growth_1y"] = (_div(eps, eps_l4) - 1).clip(-0.9, 5)
+    out["debt_to_equity"] = _div(df["debt"].fillna(0), df["equity"])
     out["adj_shares"] = df["adj_shares"]
     out["equity"] = df["equity"]
     out["cash_total"] = df["cash"].fillna(0) + df["st_inv"].fillna(0)

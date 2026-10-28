@@ -10,7 +10,7 @@ import pandas as pd  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from screener import prices  # noqa: E402
-from screener.backtest import perf_stats, run_backtest, screen_key  # noqa: E402
+from screener.backtest import perf_stats, run_backtest, screen_key, stock_styles  # noqa: E402
 from screener.common import SITE_DATA, load_etf_universe, load_strategy, log, write_json  # noqa: E402
 from screener.etf import static_frame  # noqa: E402
 from screener.loaders import load_infos, load_panels  # noqa: E402
@@ -25,8 +25,11 @@ def main():
     ap.add_argument("--no-daily", action="store_true", help="不抓日線，停損只在月底檢查")
     args = ap.parse_args()
     cfg = load_strategy()
-    monthly = prices.load_monthly()
-    infos = load_infos()
+    # 回測包含 2016 年後下市（櫃）的台股（股價來自 FinMind），避免只看到活下來的公司
+    monthly = prices.load_monthly(include_delisted=True)
+    infos = load_infos(include_delisted=True)
+    n_dl = int(infos["tw"]["delist_date"].notna().sum()) if "tw" in infos and "delist_date" in infos["tw"] else 0
+    log.info("TW universe incl. delisted: %d (delisted %d)", len(infos.get("tw", [])), n_dl)
     panels, _ = load_panels(infos, monthly)
     fx_now = monthly[monthly["ticker"] == "TWD=X"].sort_values("month")["close"].iloc[-1]
     etf_static = static_frame(load_etf_universe(), fx_now)
@@ -70,7 +73,7 @@ def main():
         key = _json.dumps(c, sort_keys=True, default=str)
         if key in done:
             return done[key]
-        sk = screen_key(c)
+        sk = screen_key(c) + str(stock_styles(c))
         stop_on = bool(((c.get("risk") or {}).get("stop_loss") or {}).get("enabled"))
         if sk not in collected:
             col = set()
@@ -81,7 +84,12 @@ def main():
             collected[sk] = col
             if not args.no_daily:
                 allt = set().union(*collected.values()) | {"0050.TW", "SPY"}
-                daily_box["df"] = prices.load_daily_adj(sorted(allt), start="2015-06-01")
+                dd_ = prices.load_daily_adj(sorted(allt), start="2015-06-01")
+                dl_ = prices.load_delisted_daily()        # 下市台股的日收盤（Yahoo 沒有）
+                if len(dl_):
+                    dl_ = dl_[[c_ for c_ in dl_.columns if c_ in allt and c_ not in dd_.columns]]
+                    dd_ = pd.concat([dd_, dl_], axis=1).sort_index() if len(dd_) else dl_
+                daily_box["df"] = dd_
                 log.info("daily for stop-loss: %d tickers", daily_box["df"].shape[1])
             if not stop_on:
                 return o0
@@ -121,6 +129,19 @@ def main():
             if b in sub:
                 st["bench"] = b[6:]
                 st["bench_cagr"] = perf_stats(sub[b], rf).get("cagr")
+                # 每 3 年（滾動 36 個月）跟大盤比：贏的比例、最差一段每年落後多少
+                if len(sub) >= 36:
+                    cs_ = (1 + sub[c].fillna(0)).rolling(36).apply(np.prod, raw=True)
+                    cb_ = (1 + sub[b].fillna(0)).rolling(36).apply(np.prod, raw=True)
+                    ok = cs_.notna() & cb_.notna()
+                    if ok.any():
+                        ex = cs_[ok] ** (1 / 3) - cb_[ok] ** (1 / 3)
+                        st["roll36_beat"] = float((ex >= 0).mean())
+                        st["roll36_worst_excess"] = float(ex.min())
+                        st["roll36_worst_end"] = ex.idxmin().strftime("%Y-%m")
+            sh = {"sleeve_tw": "stock_share_tw", "sleeve_us": "stock_share_us"}.get(c)
+            if sh in sub:
+                st["stock_share"] = float(sub[sh].mean())
             res[labels[c]] = st
         return res
 
@@ -256,6 +277,10 @@ def main():
         "crisis_defs": cfg["backtest"].get("crises", []),
         "daily_stop_tickers": int(daily_box["df"].shape[1]) if len(daily_box["df"]) else 0,
         "stops": [{**s_, "name": names.get(s_["market"], {}).get(s_["id"], "")} for s_ in out.get("stops", [])],
+        "stock_share": {mk: float(m[f"stock_share_{mk}"].mean()) for mk in ("tw", "us") if f"stock_share_{mk}" in m},
+        "delisted": {"n_universe": int(out.get("n_delisted_universe", 0)),
+                     "haircut": float(cfg["backtest"].get("delist_haircut", 0.5)),
+                     "exits": [{**x, "name": names.get(x["market"], {}).get(x["id"], "")} for x in out.get("delist_exits", [])]},
     }
     # ---------- 多方案比較 ----------
     variants = {}
@@ -274,8 +299,20 @@ def main():
                 half[lab] = {"cagr": st_["策略（扣費後）"]["cagr"], "mdd": st_["策略（扣費後）"]["max_drawdown"],
                              "bench_cagr": st_.get("混合基準(20/20/60)", {}).get("cagr"),
                              "from": sub.index[0].strftime("%Y-%m"), "to": sub.index[-1].strftime("%Y-%m")}
+            vo = run_cfg(apply_patch(cfg, patch)) if patch else out
+            sl_half = {}
+            for lab, sub in (("h1", h1), ("h2", h2)):
+                row = {}
+                for mk, sc_, bc_ in (("tw", "sleeve_tw", "bench_0050.TW"), ("us", "sleeve_us", "bench_SPY")):
+                    if sc_ in sub and bc_ in sub and not (sub[sc_].fillna(0) == 0).all():
+                        row[mk] = {"cagr": perf_stats(sub[sc_], rf).get("cagr"), "bench_cagr": perf_stats(sub[bc_], rf).get("cagr")}
+                sl_half[lab] = row
             variants[name] = {
                 "full": sf["策略（扣費後）"], "full_gross": sf["策略（未扣費）"], "y5": s5["策略（扣費後）"],
+                "stock_share": {mk: float(vm[f"stock_share_{mk}"].mean()) for mk in ("tw", "us") if f"stock_share_{mk}" in vm},
+                "sleeve_halves": sl_half,
+                "delist_exits": len(vo.get("delist_exits", [])),
+                "style": apply_patch(cfg, patch)["portfolio"].get("stock_style", "value"),
                 "regimes": regimes_for(vm), "sleeves": sleeves_for(vm),
                 "avg_tw": float(vm["n_tw"].mean()), "avg_us": float(vm["n_us"].mean()),
                 "n_stops": int(vm["n_stops"].sum()) if "n_stops" in vm else 0,
@@ -284,7 +321,7 @@ def main():
                 "group": v.get("group", "stop" if set(patch) <= {"risk"} else "other"),
                 "weights": apply_patch(cfg, patch)["portfolio"]["weights"],
                 "fixed": apply_patch(cfg, patch)["portfolio"].get("fixed_sleeves", []),
-                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro", "factor", "rules"),
+                "is_stop_variant": v.get("group", "stop" if set(patch) <= {"risk"} else "other") in ("stop", "macro", "factor", "rules", "style"),
                 "credit_off_months": int(vm["credit_off"].sum()) if "credit_off" in vm else 0,
                 "nav": list((cap * (1 + vm["ret_net"].fillna(0)).cumprod()).round(0)),
             }

@@ -107,6 +107,11 @@
       <p class="hint">同一段期間、同樣資料，只改一項設定。目前每日選股採用的是「目前版」；想改用哪一版請跟 Claude 說。</p>
       <div class="table-wrap"><table id="varTable" class="data compact"></table></div>
     </div>
+    <div class="card" id="sleeveCmpCard" hidden>
+      <h2>個股部位 vs 大盤（各方案）</h2>
+      <p class="hint">只看選股那一半：台股部位對照 0050、美股部位對照 SPY（都含補位的大盤 ETF）。「3 年勝率」＝任選一段 36 個月，選股部位贏過大盤的比例；「最差 3 年」＝落後最多的那 3 年，每年差幾個百分點。「實際買股」＝個股部位裡真正買股票的比例，其餘是通過的股票不夠時補的大盤 ETF。</p>
+      <div class="table-wrap"><table id="sleeveCmpTable" class="data compact"></table></div>
+    </div>
     <div class="card" id="tradeCard" hidden>
       <h2>每筆持股的結果分布（目前版）</h2>
       <p class="hint">每一筆持股＝從買進到賣出（或停損、或回測結束時仍持有），台股對照同期 0050、美股對照同期 SPY，未扣交易成本。大賺＝賺且贏大盤；小賺＝賺但輸大盤；持平＝報酬在 ±3% 內；小跌＝賠但比大盤少跌；大跌＝賠且輸大盤。</p>

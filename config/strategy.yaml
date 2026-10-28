@@ -24,6 +24,57 @@ portfolio:
   rebalance: monthly                # 每月初依上月底資料換股，等權重
   fixed_sleeves:                    # 固定部位：核心 50% 全球大盤（永豐美股定期定額）
     - {name: "全球大盤", weight: 0.5, holdings: {VT: 1.0}}
+  # ---- 選股風格與持股比重（2026/10/28 新增，先回測驗證，預設維持原本的價值選股、等權重）----
+  stock_style: value                # value = 價值（原本 31 條）；growth = 成長／動能（見下方 growth）；blend = 兩者各半
+  blend: {value: 0.5, growth: 0.5}  # stock_style = blend 時，個股部位分給兩種風格的比例
+  weighting: equal                  # equal = 等權重；cap = 照市值；cap_capped = 照市值但單檔有上限
+  max_weight: 0.10                  # cap_capped：單檔最多占該市場個股部位的比例
+  core_satellite: {tw: 0.0, us: 0.0}  # 個股部位固定放在大盤 ETF（0050／SPY）的比例，例如 0.5 = 一半大盤、一半選股
+
+# ---------------------------------------------------------------------
+#  成長／動能選股（stock_style = growth 或 blend 時使用；2026/10/28 依理論先定好參數，不依回測結果調整）
+#  想法：這幾年的強勢股多是「高成長、正在大量投資、估值偏貴」的公司，原本的價值條件會全部擋掉。
+#  條件只保留「本業真的賺錢、營收在成長、現金流長期為正、借款不過高」，估值只排除同業最貴的 10%；
+#  排名以成長與股價動能為主，再看產業動能與產業內規模（強勢產業的龍頭）。
+# ---------------------------------------------------------------------
+growth:
+  max_holdings: 20                  # 每個市場最多持有幾檔（比價值選股集中）
+  sector_weights: {momentum: 1.0, valuation: 0.0}   # 產業分數只看產業股價動能
+  filters:
+    - {id: template_ok, label: "排除金融股、未獲利的新藥公司、空殼公司", metric: growth_ok_template, op: "==", value: true, enabled: true}
+    - {id: net_income_positive, label: "稅後淨利 > 0（近四季）", metric: net_income, op: ">", value: 0, enabled: true}
+    - {id: op_margin_positive, label: "營業利益率 > 0（本業賺錢）", metric: op_margin, op: ">", value: 0, enabled: true}
+    - {id: rev_growth, label: "營收近一年成長 ≥ 10%", metric: rev_growth_1y, op: ">=", value: 0.10, enabled: true}
+    - {id: cfo_3y_total, label: "近 3 年營業現金流合計 > 0（成長期單年為負可以接受）", metric: cfo_3y, op: ">", value: 0, enabled: true}
+    - {id: debt_to_equity, label: "借款 ÷ 股東權益 ≤ 100%（只看借款，不含應付帳款）", metric: debt_to_equity, op: "<=", value: 1.0, enabled: true}
+    - {id: current_ratio, label: "流動比率 ≥ 100%", metric: current_ratio, op: ">=", value: 1.0, enabled: true}
+    - {id: dilution, label: "股數一年內膨脹 ≤ 10%", metric: share_growth, op: "<=", value: 0.10, na_pass: true, enabled: true}
+    - {id: not_most_expensive, label: "本益比不在同業最貴的 10%", metric: pe, op: "peer_pct<=", value: 0.90, enabled: true}
+    - {id: pe_cap, label: "本益比 ≤ 80 倍", metric: pe, op: "<=", value: 80, enabled: true}
+    - {id: momentum_floor, label: "近 12 個月股價表現不在市場最差 30%", metric: mom_12m_pct, op: ">=", value: 0.30, na_pass: true, enabled: true}
+    - {id: pledge, label: "台股董監質押比 ≤ 30%", metric: pledge_ratio, op: "<=", value: 0.30, na_pass: true, enabled: true}
+    - {id: event_veto, label: "近期無重大負面事件", metric: event_veto, op: "==", value: false, na_pass: true, enabled: true}
+    - {id: market_cap, label: "市值下限：台股 ≥ 30 億台幣、美股 ≥ 3 億美元", metric: market_cap, op: ">=", value: {tw: 3.0e9, us: 3.0e8}, enabled: true}
+    - {id: liquidity, label: "流動性：日均成交值 台股 ≥ 1,000 萬台幣、美股 ≥ 200 萬美元", metric: avg_traded_value, op: ">=", value: {tw: 1.0e7, us: 2.0e6}, enabled: true}
+    - {id: history, label: "至少 12 季財報資料", metric: n_quarters, op: ">=", value: 12, enabled: true}
+  ranking:
+    bottom_up:
+      growth:                       # 成長 35%
+        rev_growth_1y: 0.15         # 營收近一年成長率
+        eps_growth_1y: 0.10         # 每股盈餘近一年成長率
+        rev_yoy_3m: 0.10            # 台股近 3 個月營收年增率（美股沒有，視為中間值）
+      momentum:                     # 股價動能 30%
+        ret_12m: 0.20               # 近 12 個月報酬（扣最近 1 個月）
+        ret_6m: 0.10                # 近 6 個月報酬
+      quality:                      # 品質 10%
+        roe: 0.05
+        op_margin: 0.05
+      value:                        # 估值 10%（成長股也不要買太貴）
+        earnings_yield: 0.10
+      leader:                       # 產業龍頭 5%
+        size_in_industry: 0.05      # 市值在同產業排第幾
+    top_down: 0.10                  # 產業動能 10%
+    bonuses: {}
 
 # ---------------------------------------------------------------------
 #  風險控管：個股停損
@@ -669,6 +720,10 @@ backtest:
   end: "latest"
   risk_free: 0.015
   benchmarks: ["0050.TW", "SPY", "VT"]
+  # 下市（櫃）股票：以最後成交價出場；若停止交易超過 delist_halt_days 天後才下市（多半是經營出問題），
+  # 最後成交價再打 delist_haircut 的折扣（0.5 = 只拿回一半）。被併購的公司通常交易到下市前，不打折。
+  delist_haircut: 0.5
+  delist_halt_days: 20
   # 一次回測多組方案做比較（只影響回測頁的「方案比較」，不影響每日選股）
   # 危機壓力測試區間（完整策略；以混合基準的谷底區分「跌段」與「反彈段」）
   crises:
@@ -734,6 +789,32 @@ backtest:
     - name: "景氣階段切換（理論版）"
       group: rules
       patch: {cycle: {enabled: true}}
+    # ---- 選股風格與持股比重（2026/10/28 新增；參數事先定好，不依回測結果挑）----
+    # 成長版的停損改成「依個股波動調整的移動停損」，停損賣掉的錢下個月初分給其他持股
+    - name: "價值（停損改依波動）"
+      group: style
+      patch: {risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    - name: "成長動能（原停損）"
+      group: style
+      patch: {portfolio: {stock_style: growth}}
+    - name: "成長動能（等權重）"
+      group: style
+      patch: {portfolio: {stock_style: growth}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    - name: "成長動能（單檔上限 10%）"
+      group: style
+      patch: {portfolio: {stock_style: growth, weighting: cap_capped, max_weight: 0.10}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    - name: "成長動能（單檔上限 20%）"
+      group: style
+      patch: {portfolio: {stock_style: growth, weighting: cap_capped, max_weight: 0.20}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    - name: "成長動能（照市值）"
+      group: style
+      patch: {portfolio: {stock_style: growth, weighting: cap}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    - name: "價值＋成長各半"
+      group: style
+      patch: {portfolio: {stock_style: blend}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    - name: "大盤一半＋成長動能一半"
+      group: style
+      patch: {portfolio: {stock_style: growth, core_satellite: {tw: 0.5, us: 0.5}}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
     # ---- 資產配置比較（都用買進價停損 15%）----
     - name: "舊配置 台20美20ETF60＋補位"
       group: alloc

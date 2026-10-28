@@ -82,9 +82,11 @@ CASHFLOW_MAP = {
             "CashProvidedByFinancingActivities", "NetCashInflowOutflowFromFinancingActivities"],
 }
 
+# 註：FinMind 的「其他」是證交所「其他業」（巨大、美利達、寶成、豐泰等真正的公司），不是非股票證券，不排除
 NON_STOCK_CATEGORIES = {"ETF", "ETN", "受益證券", "存託憑證", "Index", "大盤", "所有證券",
                         "創新版股票", "臺灣存託憑證", "指數投資證券(ETN)", "上櫃指數股票型基金(ETF)",
-                        "上市指數股票型基金", "上櫃ETF", "上市ETF", "受益憑證", "其他"}
+                        "上市指數股票型基金", "上櫃ETF", "上市ETF", "受益憑證"}
+GENERIC_CATEGORIES = {"其他", "電子工業", "其他電子類"}   # 同一檔有多個產業別時，最後才用這幾個
 FINANCIAL_CATEGORIES = {"金融保險業", "金融保險", "金融業", "證券業", "保險業", "銀行業"}
 
 
@@ -143,6 +145,10 @@ def fetch_stock_info(fm: FinMind) -> pd.DataFrame:
             return pd.read_csv(INFO_PATH, dtype={"stock_id": str})
         raise RuntimeError("TaiwanStockInfo empty")
     df["stock_id"] = df["stock_id"].astype(str)
+    # 同一檔可能有多列（舊產業別、改上市／上櫃）：取最新日期的一列；同日期時優先用明確的產業別
+    if "date" in df:
+        df["_generic"] = df["industry_category"].isin(GENERIC_CATEGORIES)
+        df = df.sort_values(["stock_id", "date", "_generic"], ascending=[True, False, True]).drop(columns="_generic")
     df = df.drop_duplicates("stock_id", keep="first")
     df.to_csv(ensure_dir(INFO_PATH.parent) / INFO_PATH.name, index=False)
     return df
@@ -294,19 +300,24 @@ def _liquidity_rank(universe: pd.DataFrame) -> dict:
 
 
 def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
-                        start: str = "2011-01-01", recheck_days: int = 3) -> int:
-    """增量更新台股財報快取。回傳本次成功更新的公司數。"""
+                        start: str = "2011-01-01", recheck_days: int = 3,
+                        frozen: set | None = None) -> int:
+    """增量更新台股財報快取。回傳本次成功更新的公司數。
+    frozen：已下市的公司，抓過一次（目前版本）就不再重查。"""
     ensure_dir(TW_FIN_DIR)
     meta = _load_meta()
     today = date.today()
     exp_q = expected_latest_quarter(today, lag)
     in_window_q = (pd.Timestamp(today) - pd.offsets.QuarterEnd(1)).normalize()
+    frozen = frozen or set()
 
     todo = []
     for sid in universe["stock_id"]:
         m = meta.get(sid)
         if not m or m.get("v", 1) < SCHEMA_VERSION:
             todo.append((0, sid))
+            continue
+        if sid in frozen:
             continue
         last_q = pd.Timestamp(m.get("last_period", "1900-01-01"))
         last_chk = datetime.fromisoformat(m.get("checked", "1900-01-01")).date()
@@ -361,6 +372,109 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
     _save_meta(meta)
     log.info("TW fundamentals updated: %d stocks, %d API calls", done, fm.calls)
     return done
+
+
+# ----------------------------------------------------------------------------
+#  下市（櫃）公司：回測要包含當時存在、之後下市的公司，否則會有倖存者偏差（只看到活下來的公司）
+# ----------------------------------------------------------------------------
+DELISTED_PATH = CACHE_DIR / "tw_delisted.csv"
+DELISTED_PX_PATH = CACHE_DIR / "tw_delisted_prices.csv.gz"      # 月資料，欄位同 prices_monthly
+DELISTED_DAILY_PATH = CACHE_DIR / "tw_delisted_daily.csv.gz"    # 日收盤（回測停損用），欄位同 daily_bt
+DELISTED_COLS = ["stock_id", "stock_name", "industry_category", "type", "is_financial", "yahoo",
+                 "delist_date", "last_trade", "px_done"]
+
+
+def load_delisted() -> pd.DataFrame:
+    if not DELISTED_PATH.exists():
+        return pd.DataFrame(columns=DELISTED_COLS)
+    d = pd.read_csv(DELISTED_PATH, dtype={"stock_id": str})
+    d["is_financial"] = d["is_financial"].astype(str).str.lower().isin(["true", "1"])
+    return d
+
+
+def _price_frames(raw: pd.DataFrame, tk: str) -> tuple[pd.DataFrame, pd.DataFrame, str | None]:
+    """FinMind 日股價 → (月資料, 日資料, 最後交易日)。下市股沒有還原股價，以收盤價代替（不含股利，偏保守）。"""
+    if raw is None or raw.empty or "close" not in raw:
+        return pd.DataFrame(), pd.DataFrame(), None
+    d = pd.DataFrame({"date": pd.to_datetime(raw["date"]), "close": pd.to_numeric(raw["close"], errors="coerce"),
+                      "volume": pd.to_numeric(raw.get("Trading_Volume"), errors="coerce")})
+    d = d[(d["close"] > 0) & (d["volume"].fillna(0) > 0)].sort_values("date")
+    if d.empty:
+        return pd.DataFrame(), pd.DataFrame(), None
+    d["month"] = (d["date"] + pd.offsets.MonthEnd(0)).dt.normalize()
+    g = d.groupby("month")
+    m = pd.DataFrame({"ticker": tk, "close": g["close"].last(), "volume": g["volume"].sum()}).reset_index()
+    m["adj_close"], m["split"] = m["close"], 0.0
+    dd = d[d["date"] >= "2015-06-01"]
+    daily = pd.DataFrame({"ticker": tk, "date": dd["date"].dt.normalize(), "adj_close": dd["close"].round(4)})
+    return m[["ticker", "close", "adj_close", "volume", "split", "month"]], daily, str(d["date"].max().date())
+
+
+def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") -> pd.DataFrame:
+    """下市（櫃）普通股清單＋股價（每檔只抓一次）。回傳清單（DELISTED_COLS）。
+    財報與月營收由 update_fundamentals／month_rev.update 一併回填（傳入 frozen，抓過就不再重查）。"""
+    old = load_delisted()
+    try:
+        dl = fm.get("TaiwanStockDelisting", start="2000-01-01")
+    except FinMindLimit:
+        return old
+    if dl.empty:
+        return old
+    dl["stock_id"] = dl["stock_id"].astype(str)
+    dl = dl[dl["stock_id"].str.fullmatch(r"[1-9]\d{3}") & (dl["date"].astype(str) >= since)]
+    dl = dl.sort_values("date").drop_duplicates("stock_id", keep="last")
+    inf = info.copy()
+    inf["stock_id"] = inf["stock_id"].astype(str)
+    inf = inf.drop_duplicates("stock_id", keep="first").set_index("stock_id")
+    prev = old.set_index("stock_id") if len(old) else pd.DataFrame(columns=DELISTED_COLS[1:])
+    rows = []
+    for _, r in dl.iterrows():
+        sid, dd = r["stock_id"], str(r["date"])[:10]
+        ind = inf["industry_category"].get(sid) if sid in inf.index else None
+        typ = inf["type"].get(sid) if sid in inf.index else None
+        if ind in NON_STOCK_CATEGORIES:
+            continue
+        # 代號被新公司沿用（清單更新日比下市日晚很多）→ 不是同一家，略過
+        if sid in inf.index and "date" in inf and \
+                str(inf["date"].get(sid, ""))[:10] > str(pd.Timestamp(dd) + pd.Timedelta(days=60))[:10]:
+            continue
+        p = prev.loc[sid] if sid in prev.index else None
+        rows.append({"stock_id": sid, "stock_name": r.get("stock_name", ""),
+                     "industry_category": ind if isinstance(ind, str) else "未分類",
+                     "type": typ if isinstance(typ, str) else "twse",
+                     "is_financial": ind in FINANCIAL_CATEGORIES,
+                     "yahoo": sid + (".TWO" if typ == "tpex" else ".TW"), "delist_date": dd,
+                     "last_trade": p["last_trade"] if p is not None else None,
+                     "px_done": bool(p["px_done"]) if p is not None else False})
+    out = pd.DataFrame(rows, columns=DELISTED_COLS)
+    todo = out[~out["px_done"].astype(bool)]
+    mon = pd.read_csv(DELISTED_PX_PATH, parse_dates=["month"]) if DELISTED_PX_PATH.exists() else pd.DataFrame()
+    day = pd.read_csv(DELISTED_DAILY_PATH, parse_dates=["date"]) if DELISTED_DAILY_PATH.exists() else pd.DataFrame()
+    new_m, new_d = [], []
+    done = 0
+    try:
+        for i, r in todo.iterrows():
+            raw = fm.get("TaiwanStockPrice", r["stock_id"], "2011-01-01")
+            m, d, last = _price_frames(raw, r["yahoo"])
+            if len(m):
+                new_m.append(m)
+                new_d.append(d)
+            out.at[i, "last_trade"] = last
+            out.at[i, "px_done"] = True
+            done += 1
+    except FinMindLimit as e:
+        log.warning("FinMind limit during delisted prices: %s", e)
+    if new_m:
+        got = {f["ticker"].iloc[0] for f in new_m}
+        mon = pd.concat([mon[~mon["ticker"].isin(got)] if len(mon) else mon] + new_m, ignore_index=True)
+        day = pd.concat([day[~day["ticker"].isin(got)] if len(day) else day] + new_d, ignore_index=True)
+        mon.to_csv(DELISTED_PX_PATH, index=False, compression="gzip")
+        day.to_csv(DELISTED_DAILY_PATH, index=False, compression="gzip")
+    ensure_dir(DELISTED_PATH.parent)
+    out.to_csv(DELISTED_PATH, index=False)
+    log.info("TW delisted since %s: %d stocks (prices fetched now %d, total with prices %d)",
+             since, len(out), done, int(out["last_trade"].notna().sum()))
+    return out
 
 
 def load_fundamentals() -> pd.DataFrame:

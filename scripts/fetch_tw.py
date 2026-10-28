@@ -5,6 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pandas as pd  # noqa: E402
+
 from screener.common import load_strategy, log, write_json, CACHE_DIR  # noqa: E402
 from screener import data_tw  # noqa: E402
 
@@ -30,12 +32,21 @@ def main():
     fm.max_calls = args.max_calls - reserve
     log.info("FinMind budget: %d calls (fundamentals %d, month revenue reserve %d)",
              args.max_calls, fm.max_calls - fm.calls, reserve)
-    data_tw.update_fundamentals(uni, cfg["reporting_lag"]["tw"], fm)
+    # 下市（櫃）公司：清單＋股價（每檔只抓一次），財報與月營收跟著一般公司一起回填（回測避免倖存者偏差）
+    try:
+        dl = data_tw.update_delisted(fm, info)
+    except Exception as e:  # noqa
+        log.warning("delisted update failed: %s", e)
+        dl = data_tw.load_delisted()
+    extra = dl[~dl["stock_id"].isin(uni["stock_id"])][uni.columns.tolist()] if len(dl) else uni.iloc[0:0]
+    uni_ext = pd.concat([uni, extra], ignore_index=True)
+    frozen = set(dl["stock_id"]) if len(dl) else set()
+    data_tw.update_fundamentals(uni_ext, cfg["reporting_lag"]["tw"], fm, frozen=frozen)
     fm.max_calls = args.max_calls
     # 月營收：OpenAPI 補最新月份，剩餘 FinMind 額度回填歷史
     try:
         from screener import month_rev
-        mp = month_rev.update(uni, fm, data_tw._liquidity_rank(uni))
+        mp = month_rev.update(uni_ext, fm, data_tw._liquidity_rank(uni))
         write_json(CACHE_DIR / "tw_month_rev_progress.json", mp)
     except Exception as e:  # noqa
         log.warning("month revenue update failed: %s", e)

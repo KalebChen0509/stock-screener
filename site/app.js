@@ -707,7 +707,7 @@ function renderBacktest() {
   if (Object.keys(V).length) {
     $("#varCard").hidden = false;
     const bf = bt.stats_full["混合基準(20/20/60)"], b5 = bt.stats_5y["混合基準(20/20/60)"];
-    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", factor: "新因子與金融股（目前配置）", rules: "市場 × 產業規則（目前配置）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
+    const gname = { stop: "停損規則（目前配置）", macro: "信用利差減碼（目前配置）", factor: "新因子與金融股（目前配置）", rules: "市場 × 產業規則（目前配置）", style: "選股風格與持股比重（同樣 VT 50%＋個股 50%）", alloc: "資產配置比較（買進價停損 15%）", other: "其他" };
     let lastG = null;
     const rows = Object.entries(V).map(([k, v]) => {
       const h = v.halves || {};
@@ -720,13 +720,14 @@ function renderBacktest() {
     $("#varTable").innerHTML = `<thead><tr><th>方案</th><th class="num">10年年化</th><th class="num">近5年年化</th><th class="num">期末金額</th><th class="num">最大回撤</th><th class="num">夏普</th><th class="num">空頭年勝率</th><th class="num">多頭年勝率</th><th class="num">前半${h0.h1 ? `<br><span class="hint">${h0.h1.from}～${h0.h1.to}</span>` : ""}</th><th class="num">後半${h0.h2 ? `<br><span class="hint">${h0.h2.from}～${h0.h2.to}</span>` : ""}</th><th class="num">平均檔數 台／美</th><th class="num">停損次數</th></tr></thead><tbody>${rows}
       <tr class="dim"><td>混合基準</td><td class="num">${fmt.pct(bf.cagr)}</td><td class="num">${fmt.pct(b5.cagr)}</td><td class="num">${fmt.ntd(bf.final_amount)}</td><td class="num">${fmt.pct(bf.max_drawdown)}</td><td class="num">${fmt.x(bf.sharpe, 2)}</td><td></td><td></td><td class="num">${h0.h1 && h0.h1.bench_cagr != null ? fmt.pct(h0.h1.bench_cagr) : ""}</td><td class="num">${h0.h2 && h0.h2.bench_cagr != null ? fmt.pct(h0.h2.bench_cagr) : ""}</td><td></td><td></td></tr></tbody>`;
   }
+  renderSleeveCmp(bt);
   renderCrisis(bt);
   renderStress(bt);
   renderFrontier(bt);
   renderTrades(bt);
   // 各部位
   const sl = (S.btPeriod === "5y" ? bt.sleeves_5y : bt.sleeves_full) || {};
-  $("#btSleeves").innerHTML = `<thead><tr><th>部位</th><th class="num">年化</th><th class="num">對照</th><th class="num">對照年化</th><th class="num">差距</th><th class="num">最大回撤</th></tr></thead><tbody>${Object.entries(sl).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.cagr)}</td><td class="num">${esc(v.bench || "")}</td><td class="num">${fmt.pct(v.bench_cagr)}</td><td class="num ${v.cagr - v.bench_cagr >= 0 ? "pos" : "neg"}">${v.bench_cagr != null ? fmt.pct(v.cagr - v.bench_cagr) : "–"}</td><td class="num">${fmt.pct(v.max_drawdown)}</td></tr>`).join("")}</tbody>`;
+  $("#btSleeves").innerHTML = `<thead><tr><th>部位</th><th class="num">年化</th><th class="num">對照</th><th class="num">對照年化</th><th class="num">差距</th><th class="num">最大回撤</th><th class="num">3 年勝率</th><th class="num">最差 3 年</th><th class="num">實際買股</th></tr></thead><tbody>${Object.entries(sl).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.cagr)}</td><td class="num">${esc(v.bench || "")}</td><td class="num">${fmt.pct(v.bench_cagr)}</td><td class="num ${v.cagr - v.bench_cagr >= 0 ? "pos" : "neg"}">${v.bench_cagr != null ? fmt.pct(v.cagr - v.bench_cagr) : "–"}</td><td class="num">${fmt.pct(v.max_drawdown)}</td><td class="num">${v.roll36_beat != null ? fmt.pct(v.roll36_beat, 0) : "–"}</td><td class="num ${v.roll36_worst_excess >= 0 ? "pos" : "neg"}">${v.roll36_worst_excess != null ? fmt.pct(v.roll36_worst_excess) : "–"}</td><td class="num">${v.stock_share != null ? fmt.pct(v.stock_share, 0) : "–"}</td></tr>`).join("")}</tbody>`;
   const rg = (S.btPeriod === "5y" ? bt.regimes_5y : bt.regimes_full) || {};
   if (rg.up_capture != null) {
     const per = Object.entries(rg.periods || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="num">${fmt.pct(v.strategy_net)}</td><td class="num">${fmt.pct(v.bench)}</td><td class="num ${v.strategy_net >= v.bench ? "pos" : "neg"}">${fmt.pct(v.strategy_net - v.bench)}</td></tr>`).join("");
@@ -782,7 +783,7 @@ function renderBacktest() {
     <li>每月底以「當時已公布」的財報（台股依法定公告期限、美股依 SEC 實際申報日）與月底股價選股，下個月持有；各部位等權重，台股 ${fmt.pct(bt.weights.tw_stock, 0)}／美股 ${fmt.pct(bt.weights.us_stock, 0)}／ETF ${fmt.pct(bt.weights.etf, 0)}，每月再平衡。</li>
     <li>扣費後情境：台股手續費 ${fmt.pct(c.tw_stock.buy, 4)}、賣出證交稅 0.3%（ETF 0.1%）；美股複委託手續費 ${fmt.pct(c.us.buy, 2)}＋換匯價差 ${fmt.pct(c.fx_spread, 2)}；美股股利預扣 ${fmt.pct(c.us_dividend_withholding, 0)}。全期累計交易成本約占淨值 ${fmt.pct(bt.cost_total_pct, 1)}。未計台股股利所得稅與二代健保補充保費（依個人稅率而定）。</li>
     <li>以新台幣計價，美股與美股 ETF 依每月匯率換算；股價含息還原（Yahoo Finance）。某市場無股票通過時該部位持有現金（報酬 0）。</li>
-    <li><b>倖存者偏差</b>：資料來源只包含目前仍掛牌的公司，已下市股票不在股票池中，回測結果通常會偏樂觀。</li>
+    <li><b>倖存者偏差</b>：${bt.delisted && bt.delisted.n_universe ? `台股已加入 2016 年後下市（櫃）的 ${bt.delisted.n_universe} 家公司（股價來自 FinMind，下市股沒有還原股利，偏保守）；持有中遇到下市以最後成交價出場，停止交易一段時間後才下市的，最後成交價再扣掉 ${fmt.pct(bt.delisted.haircut, 0)}，回測期間共 ${(bt.delisted.exits || []).length} 次。部分下市公司 FinMind 查不到財報，無法放進回測。` : "台股下市公司資料尚未補齊。"}美股只包含目前仍掛牌的公司（免費資料沒有下市股票的股價），結果可能偏樂觀。</li>
     <li>ETF 的費用率與規模用目前數值（歷史數值不易取得）；成立年數、流動性、殖利率則用當時數值。</li>
     <li>過去績效不代表未來報酬，本系統僅供研究參考，不構成投資建議。</li></ul>`;
 }
@@ -948,6 +949,25 @@ function bindUI() {
 
 init();
 
+// ---------------------------------------------------------------- 個股部位 vs 大盤（各方案）
+function renderSleeveCmp(bt) {
+  const V = bt.variants || {};
+  const rows = Object.entries(V).filter(([, v]) => v.sleeves && (v.sleeves["台股個股部位"] || v.sleeves["美股個股部位"]));
+  if (!rows.length) return;
+  $("#sleeveCmpCard").hidden = false;
+  const cells = (s, h) => {
+    if (!s) return `<td class="num">–</td>`.repeat(5);
+    const d = s.cagr - s.bench_cagr;
+    const hh = h && h.h1 && h.h2 ? `${fmt.pct(h.h1.cagr - h.h1.bench_cagr)}／${fmt.pct(h.h2.cagr - h.h2.bench_cagr)}` : "–";
+    return `<td class="num">${fmt.pct(s.cagr)} <span class="hint">vs ${fmt.pct(s.bench_cagr)}</span></td><td class="num ${d >= 0 ? "pos" : "neg"}">${fmt.pct(d)}<br><span class="hint">前／後半 ${hh}</span></td>` +
+      `<td class="num">${s.roll36_beat != null ? fmt.pct(s.roll36_beat, 0) : "–"}</td><td class="num ${s.roll36_worst_excess >= 0 ? "pos" : "neg"}">${s.roll36_worst_excess != null ? fmt.pct(s.roll36_worst_excess) : "–"}${s.roll36_worst_end ? `<br><span class="hint">到 ${esc(s.roll36_worst_end)}</span>` : ""}</td><td class="num">${s.stock_share != null ? fmt.pct(s.stock_share, 0) : "–"}</td>`;
+  };
+  const half = (v, mk) => { const h = v.sleeve_halves || {}; return h.h1 && h.h2 ? { h1: h.h1[mk], h2: h.h2[mk] } : null; };
+  const sub = `<th class="num">年化 vs 大盤</th><th class="num">每年差距</th><th class="num">3 年勝率</th><th class="num">最差 3 年</th><th class="num">實際買股</th>`;
+  $("#sleeveCmpTable").innerHTML = `<thead><tr><th rowspan="2">方案</th><th colspan="5" class="num">台股部位 vs 0050</th><th colspan="5" class="num">美股部位 vs SPY</th></tr><tr>${sub}${sub}</tr></thead><tbody>${rows.map(([k, v]) =>
+    `<tr><td><b>${esc(k)}</b></td>${cells(v.sleeves["台股個股部位"], half(v, "tw"))}${cells(v.sleeves["美股個股部位"], half(v, "us"))}</tr>`).join("")}</tbody>`;
+}
+
 // ---------------------------------------------------------------- 危機壓力測試
 function renderCrisis(bt) {
   const V = bt.variants || {};
@@ -1006,6 +1026,7 @@ function renderFrontier(bt) {
                   ["信用利差", (p) => p.kind === "variant" && p.group === "macro", col.macro],
                   ["新因子／金融股", (p) => p.kind === "variant" && p.group === "factor", col.factor],
                   ["產業規則", (p) => p.kind === "variant" && p.group === "rules", col.rules || col.factor],
+                  ["選股風格", (p) => p.kind === "variant" && p.group === "style", cssVar("--s6")],
                   ["資產配置", (p) => p.kind === "variant" && p.group === "alloc", col.alloc],
                   ["基準（大盤）", (p) => p.kind === "bench", col.bench]];
   S.charts.frontier = new Chart($("#btFrontier"), {

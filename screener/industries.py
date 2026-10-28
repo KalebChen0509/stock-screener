@@ -33,7 +33,7 @@ TW_SYNONYMS = {
     "綠能環保類": "綠能環保", "數位雲端類": "數位雲端", "居家生活類": "居家生活",
     "其他電子類": "其他電子業", "電子工業": "其他電子業",
     "觀光事業": "觀光餐旅", "貿易百貨業": "貿易百貨", "建材營造業": "建材營造",
-    "生技醫療": "生技醫療業",
+    "生技醫療": "生技醫療業", "其他": "其他業",
 }
 TW_TEMPLATE = {
     "半導體業": "cyclical", "光電業": "cyclical",
@@ -45,7 +45,7 @@ TW_TEMPLATE = {
     "玻璃陶瓷": "cyclical", "造紙工業": "cyclical", "橡膠工業": "cyclical", "電器電纜": "cyclical",
     "汽車工業": "cyclical", "航運業": "cyclical",
     "紡織纖維": "general", "電機機械": "general", "觀光餐旅": "general", "貿易百貨": "general",
-    "居家生活": "general", "運動休閒": "general", "文化創意業": "general",
+    "居家生活": "general", "運動休閒": "general", "文化創意業": "general", "其他業": "general",
     "食品工業": "defensive", "農業科技業": "defensive",
     "生技醫療業": "pharma", "化學生技醫療": "pharma",        # pharma：依是否獲利分成防禦或新藥研究
     "油電燃氣業": "utility", "綠能環保": "utility",

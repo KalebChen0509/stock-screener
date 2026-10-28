@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .common import log
-from .engine import px_frame_monthly, ret_n_months, screen_market, select_with_buffer
+from .engine import px_frame_monthly, ret_n_months, screen_growth, screen_market, select_with_buffer
 from .etf import point_in_time_metrics, screen_and_rank
 from .screen import market_regime
 
@@ -31,6 +31,47 @@ def screen_key(cfg: dict) -> str:
     import json
     sub = {k: v for k, v in cfg.items() if k not in ("portfolio", "risk", "backtest", "costs")}
     return hashlib.md5(json.dumps(sub, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def stock_styles(cfg: dict) -> list[tuple[str, float]]:
+    """個股部位用哪些選股風格、各占多少：[("value", 1.0)]、[("growth", 1.0)] 或兩者各半。"""
+    p = cfg.get("portfolio", {}) or {}
+    st = p.get("stock_style", "value") or "value"
+    if st == "blend":
+        b = {k: float(v) for k, v in (p.get("blend") or {"value": 0.5, "growth": 0.5}).items() if float(v) > 0}
+        tot = sum(b.values()) or 1.0
+        return [(k, v / tot) for k, v in b.items()]
+    return [(st, 1.0)]
+
+
+def weight_picks(ids: list[str], mcap: dict, total: float, scheme: str = "equal",
+                 cap_of_total: float | None = None) -> dict:
+    """把 total 分給 ids。equal = 等權重；cap = 照市值；cap_capped = 照市值、單檔不超過 total × cap_of_total
+    （超出的部分依市值比例分給其他檔；上限太低、分不完時退回等權重）。"""
+    if not ids or total <= 0:
+        return {}
+    n = len(ids)
+    if scheme == "equal" or not mcap:
+        return {i: total / n for i in ids}
+    w = np.array([float(mcap.get(i, np.nan)) for i in ids])
+    w = np.where(np.isfinite(w) & (w > 0), w, np.nan)
+    w = np.where(np.isnan(w), np.nanmedian(w) if np.isfinite(w).any() else 1.0, w)
+    w = w / w.sum()
+    if scheme == "cap_capped" and cap_of_total:
+        cap = float(cap_of_total)
+        if cap * n < 1:
+            return {i: total / n for i in ids}
+        for _ in range(100):
+            over = w > cap + 1e-12
+            if not over.any():
+                break
+            excess = float((w[over] - cap).sum())
+            w[over] = cap
+            free = w < cap - 1e-12
+            if not free.any():
+                break
+            w[free] += excess * w[free] / w[free].sum()
+    return {i: total * float(x) for i, x in zip(ids, w)}
 
 
 class StopRule:
@@ -116,20 +157,24 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     spells_open = {"tw": {}, "us": {}}   # sid -> {start, tk}
     spells = []
 
-    def _span_ret(tk, d0, d1, use_daily):
-        """d0（月底）到 d1 的含息報酬；有日線時兩端都用日線，避免日線與月線的還原基準不同。"""
+    def _span_ret(tk, d0, d1, use_daily, mult=1.0):
+        """d0（月底）到 d1 的含息報酬；有日線時兩端都用日線，避免日線與月線的還原基準不同。
+        d1 沒有股價（下市、停止交易）時用 d1 之前最後一筆；mult：下市折價（1 − 折價比例）。"""
         if use_daily and tk in dcols:
             a, b = _dlast(tk, d0), _dlast(tk, d1)
         else:
             a = adj.at[d0, tk] if tk in adj and d0 in adj.index else np.nan
             b = adj.at[d1, tk] if tk in adj and d1 in adj.index else np.nan
-        return float(b / a - 1) if np.isfinite(a) and np.isfinite(b) and a > 0 else np.nan
+            if not np.isfinite(b) and tk in adj:
+                s_ = adj[tk].loc[:d1].dropna()
+                b = float(s_.iloc[-1]) if len(s_) else np.nan
+        return float(b * mult / a - 1) if np.isfinite(a) and np.isfinite(b) and a > 0 else np.nan
 
-    def _close_spell(mkt, sid, end, reason, use_daily=False):
+    def _close_spell(mkt, sid, end, reason, use_daily=False, mult=1.0):
         sp = spells_open[mkt].pop(sid, None)
         if not sp:
             return
-        r = _span_ret(sp["tk"], sp["start"], end, use_daily)
+        r = _span_ret(sp["tk"], sp["start"], end, use_daily, mult)
         bk = bench_of[mkt]
         b = _span_ret(bk, sp["start"], end, use_daily and bk in dcols)
         if not use_daily and not np.isfinite(b):
@@ -197,6 +242,61 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             return True
         return False
 
+    # ---------- 選股風格、持股比重、下市公司 ----------
+    styles = stock_styles(cfg)
+    pcfg = cfg["portfolio"]
+    scheme = pcfg.get("weighting", "equal") or "equal"
+    max_w = float(pcfg.get("max_weight", 0.10) or 0.10)
+    core_sat = pcfg.get("core_satellite") or {}
+    gcfg = cfg.get("growth") or {}
+    held_s = {}                     # (市場, 風格) -> 持股
+    _inputs = {}                    # 本月的股價輸入（各風格共用）
+    # 下市資訊（回測載入下市公司時才有）：(市場, 代號) -> (下市日, 最後交易日)
+    delist = {}
+    for mk_, inf_ in infos.items():
+        if "delist_date" not in inf_:
+            continue
+        d_ = inf_[inf_["delist_date"].notna()]
+        lt_col = d_["last_trade"] if "last_trade" in d_ else pd.Series(pd.NaT, index=d_.index)
+        for sid, dd_, lt_ in zip(d_.index, d_["delist_date"], lt_col):
+            delist[(mk_, str(sid))] = (pd.Timestamp(dd_), pd.Timestamp(lt_) if pd.notna(lt_) else None)
+    tk_delist = {y_maps[mk_][sid]: (mk_, sid, dd_, lt_) for (mk_, sid), (dd_, lt_) in delist.items()
+                 if sid in y_maps.get(mk_, {})}
+    # 停止交易一段時間後才下市＝多半是經營出問題（不是被併購）：最後成交價再打折（預設 5 折）
+    haircut = float(bt.get("delist_haircut", 0.5))
+    halt_days = int(bt.get("delist_halt_days", 20))
+    delist_exits = []
+
+    def _get_ranked(style, mkt, t):
+        ck = (skey, style, mkt, t)
+        if ck in screen_cache:
+            return screen_cache[ck]
+        ym = y_maps[mkt]
+        if (mkt, t) not in _inputs:
+            _inputs[(mkt, t)] = (px_frame_monthly(close, vol, t, ym),
+                                 ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym),
+                                 ret_n_months(adj, t, 11, ym, skip=1))
+        px, r6, r12 = _inputs[(mkt, t)]
+        if style == "growth":
+            res = screen_growth(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
+                                events=(events or {}).get(mkt), month_rev=month_rev)
+        else:
+            if close_stack[0] is None and ((cfg.get("industry_rules") or {}).get("enabled")
+                                           or (cfg.get("cycle") or {}).get("enabled")):
+                cs_ = close.stack()
+                cs_.index.names = ["m", "tk"]
+                close_stack[0] = cs_
+            ctx = {"adj": adj, "close": close_stack[0] if close_stack[0] is not None else close,
+                   "ymap": ym, "index": td["regime_indices"][mkt],
+                   "rf": _rf_at(mkt, t), "implied": False, "phase": _phase(mkt, t)}
+            res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
+                                events=(events or {}).get(mkt), month_rev=month_rev, ctx=ctx)
+        rk = res["ranked"]
+        cols = [c_ for c_ in ("id", "rank", "pass_all", "market_cap") if c_ in rk]
+        ranked = rk[cols].copy() if len(rk) else rk
+        screen_cache[ck] = ranked
+        return ranked
+
     for i, t in enumerate(rebal[:-1]):
         t1 = rebal[i + 1]
         # ---------- 選股 ----------
@@ -212,32 +312,19 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             credit_off = bool(credit_signal(macro, t, co).get("risk_off"))
         co_scale = float(co.get("scale", 0.5)) if credit_off else 1.0
         co_apply = set(co.get("apply_to", ["tw", "us"]))
+        _inputs.clear()
+        stock_share = {}
         for mkt, sleeve in (("tw", "tw_stock"), ("us", "us_stock")):
             if mkt not in panels or panels[mkt].empty:
                 continue
             ym = y_maps[mkt]
             prev_held = list(held[mkt])
-            ck = (skey, mkt, t)
-            if ck in screen_cache:
-                ranked = screen_cache[ck]
-            else:
-                px = px_frame_monthly(close, vol, t, ym)
-                r6 = ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym)
-                r12 = ret_n_months(adj, t, 11, ym, skip=1)
-                if close_stack[0] is None and ((cfg.get("industry_rules") or {}).get("enabled")
-                                               or (cfg.get("cycle") or {}).get("enabled")):
-                    cs = close.stack()
-                    cs.index.names = ["m", "tk"]
-                    close_stack[0] = cs
-                ctx = {"adj": adj, "close": close_stack[0] if close_stack[0] is not None else close,
-                       "ymap": ym, "index": td["regime_indices"][mkt],
-                       "rf": _rf_at(mkt, t), "implied": False, "phase": _phase(mkt, t)}
-                res = screen_market(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
-                                    events=(events or {}).get(mkt), month_rev=month_rev, ctx=ctx)
-                ranked = res["ranked"][["id", "rank", "pass_all"]].copy() if len(res["ranked"]) else res["ranked"]
-                screen_cache[ck] = ranked
-            if collect is not None and len(ranked):
-                collect.update(ym[x] for x in ranked["id"] if x in ym)
+            ranked_by = {}
+            for style, _sh in styles:
+                rk = _get_ranked(style, mkt, t)
+                if collect is not None and len(rk):
+                    collect.update(ym[x] for x in rk["id"] if x in ym)
+                ranked_by[style] = rk
             # 沒有日線的股票：退回月底檢查
             stopped = []
             if rule.on and mkt in rule.apply:
@@ -253,9 +340,49 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                                           "ret_from_ref": float(p_now / r0 - 1), "daily": False})
                 held[mkt] = [h for h in held[mkt] if h not in stopped]
             blocked = {s_ for s_ in list(cooldown[mkt]) if not _reentry_ok(mkt, s_, i, t)}
-            if blocked and len(ranked):
-                ranked = ranked[~ranked["id"].isin(blocked)]
-            ids = select_with_buffer(ranked, [h for h in held[mkt] if h not in blocked], max_n, mult)
+            gone = {sid for (mk_, sid), (dd_, _lt) in delist.items() if mk_ == mkt and dd_ <= t}
+            weight = pw[sleeve] * (co_scale if mkt in co_apply else 1.0)
+            if td.get("regime_defensive"):
+                idx_t = td["regime_indices"][mkt]
+                if idx_t in close:
+                    rg = market_regime(close[idx_t], t, td.get("regime_ma_months", 10))
+                    if rg["bull"] is False:
+                        weight *= 0.5
+            fill = cfg["portfolio"].get("fill_with_index", {}) or {}
+            min_n = int(fill.get("min_holdings", 0) or 0) if fill.get("enabled") else 0
+            cs = float(core_sat.get(mkt, 0) or 0)
+            ids = []
+            for style, share in styles:
+                rk = ranked_by[style]
+                if len(rk) and (blocked or gone):
+                    rk = rk[~rk["id"].isin(blocked | gone)]
+                n_max = int(gcfg.get("max_holdings", max_n)) if style == "growth" else max_n
+                prev_s = held_s.get((mkt, style), [])
+                ids_s = select_with_buffer(rk, [h for h in prev_s if h in held[mkt] and h not in blocked], n_max, mult)
+                held_s[(mkt, style)] = ids_s
+                w_style = weight * share * (1 - cs)
+                # 停損賣出的名額：proceeds = cash 時本月先放現金，下次調倉再遞補；redistribute 時直接分給其他持股
+                n_stop_s = len([x for x in stopped if x in prev_s]) if rule.cash else 0
+                min_s = int(round(min_n * share)) if min_n else 0
+                slots = max(len(ids_s) + n_stop_s, min_s)
+                if slots > 0 and w_style > 0:
+                    mc = dict(zip(rk["id"], rk["market_cap"])) if len(rk) and "market_cap" in rk else {}
+                    stock_total = w_style * len(ids_s) / slots
+                    cap_rel = max_w * weight * (1 - cs) / stock_total if stock_total > 0 else None
+                    for sid, w_ in weight_picks(ids_s, mc, stock_total, scheme, cap_rel).items():
+                        k = ("stock", ym[sid])
+                        targets[k] = targets.get(k, 0.0) + w_
+                        stock_meta[k] = (mkt, sid)
+                    n_fill = slots - len(ids_s) - n_stop_s
+                    if n_fill > 0 and fill.get(mkt):
+                        k = ("fill", fill[mkt])
+                        targets[k] = targets.get(k, 0.0) + w_style * n_fill / slots
+                for sid in ids_s:
+                    if sid not in ids:
+                        ids.append(sid)
+            if cs > 0 and fill.get(mkt) and weight > 0:
+                k = ("fill", fill[mkt])
+                targets[k] = targets.get(k, 0.0) + weight * cs
             if rule.on and mkt in rule.apply:
                 for sid in ids:
                     tk = ym.get(sid)
@@ -274,27 +401,12 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             for sid in ids:
                 if sid not in spells_open[mkt] and ym.get(sid):
                     spells_open[mkt][sid] = {"start": t, "tk": ym[sid]}
-            weight = pw[sleeve] * (co_scale if mkt in co_apply else 1.0)
-            if td.get("regime_defensive"):
-                idx_t = td["regime_indices"][mkt]
-                if idx_t in close:
-                    rg = market_regime(close[idx_t], t, td.get("regime_ma_months", 10))
-                    if rg["bull"] is False:
-                        weight *= 0.5
             picks[mkt] = ids
-            fill = cfg["portfolio"].get("fill_with_index", {}) or {}
-            min_n = int(fill.get("min_holdings", 0) or 0) if fill.get("enabled") else 0
-            # 停損賣出的名額：本月先放現金（不加碼其他股票），下次調倉再遞補
-            n_stop = len(stopped) if rule.cash else 0
-            slots = max(len(ids) + n_stop, min_n)
-            for sid in ids:
-                targets[("stock", ym[sid])] = weight / slots
-                stock_meta[("stock", ym[sid])] = (mkt, sid)
-            n_fill = slots - len(ids) - n_stop
-            if n_fill > 0 and fill.get(mkt):
-                k = ("fill", fill[mkt])
-                targets[k] = targets.get(k, 0.0) + weight * n_fill / slots
             n_stops_month += len(stopped)
+            # 個股部位裡真正買股票的比例（其餘是補位或固定的大盤 ETF）
+            sw = sum(v for k_, v in targets.items() if k_[0] == "stock" and stock_meta.get(k_, ("",))[0] == mkt)
+            fw = targets.get(("fill", fill.get(mkt)), 0.0) if fill.get(mkt) else 0.0
+            stock_share[mkt] = sw / (sw + fw) if (sw + fw) > 0 else 0.0
         ek = ("etf", skey, t)
         if ek in screen_cache:
             er = screen_cache[ek]
@@ -404,6 +516,26 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                     continue
                 a0, a1 = adj.at[t, tk] if tk in adj else np.nan, adj.at[t1, tk] if tk in adj else np.nan
                 c0, c1 = close.at[t, tk] if tk in close else np.nan, close.at[t1, tk] if tk in close else np.nan
+                if k[0] == "stock" and tk in tk_delist and np.isfinite(a0) and a0 > 0:
+                    mk_, sid_, dd_, lt_ = tk_delist[tk]
+                    if dd_ <= t1 or (not np.isfinite(a1) and lt_ is not None and lt_ <= t1):
+                        # 本月下市（或停止交易後不再有成交）：以最後成交價出場；停止交易很久才下市者再打折
+                        distressed = lt_ is not None and (dd_ - lt_).days > halt_days
+                        mult_ = (1 - haircut) if distressed else 1.0
+                        last = a1 if np.isfinite(a1) else a0
+                        r = last * mult_ / a0 - 1
+                        port_r += w * r
+                        sleeve_r["tw" if not us else "us"][0] += w * r
+                        sleeve_r["tw" if not us else "us"][1] += w
+                        stop_cash += w * (1 + r)
+                        if scen == "gross":
+                            delist_exits.append({"date": (lt_ or dd_).strftime("%Y-%m-%d"), "market": mk_, "id": sid_,
+                                                 "ret_month": float(r), "distressed": bool(distressed)})
+                            _close_spell(mk_, sid_, t1, "下市（停止交易後）" if distressed else "下市", mult=mult_)
+                            held[mk_] = [h for h in held[mk_] if h != sid_]
+                            ref[mk_].pop(sid_, None)
+                            spct[mk_].pop(sid_, None)
+                        continue
                 if not (np.isfinite(a0) and np.isfinite(a1)) or a0 <= 0:
                     r_loc, div = 0.0, 0.0
                 else:
@@ -441,6 +573,8 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         rec["n_us"] = len(picks.get("us", []))
         rec["n_etf"] = len(picks.get("etf", []))
         rec["n_stops"] = n_stops_month
+        rec["stock_share_tw"] = stock_share.get("tw", np.nan)
+        rec["stock_share_us"] = stock_share.get("us", np.nan)
         rec["credit_off"] = int(credit_off)
         rec["phase_tw"], rec["phase_us"] = _phase("tw", t), _phase("us", t)
         rec["cash_weight"] = max(0.0, 1.0 - sum(targets.values()))
@@ -475,7 +609,8 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     res.attrs["total_cost"] = total_cost
     res.attrs["total_withholding"] = total_wht
     res.attrs["stops"] = stops_log
-    return {"monthly": res, "holdings": holdings_log, "stops": stops_log, "spells": spells}
+    return {"monthly": res, "holdings": holdings_log, "stops": stops_log, "spells": spells,
+            "delist_exits": delist_exits, "n_delisted_universe": len(delist)}
 
 
 def perf_stats(r: pd.Series, rf: float = 0.0) -> dict:

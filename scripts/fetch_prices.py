@@ -43,6 +43,36 @@ def all_tickers() -> list[str]:
     return sorted(t for t in tk if isinstance(t, str) and t)
 
 
+ALT_MISS = CACHE_DIR / "prices_alt.miss"
+NEW_MISS = CACHE_DIR / "prices_new.miss"     # 新加入股票清單、但 Yahoo 抓不到的代號（下市等），不每天重試
+
+
+def tw_alt_tickers(have: set) -> tuple[list[str], list[str]]:
+    """台股改上市／上櫃後，FinMind 清單的 .TW／.TWO 可能是舊的：主代號沒有股價的公司，試另一個字尾。
+    回傳 (已找到要持續更新的, 還沒試過的)。試過找不到的記在 prices_alt.miss，不重試。"""
+    p = CACHE_DIR / "tw_universe.csv"
+    if not p.exists():
+        return [], []
+    u = pd.read_csv(p, dtype=str)
+    missed = set(ALT_MISS.read_text().split()) if ALT_MISS.exists() else set()
+    found, todo = [], []
+    for sid, y in zip(u["stock_id"], u["yahoo"]):
+        if not isinstance(y, str) or y in have:
+            continue
+        a = sid + (".TW" if y.endswith(".TWO") else ".TWO")
+        if a in have:
+            found.append(a)
+        elif a not in missed:
+            todo.append(a)
+    return found, todo
+
+
+def _record_alt_miss(tried: list[str], got: set, path=ALT_MISS) -> None:
+    missed = set(path.read_text().split()) if path.exists() else set()
+    missed |= {t for t in tried if t not in got}
+    path.write_text("\n".join(sorted(missed)))
+
+
 def key_tickers() -> list[str]:
     cfg = load_strategy()
     tk = set(cfg["backtest"].get("benchmarks", [])) | {e["ticker"] for e in load_etf_universe()}
@@ -60,10 +90,13 @@ def main():
     ap.add_argument("--full", action="store_true")
     args = ap.parse_args()
     tickers = all_tickers()
-    log.info("price tickers: %d", len(tickers))
+    alt_found, alt_todo = tw_alt_tickers(prices.monthly_tickers())
+    log.info("price tickers: %d (+ TW alternate suffix: %d known, %d to try)", len(tickers), len(alt_found), len(alt_todo))
     if args.full or not prices.MONTHLY_PATH.exists():
-        prices.fetch_monthly(tickers, start="2011-01-01")
+        res = prices.fetch_monthly(sorted(set(tickers) | set(alt_found) | set(alt_todo)), start="2011-01-01")
+        _record_alt_miss(alt_todo, set(res["ticker"]))
         return
+    tickers = sorted(set(tickers) | set(alt_found))
     old = prices.load_monthly()
     start = (pd.Timestamp.today() - pd.offsets.MonthBegin(4)).normalize()
     new = prices.fetch_monthly(tickers, start=str(start.date()), save=False)
@@ -84,10 +117,16 @@ def main():
         g_old = g_old[g_old["month"] < overlap]
         merged.append(pd.concat([g_old, g_new]))
     # 新加入的 ETF／基準／固定部位代號：補抓完整歷史（個股不在此列，避免每天重抓下市股票）
-    missing = sorted(set(key_tickers()) - set(old["ticker"]))
+    # 新加入股票清單的公司（例如補進來的「其他業」）：抓完整歷史一次；抓不到的記下來不再重試
+    new_miss = set(NEW_MISS.read_text().split()) if NEW_MISS.exists() else set()
+    new_stocks = sorted(set(tickers) - set(old["ticker"]) - set(key_tickers()) - new_miss)
+    missing = sorted((set(key_tickers()) - set(old["ticker"])) | set(alt_todo) | set(new_stocks))
     if missing:
         log.info("new tickers, fetching full history: %s", missing[:20])
         full_new = prices.fetch_monthly(missing, start="2011-01-01", save=False)
+        got_new = set(full_new["ticker"]) if len(full_new) else set()
+        _record_alt_miss(alt_todo, got_new)
+        _record_alt_miss(new_stocks, got_new, NEW_MISS)
         if len(full_new):
             got = set(full_new["ticker"])
             merged = [g for g in merged if not (len(g) and g["ticker"].iloc[0] in got)]

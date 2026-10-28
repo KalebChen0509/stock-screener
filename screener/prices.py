@@ -77,6 +77,8 @@ def fetch_monthly(tickers: list[str], start: str = "2011-01-01", chunk: int = 15
             frames.append(lf)
         log.info("monthly prices %d/%d", min(i + chunk, len(tickers)), len(tickers))
         time.sleep(1.0)
+    if not frames:
+        return pd.DataFrame(columns=["ticker", "close", "adj_close", "volume", "split", "month"])
     res = pd.concat(frames, ignore_index=True)
     res["month"] = (res["date"] + pd.offsets.MonthEnd(0)).dt.normalize()
     res = res.drop(columns="date").drop_duplicates(["ticker", "month"], keep="last")
@@ -101,8 +103,35 @@ def fetch_daily(tickers: list[str], period: str = "2y", chunk: int = 150) -> pd.
     return res
 
 
-def load_monthly() -> pd.DataFrame:
-    return pd.read_csv(MONTHLY_PATH, parse_dates=["month"])
+DELISTED_MONTHLY_PATH = CACHE_DIR / "tw_delisted_prices.csv.gz"
+DELISTED_DAILY_PATH = CACHE_DIR / "tw_delisted_daily.csv.gz"
+
+
+def load_monthly(include_delisted: bool = False) -> pd.DataFrame:
+    """include_delisted：併入下市台股的月股價（FinMind，回測用；Yahoo 沒有下市股票）。"""
+    m = pd.read_csv(MONTHLY_PATH, parse_dates=["month"])
+    if include_delisted and DELISTED_MONTHLY_PATH.exists():
+        d = pd.read_csv(DELISTED_MONTHLY_PATH, parse_dates=["month"])
+        d = d[~d["ticker"].isin(set(m["ticker"]))]
+        if len(d):
+            m = pd.concat([m, d[m.columns.intersection(d.columns)]], ignore_index=True)
+    return m
+
+
+def load_delisted_daily() -> pd.DataFrame:
+    """下市台股日收盤寬表（index=日期, columns=代號），併進停損用的日線。"""
+    if not DELISTED_DAILY_PATH.exists():
+        return pd.DataFrame()
+    d = pd.read_csv(DELISTED_DAILY_PATH, parse_dates=["date"])
+    if d.empty:
+        return pd.DataFrame()
+    return d.pivot_table(index="date", columns="ticker", values="adj_close", aggfunc="last").sort_index()
+
+
+def monthly_tickers() -> set:
+    if not MONTHLY_PATH.exists():
+        return set()
+    return set(pd.read_csv(MONTHLY_PATH, usecols=["ticker"])["ticker"].astype(str))
 
 
 def split_factor_table(monthly: pd.DataFrame) -> pd.DataFrame:

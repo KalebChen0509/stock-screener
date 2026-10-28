@@ -41,7 +41,8 @@ case "$1" in
     mkdir -p databr_latest/cache/tw_fin
     cp -r databr/cache/tw_fin/. databr_latest/cache/tw_fin/
     for f in tw_fin_meta.json tw_progress.json tw_universe.csv tw_stock_info.csv backtest_triggered \
-             tw_month_rev.csv.gz tw_month_rev_meta.json tw_month_rev_progress.json; do
+             tw_month_rev.csv.gz tw_month_rev_meta.json tw_month_rev_progress.json \
+             tw_delisted.csv tw_delisted_prices.csv.gz tw_delisted_daily.csv.gz; do
       [ -f "databr/cache/$f" ] && cp "databr/cache/$f" databr_latest/cache/ || true
     done
     push_dir databr_latest

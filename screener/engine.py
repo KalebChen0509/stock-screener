@@ -135,6 +135,69 @@ def screen_market(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
     return {"all": df, "ranked": ranked, "sectors": sectors}
 
 
+GROWTH_EXCLUDE = {"exclude", "biotech_research", "financial"}
+
+
+def screen_growth(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
+                  ret6: pd.Series, date: pd.Timestamp, cfg: dict, market: str,
+                  ret12: pd.Series | None = None, events: pd.DataFrame | None = None,
+                  pledge: pd.Series | None = None, month_rev: pd.DataFrame | None = None,
+                  ctx: dict | None = None) -> dict:
+    """成長／動能選股（設定在 cfg["growth"]）：
+    條件：本業有獲利、營收在成長、近 3 年營業現金流合計為正、借款不過高；估值只排除同業最貴的一段。
+    排名：成長（營收、每股盈餘、台股月營收）、股價動能（12 個月扣最近 1 個月、6 個月）、品質、估值、
+          產業內規模（龍頭），再加產業動能（由上而下）。百分位都是跟全市場比。
+    回傳格式同 screen_market。"""
+    g = cfg["growth"]
+    pm = panel[panel["market"] == market]
+    f = asof_fundamentals(pm, date)
+    empty = {"all": pd.DataFrame(), "ranked": pd.DataFrame(), "sectors": pd.DataFrame()}
+    if f.empty:
+        return empty
+    icols = [c_ for c_ in ("name", "industry", "is_financial", "sic") if c_ in info]
+    f = f.join(info[icols], on="id", how="inner")
+    df = add_valuation(f, px)
+    df = df[df["close"].notna() & df["market_cap"].notna()].copy()
+    if df.empty:
+        return empty
+    df["ret_12m"] = df["id"].map(ret12) if ret12 is not None and len(ret12) else np.nan
+    df["mom_12m_pct"] = pd.to_numeric(df["ret_12m"], errors="coerce").rank(pct=True)
+    df["ret_6m"] = df["id"].map(ret6) if ret6 is not None and len(ret6) else np.nan
+    st = event_status(events, date, cfg.get("events", {})) if events is not None else pd.DataFrame()
+    if len(st):
+        df["event_veto"] = df["id"].map(st["event_veto"]).map(lambda x: bool(x) if pd.notna(x) else False)
+        df["event_flags"] = df["id"].map(st["event_flags"])
+    else:
+        df["event_veto"], df["event_flags"] = False, None
+    df["pledge_ratio"] = df["id"].map(pledge) if pledge is not None else np.nan
+    if market == "tw" and month_rev is not None and len(month_rev):
+        from .month_rev import metrics_asof
+        rm = metrics_asof(month_rev, date)
+        for c_ in ("rev_yoy_3m", "rev_yoy_12m", "rev_accel"):
+            df[c_] = df["id"].map(rm[c_]) if c_ in rm else np.nan
+    else:
+        df["rev_yoy_3m"] = df["rev_yoy_12m"] = df["rev_accel"] = np.nan
+    df = assign_industry(df, market, int((cfg.get("industry_rules") or {}).get("min_peers", 15)))
+    df["growth_ok_template"] = ~df["template"].isin(GROWTH_EXCLUDE)
+    df["size_in_industry"] = df.groupby("industry_norm")["market_cap"].rank(pct=True)
+    df["groups"] = [[] for _ in range(len(df))]
+    df = apply_hard_filters(df, g["filters"], market, industry_col="peer_group")
+    tol = cfg.get("buffer", {}).get("tolerance", 0.0)
+    df = apply_hard_filters(df, g["filters"], market, industry_col="peer_group", tol=tol, prefix="r_")
+    sectors = sector_scores(df[df["template"] != "financial"], ret6,
+                            {"sector_weights": g.get("sector_weights", {"momentum": 1.0, "valuation": 0.0})})
+    cand = df[df["r_pass"]].copy()
+    rank_cfg = g["ranking"]
+    for m_ in flatten_weights(rank_cfg):
+        if m_ in df:
+            pr = pd.to_numeric(df[m_], errors="coerce").replace([np.inf, -np.inf], np.nan).rank(pct=True)
+            cand[m_] = pr.reindex(cand.index)
+    ranked = rank_stocks(cand, rank_cfg, cfg["top_down"], sectors, pre_pct=True)
+    if len(ranked):
+        ranked["rank"] = np.arange(1, len(ranked) + 1)
+    return {"all": df, "ranked": ranked, "sectors": sectors}
+
+
 def select_with_buffer(ranked: pd.DataFrame, held: list[str], n: int, mult: float = 2.0) -> list[str]:
     """換股緩衝區：已持有者放寬門檻後仍通過、且排名 ≤ n×mult 就續抱；其餘名額由完全通過者依排名補滿。"""
     if ranked is None or ranked.empty:
