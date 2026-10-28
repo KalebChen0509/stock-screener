@@ -106,7 +106,9 @@ def update(universe: pd.DataFrame, fm, liq_rank: dict | None = None, start: str 
         d = pd.concat([d, latest], ignore_index=True)
         log.info("month revenue OpenAPI: %d rows (%s)", len(latest), latest["period"].max().date())
     ids = list(universe["stock_id"].astype(str))
-    todo = [s for s in ids if not meta.get(s, {}).get("backfilled")]
+    # 還沒回填的；以及舊版可能把「抓失敗」記成 0 筆的，補試一次
+    todo = [s for s in ids if not meta.get(s, {}).get("backfilled")
+            or (meta[s].get("n") == 0 and not meta[s].get("retried"))]
     liq_rank = liq_rank or {}
     todo.sort(key=lambda s: liq_rank.get(s, 10**9))
     done = 0
@@ -115,10 +117,15 @@ def update(universe: pd.DataFrame, fm, liq_rank: dict | None = None, start: str 
             if fm.calls >= fm.max_calls:
                 break
             raw = fm.get("TaiwanStockMonthRevenue", sid, start)
+            if not getattr(fm, "last_ok", True):
+                nf = meta.get(sid, {}).get("fail", 0) + 1
+                if nf < 3:                       # 網路或資料來源暫時有問題：下次再抓（連續 3 次失敗才放棄）
+                    meta[sid] = {"fail": nf}
+                    continue
             new = _from_finmind(raw, sid)
             if len(new):
                 d = pd.concat([d, new], ignore_index=True)
-            meta[sid] = {"backfilled": True, "n": int(len(new))}
+            meta[sid] = {"backfilled": True, "n": int(len(new)), "retried": True}
             done += 1
     except FinMindLimit as e:
         log.warning("FinMind limit during month revenue: %s", e)

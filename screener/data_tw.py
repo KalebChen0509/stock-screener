@@ -91,6 +91,7 @@ FINANCIAL_CATEGORIES = {"金融保險業", "金融保險", "金融業", "證券�
 
 
 SCHEMA_VERSION = 2   # 標準欄位有變動時加 1，舊快取會自動重抓
+MAX_FAIL = 3         # 同一筆資料連續抓失敗幾次才放棄（記為沒有資料）
 
 
 class FinMindLimit(Exception):
@@ -103,6 +104,8 @@ class FinMind:
         self.max_calls = max_calls
         self.calls = 0
         self.pause = pause
+        self.last_ok = True     # 最近一次請求是否成功取得回應（失敗 4 次 → False，資料要下次再抓，不能當成「沒有資料」）
+        self.consec_fail = 0    # 連續失敗的請求數：太多代表資料來源或網路整個斷了，這一輪先停，不要把每檔都記一次失敗
         self.s = requests.Session()
         if self.token:
             self.s.headers["Authorization"] = f"Bearer {self.token}"
@@ -111,6 +114,7 @@ class FinMind:
             end: str | None = None) -> pd.DataFrame:
         if self.calls >= self.max_calls:
             raise FinMindLimit(f"reached per-run budget {self.max_calls}")
+        self.last_ok = False
         params = {"dataset": dataset, "start_date": start}
         if data_id:
             params["data_id"] = data_id
@@ -130,9 +134,19 @@ class FinMind:
                 log.warning("FinMind %s %s HTTP %s %s", dataset, data_id, r.status_code, r.text[:200])
                 time.sleep(5 * (attempt + 1))
                 continue
-            js = r.json()
+            try:
+                js = r.json()
+            except ValueError:
+                log.warning("FinMind %s %s bad JSON", dataset, data_id)
+                time.sleep(5 * (attempt + 1))
+                continue
             time.sleep(self.pause)
+            self.last_ok = True
+            self.consec_fail = 0
             return pd.DataFrame(js.get("data", []))
+        self.consec_fail += 1
+        if self.consec_fail >= 5:
+            raise FinMindLimit(f"FinMind unreachable ({self.consec_fail} requests failed in a row); stop this run and retry later")
         return pd.DataFrame()
 
 
@@ -318,6 +332,9 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
             todo.append((0, sid))
             continue
         if sid in frozen:
+            # 下市公司抓過就不再查；但舊版可能把「抓失敗」記成沒有資料 → 沒有任何一季的再補試一次
+            if m.get("last_period", "") == "1900-01-01" and not m.get("retried"):
+                todo.append((3, sid))
             continue
         last_q = pd.Timestamp(m.get("last_period", "1900-01-01"))
         last_chk = datetime.fromisoformat(m.get("checked", "1900-01-01")).date()
@@ -346,8 +363,17 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
             if not old.empty and "rd" in old.columns:
                 s = f"{old['period_end'].max().year - 1}-01-01"
             inc = fm.get("TaiwanStockFinancialStatements", sid, s)
+            ok = getattr(fm, "last_ok", True)
             bal = fm.get("TaiwanStockBalanceSheet", sid, s)
+            ok = ok and getattr(fm, "last_ok", True)
             cf = fm.get("TaiwanStockCashFlowsStatement", sid, s)
+            ok = ok and getattr(fm, "last_ok", True)
+            prev = meta.get(sid) or {}
+            if not ok and prev.get("fail", 0) + 1 < MAX_FAIL:
+                # 網路或資料來源暫時有問題：不記為完成，下次再抓（連續失敗 MAX_FAIL 次才放棄）
+                meta[sid] = {**prev, "fail": prev.get("fail", 0) + 1}
+                log.warning("  %s: request failed, will retry next run", sid)
+                continue
             new = standardize(inc, bal, cf, lag, sid)
             if not new.empty:
                 if not old.empty:
@@ -358,11 +384,12 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
                 last = new["period_end"].max()
             else:
                 last = old["period_end"].max() if not old.empty else pd.Timestamp("1900-01-01")
-            prev = meta.get(sid) or {}
             prev_last = pd.Timestamp(prev.get("last_period", "1900-01-01"))
             miss = prev.get("miss", 0) + 1 if (pd.Timestamp(last) <= prev_last and pd.Timestamp(last) < exp_q) else 0
             meta[sid] = {"last_period": str(pd.Timestamp(last).date()),
                          "checked": today.isoformat(), "v": SCHEMA_VERSION, "miss": miss}
+            if sid in frozen:
+                meta[sid]["retried"] = True
             done += 1
             if done % 50 == 0:
                 _save_meta(meta)
@@ -381,7 +408,7 @@ DELISTED_PATH = CACHE_DIR / "tw_delisted.csv"
 DELISTED_PX_PATH = CACHE_DIR / "tw_delisted_prices.csv.gz"      # 月資料，欄位同 prices_monthly
 DELISTED_DAILY_PATH = CACHE_DIR / "tw_delisted_daily.csv.gz"    # 日收盤（回測停損用），欄位同 daily_bt
 DELISTED_COLS = ["stock_id", "stock_name", "industry_category", "type", "is_financial", "yahoo",
-                 "delist_date", "last_trade", "px_done"]
+                 "delist_date", "last_trade", "px_done", "px_fail"]
 
 
 def load_delisted() -> pd.DataFrame:
@@ -389,6 +416,15 @@ def load_delisted() -> pd.DataFrame:
         return pd.DataFrame(columns=DELISTED_COLS)
     d = pd.read_csv(DELISTED_PATH, dtype={"stock_id": str})
     d["is_financial"] = d["is_financial"].astype(str).str.lower().isin(["true", "1"])
+    d["px_done"] = d["px_done"].astype(str).str.lower().isin(["true", "1"])
+    if "px_fail" in d:
+        d["px_fail"] = pd.to_numeric(d["px_fail"], errors="coerce").fillna(0).astype(int)
+    else:
+        # 舊版檔案（抓失敗也記為完成）：沒有股價的再補試一次
+        d["px_fail"] = 0
+        redo = d["px_done"] & d["last_trade"].isna()
+        d.loc[redo, "px_done"] = False
+        d.loc[redo, "px_fail"] = MAX_FAIL - 1
     return d
 
 
@@ -445,8 +481,10 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
                      "is_financial": ind in FINANCIAL_CATEGORIES,
                      "yahoo": sid + (".TWO" if typ == "tpex" else ".TW"), "delist_date": dd,
                      "last_trade": p["last_trade"] if p is not None else None,
-                     "px_done": bool(p["px_done"]) if p is not None else False})
+                     "px_done": bool(p["px_done"]) if p is not None else False,
+                     "px_fail": int(p["px_fail"]) if p is not None else 0})
     out = pd.DataFrame(rows, columns=DELISTED_COLS)
+    out["last_trade"] = out["last_trade"].astype(object).where(out["last_trade"].notna(), None)
     todo = out[~out["px_done"].astype(bool)]
     mon = pd.read_csv(DELISTED_PX_PATH, parse_dates=["month"]) if DELISTED_PX_PATH.exists() else pd.DataFrame()
     day = pd.read_csv(DELISTED_DAILY_PATH, parse_dates=["date"]) if DELISTED_DAILY_PATH.exists() else pd.DataFrame()
@@ -455,6 +493,9 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
     try:
         for i, r in todo.iterrows():
             raw = fm.get("TaiwanStockPrice", r["stock_id"], "2011-01-01")
+            if not getattr(fm, "last_ok", True) and int(r["px_fail"]) + 1 < MAX_FAIL:
+                out.at[i, "px_fail"] = int(r["px_fail"]) + 1       # 抓失敗：下次再試
+                continue
             m, d, last = _price_frames(raw, r["yahoo"])
             if len(m):
                 new_m.append(m)
@@ -472,8 +513,8 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
         day.to_csv(DELISTED_DAILY_PATH, index=False, compression="gzip")
     ensure_dir(DELISTED_PATH.parent)
     out.to_csv(DELISTED_PATH, index=False)
-    log.info("TW delisted since %s: %d stocks (prices fetched now %d, total with prices %d)",
-             since, len(out), done, int(out["last_trade"].notna().sum()))
+    log.info("TW delisted since %s: %d stocks (prices fetched now %d, total with prices %d, waiting for retry %d)",
+             since, len(out), done, int(out["last_trade"].notna().sum()), int((~out["px_done"].astype(bool)).sum()))
     return out
 
 

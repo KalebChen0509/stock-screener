@@ -15,13 +15,17 @@ from tests.test_synthetic import synth_fund
 
 
 class FakeFM:
-    """假的 FinMind：依 dataset 回傳事先準備的資料。"""
+    """假的 FinMind：依 dataset 回傳事先準備的資料；fail 裡的 (dataset, id) 模擬連線失敗。"""
 
-    def __init__(self, data):
-        self.data, self.calls, self.max_calls = data, 0, 10 ** 6
+    def __init__(self, data, fail=()):
+        self.data, self.calls, self.max_calls, self.fail, self.last_ok = data, 0, 10 ** 6, set(fail), True
 
     def get(self, dataset, data_id=None, start="2010-01-01", end=None):
         self.calls += 1
+        if (dataset, data_id) in self.fail:
+            self.last_ok = False
+            return pd.DataFrame()
+        self.last_ok = True
         v = self.data.get((dataset, data_id), self.data.get(dataset, pd.DataFrame()))
         return v.copy()
 
@@ -154,7 +158,15 @@ def main():
             info_raw = pd.DataFrame({"industry_category": ["半導體業", "半導體業"], "stock_id": ["3001", "2330"],
                                      "stock_name": ["甲", "台積電"], "type": ["tpex", "twse"],
                                      "date": ["2020-09-01", "2026-10-27"]})
+            # 連線失敗：不記為完成，下次再抓；連續失敗 3 次才放棄
+            fm.fail = {("TaiwanStockPrice", "3001")}
+            o1 = data_tw.update_delisted(fm, info_raw)
+            assert not o1["px_done"].iloc[0] and o1["px_fail"].iloc[0] == 1 and not data_tw.DELISTED_PX_PATH.exists()
+            o2 = data_tw.update_delisted(fm, info_raw)
+            assert data_tw.load_delisted()["px_fail"].iloc[0] == 2 and not o2["px_done"].iloc[0]
+            fm.fail = set()
             out = data_tw.update_delisted(fm, info_raw)
+            assert out["px_done"].iloc[0] and data_tw.DELISTED_PX_PATH.exists()
             assert list(out["stock_id"]) == ["3001"], out           # 2015 年前、ETF、代號沿用都排除
             assert out["yahoo"].iloc[0] == "3001.TWO" and out["last_trade"].iloc[0] == "2020-06-19"
             n_calls = fm.calls
@@ -186,9 +198,65 @@ def main():
                 assert set(u2["stock_id"]) == {"9921", "9910"}, u2
             finally:
                 data_tw.INFO_PATH = old_info
+            # 財報、月營收：抓失敗不記為完成
+            from screener import month_rev
+            olds = (data_tw.TW_FIN_DIR, data_tw.META_PATH, month_rev.REV_PATH, month_rev.REV_META, month_rev.fetch_openapi_latest)
+            data_tw.TW_FIN_DIR, data_tw.META_PATH = d / "tw_fin", d / "tw_fin_meta.json"
+            month_rev.REV_PATH, month_rev.REV_META = d / "rev.csv.gz", d / "rev_meta.json"
+            month_rev.fetch_openapi_latest = lambda: pd.DataFrame(columns=["id", "period", "revenue"])
+            try:
+                uni = pd.DataFrame({"stock_id": ["3001"]})
+                fm3 = FakeFM({}, fail={("TaiwanStockBalanceSheet", "3001"), ("TaiwanStockMonthRevenue", "3001")})
+                lag = cfg["reporting_lag"]["tw"]
+                data_tw.update_fundamentals(uni, lag, fm3, frozen={"3001"})
+                assert data_tw._load_meta()["3001"] == {"fail": 1}
+                assert data_tw.backfill_progress(uni)["have"] == 0
+                pr = month_rev.update(uni, fm3)
+                assert pr["have"] == 0
+                fm3.fail = set()
+                data_tw.update_fundamentals(uni, lag, fm3, frozen={"3001"})
+                assert data_tw._load_meta()["3001"].get("v") == data_tw.SCHEMA_VERSION
+                n0 = fm3.calls
+                data_tw.update_fundamentals(uni, lag, fm3, frozen={"3001"})
+                assert fm3.calls == n0, "delisted: fetched once, not rechecked"
+                assert month_rev.update(uni, fm3)["have"] == 1
+                # 舊版檔案：抓失敗被記成「沒有資料」的，補試一次（之後就不再查）
+                import json as _json
+                data_tw.META_PATH.write_text(_json.dumps({"3001": {"last_period": "1900-01-01", "checked": "2026-10-28", "v": data_tw.SCHEMA_VERSION, "miss": 0}}))
+                n0 = fm3.calls
+                data_tw.update_fundamentals(uni, lag, fm3, frozen={"3001"})
+                assert fm3.calls == n0 + 3 and data_tw._load_meta()["3001"].get("retried")
+                data_tw.update_fundamentals(uni, lag, fm3, frozen={"3001"})
+                assert fm3.calls == n0 + 3
+                month_rev.REV_META.write_text(_json.dumps({"3001": {"backfilled": True, "n": 0}}))
+                n0 = fm3.calls
+                month_rev.update(uni, fm3)
+                month_rev.update(uni, fm3)
+                assert fm3.calls == n0 + 1
+                legacy = data_tw.load_delisted().drop(columns=["px_fail"])
+                legacy.loc[:, "last_trade"] = None
+                legacy.to_csv(data_tw.DELISTED_PATH, index=False)
+                ld = data_tw.load_delisted()
+                assert not ld["px_done"].iloc[0] and ld["px_fail"].iloc[0] == data_tw.MAX_FAIL - 1
+                # 資料來源整個連不上：連續 5 次失敗就停止這一輪
+                fm4 = data_tw.FinMind(token="x")
+                fm4.s.get = lambda *a, **k: (_ for _ in ()).throw(data_tw.requests.ConnectionError("down"))
+                data_tw.time.sleep, _sl = (lambda *_: None), data_tw.time.sleep
+                try:
+                    for _ in range(4):
+                        assert fm4.get("TaiwanStockPrice", "1").empty and not fm4.last_ok
+                    try:
+                        fm4.get("TaiwanStockPrice", "1")
+                        raise AssertionError("should stop after 5 failures in a row")
+                    except data_tw.FinMindLimit:
+                        pass
+                finally:
+                    data_tw.time.sleep = _sl
+            finally:
+                data_tw.TW_FIN_DIR, data_tw.META_PATH, month_rev.REV_PATH, month_rev.REV_META, month_rev.fetch_openapi_latest = olds
         finally:
             data_tw.DELISTED_PATH, data_tw.DELISTED_PX_PATH, data_tw.DELISTED_DAILY_PATH, loaders.CACHE_DIR = old
-    print("delisted fetch/load ok")
+    print("delisted fetch/load ok; failed requests retried")
 
 
 if __name__ == "__main__":
