@@ -408,13 +408,18 @@ DELISTED_PATH = CACHE_DIR / "tw_delisted.csv"
 DELISTED_PX_PATH = CACHE_DIR / "tw_delisted_prices.csv.gz"      # 月資料，欄位同 prices_monthly
 DELISTED_DAILY_PATH = CACHE_DIR / "tw_delisted_daily.csv.gz"    # 日收盤（回測停損用），欄位同 daily_bt
 DELISTED_COLS = ["stock_id", "stock_name", "industry_category", "type", "is_financial", "yahoo",
-                 "delist_date", "last_trade", "px_done", "px_fail"]
+                 "delist_date", "last_trade", "px_done", "px_fail", "reused"]
+REUSE_DAYS = 60     # 下市日之後超過 60 天還有成交 → 代號已被新公司沿用（或重新上市），不是同一家
 
 
-def load_delisted() -> pd.DataFrame:
+def load_delisted(keep_reused: bool = False) -> pd.DataFrame:
+    """keep_reused：保留「代號被沿用」的列（只有 update_delisted 自己需要，避免重抓）。"""
     if not DELISTED_PATH.exists():
         return pd.DataFrame(columns=DELISTED_COLS)
     d = pd.read_csv(DELISTED_PATH, dtype={"stock_id": str})
+    d["reused"] = d["reused"].astype(str).str.lower().isin(["true", "1"]) if "reused" in d else False
+    if not keep_reused:
+        d = d[~d["reused"]].copy()
     d["is_financial"] = d["is_financial"].astype(str).str.lower().isin(["true", "1"])
     d["px_done"] = d["px_done"].astype(str).str.lower().isin(["true", "1"])
     if "px_fail" in d:
@@ -449,13 +454,13 @@ def _price_frames(raw: pd.DataFrame, tk: str) -> tuple[pd.DataFrame, pd.DataFram
 def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") -> pd.DataFrame:
     """下市（櫃）普通股清單＋股價（每檔只抓一次）。回傳清單（DELISTED_COLS）。
     財報與月營收由 update_fundamentals／month_rev.update 一併回填（傳入 frozen，抓過就不再重查）。"""
-    old = load_delisted()
+    old = load_delisted(keep_reused=True)
     try:
         dl = fm.get("TaiwanStockDelisting", start="2000-01-01")
     except FinMindLimit:
-        return old
+        return old[~old["reused"]] if len(old) else old
     if dl.empty:
-        return old
+        return old[~old["reused"]] if len(old) else old
     dl["stock_id"] = dl["stock_id"].astype(str)
     dl = dl[dl["stock_id"].str.fullmatch(r"[1-9]\d{3}") & (dl["date"].astype(str) >= since)]
     dl = dl.sort_values("date").drop_duplicates("stock_id", keep="last")
@@ -470,10 +475,6 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
         typ = inf["type"].get(sid) if sid in inf.index else None
         if ind in NON_STOCK_CATEGORIES:
             continue
-        # 代號被新公司沿用（清單更新日比下市日晚很多）→ 不是同一家，略過
-        if sid in inf.index and "date" in inf and \
-                str(inf["date"].get(sid, ""))[:10] > str(pd.Timestamp(dd) + pd.Timedelta(days=60))[:10]:
-            continue
         p = prev.loc[sid] if sid in prev.index else None
         rows.append({"stock_id": sid, "stock_name": r.get("stock_name", ""),
                      "industry_category": ind if isinstance(ind, str) else "未分類",
@@ -482,7 +483,8 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
                      "yahoo": sid + (".TWO" if typ == "tpex" else ".TW"), "delist_date": dd,
                      "last_trade": p["last_trade"] if p is not None else None,
                      "px_done": bool(p["px_done"]) if p is not None else False,
-                     "px_fail": int(p["px_fail"]) if p is not None else 0})
+                     "px_fail": int(p["px_fail"]) if p is not None else 0,
+                     "reused": bool(p["reused"]) if p is not None else False})
     out = pd.DataFrame(rows, columns=DELISTED_COLS)
     out["last_trade"] = out["last_trade"].astype(object).where(out["last_trade"].notna(), None)
     todo = out[~out["px_done"].astype(bool)]
@@ -497,9 +499,11 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
                 out.at[i, "px_fail"] = int(r["px_fail"]) + 1       # 抓失敗：下次再試
                 continue
             m, d, last = _price_frames(raw, r["yahoo"])
-            if len(m):
+            reused = last is not None and pd.Timestamp(last) > pd.Timestamp(r["delist_date"]) + pd.Timedelta(days=REUSE_DAYS)
+            if len(m) and not reused:
                 new_m.append(m)
                 new_d.append(d)
+            out.at[i, "reused"] = bool(reused)
             out.at[i, "last_trade"] = last
             out.at[i, "px_done"] = True
             done += 1
@@ -513,9 +517,11 @@ def update_delisted(fm: FinMind, info: pd.DataFrame, since: str = "2016-01-01") 
         day.to_csv(DELISTED_DAILY_PATH, index=False, compression="gzip")
     ensure_dir(DELISTED_PATH.parent)
     out.to_csv(DELISTED_PATH, index=False)
-    log.info("TW delisted since %s: %d stocks (prices fetched now %d, total with prices %d, waiting for retry %d)",
-             since, len(out), done, int(out["last_trade"].notna().sum()), int((~out["px_done"].astype(bool)).sum()))
-    return out
+    rz = out["reused"].astype(bool)
+    log.info("TW delisted since %s: %d stocks (prices fetched now %d, with prices %d, waiting for retry %d, code reused %d)",
+             since, int((~rz).sum()), done, int(out.loc[~rz, "last_trade"].notna().sum()),
+             int((~out["px_done"].astype(bool)).sum()), int(rz.sum()))
+    return out[~rz].copy()
 
 
 def load_fundamentals() -> pd.DataFrame:

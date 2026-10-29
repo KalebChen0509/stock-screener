@@ -154,6 +154,9 @@ def main():
                                                       "stock_name": ["甲", "舊", "ETF", "沿用代號"]}),
                 ("TaiwanStockPrice", "3001"): pd.DataFrame({"date": days.strftime("%Y-%m-%d"), "close": 10.0,
                                                             "Trading_Volume": 1000}),
+                # 2330：清單上有一筆 2022 年下市，但之後一直有成交 → 代號沿用／重新上市，不能當成下市
+                ("TaiwanStockPrice", "2330"): pd.DataFrame({"date": ["2022-02-25", "2026-10-27"], "close": 500.0,
+                                                            "Trading_Volume": 1000}),
             })
             info_raw = pd.DataFrame({"industry_category": ["半導體業", "半導體業"], "stock_id": ["3001", "2330"],
                                      "stock_name": ["甲", "台積電"], "type": ["tpex", "twse"],
@@ -168,6 +171,9 @@ def main():
             out = data_tw.update_delisted(fm, info_raw)
             assert out["px_done"].iloc[0] and data_tw.DELISTED_PX_PATH.exists()
             assert list(out["stock_id"]) == ["3001"], out           # 2015 年前、ETF、代號沿用都排除
+            assert list(data_tw.load_delisted()["stock_id"]) == ["3001"]
+            assert set(data_tw.load_delisted(keep_reused=True)["stock_id"]) == {"3001", "2330"}
+            assert "2330.TW" not in set(pd.read_csv(data_tw.DELISTED_PX_PATH)["ticker"])
             assert out["yahoo"].iloc[0] == "3001.TWO" and out["last_trade"].iloc[0] == "2020-06-19"
             n_calls = fm.calls
             data_tw.update_delisted(fm, info_raw)
