@@ -22,6 +22,7 @@
     <a href="#screener">個股篩選</a>
     <a href="#etf">ETF</a>
     <a href="#backtest">回測</a>
+    <a href="#paper">並行模擬</a>
     <a href="#watchlist">追蹤清單</a>
     <a href="#rules">條件說明</a>
   </nav>
@@ -179,6 +180,20 @@
       <div id="btHoldings" class="holdings"></div>
     </div>
     <div class="card note" id="btNotes"></div>
+  </section>
+
+  <!-- ======================= 並行模擬 ======================= -->
+  <section id="view-paper" class="view">
+    <div class="card">
+      <h2>並行模擬（不動用實際的錢）</h2>
+      <p class="hint">每個月底照各版本的規則「假裝」換股，記錄之後的績效，用來決定要不要把錢移到新版本。每月的決策第一次算出來就鎖定，之後資料更新也不改；已完成月份的報酬用回測同一套規則計算（含停損、交易成本），當月用最新收盤價估計。判斷標準：3～6 個月後，選股版本有沒有贏過「只買 ETF」。</p>
+      <div id="paperBody"></div>
+      <div id="paperChartWrap" style="height:280px;margin-top:12px" hidden><canvas id="paperChart"></canvas></div>
+    </div>
+    <div class="card" id="paperHoldCard" hidden>
+      <h2>目前的模擬持股</h2>
+      <div id="paperHold"></div>
+    </div>
   </section>
 
   <!-- ======================= 追蹤清單 ======================= -->

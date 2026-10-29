@@ -612,6 +612,21 @@ cycle:
     slowdown:  {rule_set: new, financials: false}
     recession: {rule_set: new, financials: false}
 
+# ---------------------------------------------------------------------
+#  並行模擬（paper trading，2026/10/29 決定）：不動用實際的錢，每月照各版本的規則「假裝」換股並記錄績效，
+#  3～6 個月後再決定要不要把錢移過去。每月的決策第一次算出來就鎖定（之後資料更新也不改）；
+#  已完成月份的報酬用回測同一套規則（含停損、交易成本）計算，當月用最新收盤價估計。
+#  versions 填 backtest.variants 裡的方案名稱。
+# ---------------------------------------------------------------------
+paper:
+  enabled: true
+  start: "2026-11-01"               # 第一個持有月份（2026/10/31 收盤後做第一次決策）
+  versions:
+    - "成長動能（單檔上限 10%）"
+    - "大盤一半＋成長動能一半"
+    - "只買 ETF（VT50＋0050 25＋SPY 25）"
+    - "目前版（買進價停損15%）"
+
 # 換股緩衝區：新買進要通過全部條件；已持有的只要「門檻放寬 10% 仍通過」且排名在前 2 倍內就續抱
 buffer:
   tolerance: 0.10
@@ -827,6 +842,9 @@ backtest:
       patch:
         portfolio:
           fixed_sleeves: [{name: "全球大盤", weight: 0.4, holdings: {VT: 1.0}}, {name: "債券", weight: 0.1, holdings: {BND: 1.0}}]
+    - name: "只買 ETF（VT50＋0050 25＋SPY 25）"
+      group: alloc
+      patch: {portfolio: {stock_style: index}}
     - name: "VT50＋美價值ETF50（不選股）"
       group: alloc
       patch:

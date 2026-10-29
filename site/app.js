@@ -134,6 +134,7 @@ async function init() {
   S.bt = await getJSON("data/backtest.json", true);
   S.news = await getJSON("data/news.json", true);
   S.orders = await getJSON("data/orders.json", true);
+  S.paper = await getJSON("data/paper.json", true);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
@@ -161,7 +162,7 @@ function route() {
   $$(".view").forEach((el) => el.classList.toggle("on", el.id === "view-" + v));
   $$("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
   ({ overview: renderOverview, screener: renderScreener, etf: renderEtf, backtest: renderBacktest,
-     watchlist: renderWatchlist, rules: renderRules }[v] || renderOverview)();
+     paper: renderPaper, watchlist: renderWatchlist, rules: renderRules }[v] || renderOverview)();
 }
 
 function initTheme() {
@@ -948,6 +949,44 @@ function bindUI() {
 }
 
 init();
+
+// ---------------------------------------------------------------- 並行模擬
+function renderPaper() {
+  const P = S.paper, box = $("#paperBody");
+  $("#paperChartWrap").hidden = true;
+  $("#paperHoldCard").hidden = true;
+  if (!P) { box.innerHTML = `<p class="hint">模擬資料還沒產生，每日更新跑過一次之後就會出現。</p>`; return; }
+  if (P.status === "waiting") {
+    box.innerHTML = `<p>第一次模擬決策會在 <b>${esc(P.first_decision)}</b> 收盤後的下一次每日更新產生，從 ${esc(P.start)} 開始累計績效。</p>
+      <p class="hint">模擬的版本：${(S.cfg.paper && S.cfg.paper.versions || []).map(esc).join("、")}</p>`;
+    return;
+  }
+  const V = P.versions || [];
+  const pc = (x, d = 1) => (x == null ? "–" : fmt.pct(x, d));
+  const cls = (x) => (x == null ? "" : x >= 0 ? "pos" : "neg");
+  const sl = (v, mk, b) => { const s = (v.sleeves || {})[mk]; return s && s.cum != null ? `${pc(s.cum)} <span class="hint">vs ${b} ${pc(s.bench_cum)}</span>` : "–"; };
+  const mtdTo = (V.find((v) => v.mtd_to) || {}).mtd_to;
+  box.innerHTML = `<div class="table-wrap"><table class="data compact"><thead><tr><th>版本</th><th class="num">累計（含本月估計）</th><th class="num">比只買 ETF</th><th class="num">已完成月份</th><th class="num">本月至今${mtdTo ? `<br><span class="hint">估計到 ${esc(mtdTo)}</span>` : ""}</th><th class="num">台股部位</th><th class="num">美股部位</th><th class="num">停損次數</th></tr></thead><tbody>${V.map((v) =>
+    `<tr><td><b>${esc(v.name)}</b>${v.changed_since_locked ? ` <span class="pill" title="用最新資料重算，這個月的決策跟當初鎖定的不同；網站顯示鎖定的版本">決策有變動</span>` : ""}</td><td class="num ${cls(v.cum)}">${pc(v.cum)}</td><td class="num ${cls(v.vs_etf)}">${v.name.startsWith("只買 ETF") ? "（對照組）" : pc(v.vs_etf)}</td><td class="num">${pc(v.cum_closed)}<br><span class="hint">${(v.months || []).length} 個月</span></td><td class="num ${cls(v.mtd)}">${pc(v.mtd)}</td><td class="num">${sl(v, "tw", "0050")}</td><td class="num">${sl(v, "us", "SPY")}</td><td class="num">${v.n_stops}</td></tr>`).join("")}</tbody></table></div>
+    <p class="hint">開始：${esc(P.start)}（第一次決策 ${esc(P.first_decision)}）；更新：${esc(P.as_of)}。台股、美股部位只算已完成的月份。這只是模擬，實際下單仍照「總覽」的下單清單。</p>`;
+  // 累計績效（已完成月份）
+  const months = (V[0] || {}).months || [];
+  if (months.length >= 2 && window.Chart) {
+    $("#paperChartWrap").hidden = false;
+    destroyChart("paper");
+    const colors = ["--s1", "--s2", "--s3", "--s4", "--s5"];
+    S.charts.paper = new Chart($("#paperChart"), {
+      type: "line",
+      data: { labels: ["開始", ...months], datasets: V.map((v, i) => { let n = 1; return { label: v.name, data: [0, ...v.monthly_net.map((r) => (n *= 1 + r) - 1)], borderColor: cssVar(colors[i % 5]), backgroundColor: cssVar(colors[i % 5]), borderWidth: 2, pointRadius: 2 }; }) },
+      options: baseOpts({ yfmt: (x) => fmt.pct(x, 1), legend: true }),
+    });
+  }
+  // 目前持股
+  $("#paperHoldCard").hidden = false;
+  const blk = (t, a, lab) => a.length ? `<div><b>${t}（${a.length}）</b><ul>${a.map(([i, n, w]) => `<li>${esc(i)} ${esc(n)} <span class="hint">${fmt.pct(w, 1)}</span></li>`).join("")}</ul></div>` : "";
+  $("#paperHold").innerHTML = V.map((v) => `<details${v === V[0] ? " open" : ""}><summary><b>${esc(v.name)}</b> <span class="hint">${esc(v.decision_month || "")} 月底決策</span></summary>
+    <div class="holdgrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:8px 0">${blk("台股", v.holdings.tw)}${blk("美股", v.holdings.us)}${blk("ETF／大盤", v.holdings.etf)}</div></details>`).join("");
+}
 
 // ---------------------------------------------------------------- 個股部位 vs 大盤（各方案）
 function renderSleeveCmp(bt) {

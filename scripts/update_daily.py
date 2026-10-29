@@ -650,6 +650,16 @@ def main():
             if sid not in ids:
                 del e[sid]
     state_p.write_text(json.dumps(state, ensure_ascii=False))
+    # ---------- 並行模擬（paper trading）：各版本照規則假裝換股、記錄績效，不影響實際下單 ----------
+    try:
+        from screener import paper
+        from screener import month_rev as mrev_
+        pr = paper.update(cfg, panels, infos, monthly, static_frame(etfs, fx_now), events=ev_all,
+                          month_rev=mrev_.wide())
+        if pr:
+            write_json(SITE_DATA / "paper.json", pr)
+    except Exception as e:  # noqa
+        log.warning("paper trading update failed: %s", e)
     print("\n".join(lines))
 
 

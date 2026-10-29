@@ -113,9 +113,11 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                  etf_static: pd.DataFrame, start: str | None = None, end: str | None = None,
                  progress=None, events: dict | None = None, daily: pd.DataFrame | None = None,
                  screen_cache: dict | None = None, collect: set | None = None,
-                 macro: dict | None = None, month_rev: pd.DataFrame | None = None) -> dict:
+                 macro: dict | None = None, month_rev: pd.DataFrame | None = None,
+                 decide_last: bool = False) -> dict:
     """daily：日線含息還原價寬表（index=日期, columns=yahoo 代號），有的話停損逐日模擬。
-    screen_cache：跨方案共用的選股結果快取。collect：收集曾進入排名名單的代號（用來決定要抓哪些日線）。"""
+    screen_cache：跨方案共用的選股結果快取。collect：收集曾進入排名名單的代號（用來決定要抓哪些日線）。
+    decide_last：最後一個完整月份的月底也做一次選股決策（還沒有下個月的報酬），並放進 holdings（並行模擬用）。"""
     close, adj, vol = wide(prices, "close"), wide(prices, "adj_close"), wide(prices, "volume")
     fx = close["TWD=X"].dropna() if "TWD=X" in close else pd.Series(dtype=float)
     months = close.index
@@ -125,7 +127,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     last_full = (pd.Timestamp.today().normalize() - pd.offsets.MonthEnd(1))
     end_ts = last_full if (end in (None, "latest") and bt.get("end", "latest") == "latest") \
         else pd.Timestamp(end or bt["end"]) + pd.offsets.MonthEnd(0)
-    rebal = [m for m in months if start - pd.offsets.MonthEnd(1) <= m < end_ts]
+    rebal = [m for m in months if start - pd.offsets.MonthEnd(1) <= m and (m <= end_ts if decide_last else m < end_ts)]
     pw = cfg["portfolio"]["weights"]
     max_n = cfg["portfolio"]["max_holdings_per_stock_sleeve"]
     k_etf = cfg["portfolio"]["etf_holdings"]
@@ -268,6 +270,8 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     delist_exits = []
 
     def _get_ranked(style, mkt, t):
+        if style == "index":            # 不選股：個股部位全部放大盤 ETF（0050／SPY）
+            return pd.DataFrame(columns=["id", "rank", "pass_all", "market_cap"])
         ck = (skey, style, mkt, t)
         if ck in screen_cache:
             return screen_cache[ck]
@@ -297,8 +301,8 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         screen_cache[ck] = ranked
         return ranked
 
-    for i, t in enumerate(rebal[:-1]):
-        t1 = rebal[i + 1]
+    for i, t in enumerate(rebal if decide_last else rebal[:-1]):
+        t1 = rebal[i + 1] if i + 1 < len(rebal) else None
         # ---------- 選股 ----------
         targets = {}
         picks = {}
@@ -432,6 +436,15 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             for tk, hw in hs.items():
                 if w_s > 0 and tk in adj and np.isfinite(adj.at[t, tk]):
                     targets[("core", tk)] = targets.get(("core", tk), 0.0) + w_s * hw / tot_h
+
+        wlog = [{"kind": k[0], "ticker": k[1], "w": float(w_),
+                 "mkt": stock_meta.get(k, (None, None))[0], "id": stock_meta.get(k, (None, None))[1]}
+                for k, w_ in targets.items() if w_ > 1e-9]
+        if t1 is None:
+            # 最後一次決策（並行模擬用）：只記錄要持有什麼，還沒有報酬
+            holdings_log.append({"month": t, "tw": picks.get("tw", []), "us": picks.get("us", []),
+                                 "etf": picks.get("etf", []), "weights": wlog, "final": True})
+            break
 
         # ---------- 月中逐日停損（有日線者） ----------
         mid_stop = {}  # key -> 出場時的累積報酬（當地幣、含息）
@@ -580,7 +593,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
         rec["cash_weight"] = max(0.0, 1.0 - sum(targets.values()))
         records.append(rec)
         holdings_log.append({"month": t, "tw": picks.get("tw", []), "us": picks.get("us", []),
-                             "etf": picks.get("etf", [])})
+                             "etf": picks.get("etf", []), "weights": wlog})
         if progress:
             progress(i + 1, len(rebal) - 1)
         if (i + 1) % 12 == 0:
@@ -590,7 +603,8 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     for mkt in spells_open:
         for sid in list(spells_open[mkt]):
             _close_spell(mkt, sid, rebal[-1], "持有中")
-    res = pd.DataFrame(records).set_index("month")
+    res = pd.DataFrame(records).set_index("month") if records else \
+        pd.DataFrame(columns=["ret_gross", "ret_net", "n_tw", "n_us"], index=pd.DatetimeIndex([], name="month"))
     # ---------- 基準 ----------
     bench = {}
     for b in bt.get("benchmarks", []):
