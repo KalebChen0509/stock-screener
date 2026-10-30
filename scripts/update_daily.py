@@ -660,6 +660,22 @@ def main():
             write_json(SITE_DATA / "paper.json", pr)
     except Exception as e:  # noqa
         log.warning("paper trading update failed: %s", e)
+    # ---------- 財報快報：公布財報就通知，附財報後漲跌與營收、淨利年增 ----------
+    try:
+        from screener import earnings
+        from screener import month_rev as mrev2
+        plog_p = CACHE_DIR / "paper_log.json"
+        er = earnings.update(cfg, results, infos, held=state.get("held"), positions=load_positions(),
+                             watch=load_watchlist(), paper_log=json.loads(plog_p.read_text()) if plog_p.exists() else None,
+                             month_rev=mrev2.wide(), today=today)
+        if er:
+            write_json(SITE_DATA / "earnings.json", er["site"])
+            if er["digest"]:
+                print("\n" + er["digest"])
+                if not args.no_notify:
+                    log.info("earnings notify %s", notify(f"財報快報 {today.date()}", er["digest"]))
+    except Exception as e:  # noqa
+        log.warning("earnings update failed: %s", e)
     print("\n".join(lines))
 
 

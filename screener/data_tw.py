@@ -315,7 +315,7 @@ def _liquidity_rank(universe: pd.DataFrame) -> dict:
 
 def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
                         start: str = "2011-01-01", recheck_days: int = 3,
-                        frozen: set | None = None) -> int:
+                        frozen: set | None = None, priority: set | None = None) -> int:
     """增量更新台股財報快取。回傳本次成功更新的公司數。
     frozen：已下市的公司，抓過一次（目前版本）就不再重查。"""
     ensure_dir(TW_FIN_DIR)
@@ -324,6 +324,7 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
     exp_q = expected_latest_quarter(today, lag)
     in_window_q = (pd.Timestamp(today) - pd.offsets.QuarterEnd(1)).normalize()
     frozen = frozen or set()
+    priority = priority or set()
 
     todo = []
     for sid in universe["stock_id"]:
@@ -344,8 +345,9 @@ def update_fundamentals(universe: pd.DataFrame, lag: dict, fm: FinMind,
         if last_q < exp_q:
             if stale >= wait:
                 todo.append((1, sid))
-        elif last_q < in_window_q and stale >= recheck_days:
-            todo.append((2, sid))
+        elif last_q < in_window_q and stale >= (1 if sid in priority else recheck_days):
+            # 財報公布期間：持股、追蹤清單、大型股（priority）每天查，其他每 3 天
+            todo.append((1 if sid in priority else 2, sid))
         elif stale >= 120:  # 偶爾全面刷新，抓到更正後數字
             todo.append((3, sid))
     # 同一優先級內，成交值大的先抓（網站上常用的股票先完成）

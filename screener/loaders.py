@@ -44,6 +44,7 @@ def load_infos(include_delisted: bool = False, tickers: set | None = None) -> di
             "name": u["name"].values, "industry": u["industry"].values,
             "is_financial": u["is_financial"].astype(bool).values, "yahoo": u["yahoo"].values,
             "sic": u["sic"].values if "sic" in u else None,
+            "cik": pd.to_numeric(u["cik"], errors="coerce").values if "cik" in u else None,
         }, index=u["ticker"].values)
     for k in infos:
         infos[k].index.name = "id"

@@ -135,6 +135,7 @@ async function init() {
   S.news = await getJSON("data/news.json", true);
   S.orders = await getJSON("data/orders.json", true);
   S.paper = await getJSON("data/paper.json", true);
+  S.earn = await getJSON("data/earnings.json", true);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
@@ -162,7 +163,7 @@ function route() {
   $$(".view").forEach((el) => el.classList.toggle("on", el.id === "view-" + v));
   $$("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
   ({ overview: renderOverview, screener: renderScreener, etf: renderEtf, backtest: renderBacktest,
-     paper: renderPaper, watchlist: renderWatchlist, rules: renderRules }[v] || renderOverview)();
+     paper: renderPaper, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules }[v] || renderOverview)();
 }
 
 function initTheme() {
@@ -949,6 +950,28 @@ function bindUI() {
 }
 
 init();
+
+// ---------------------------------------------------------------- 財報快報
+function renderEarnings() {
+  const E = S.earn;
+  if (!E) { $("#erMeta").textContent = "財報資料還沒產生，每日更新跑過一次之後就會出現。"; $("#erTable").innerHTML = ""; $("#erUpcoming").innerHTML = ""; return; }
+  $("#erMeta").textContent = `追蹤：台股 ${E.coverage.tw} 家、美股 ${E.coverage.us} 家（持股、追蹤清單、模擬持股、市值大型股）；更新：${E.as_of}。${E.tw_deadlines || ""}`;
+  const g = S.erGroup || "all";
+  $$("#erSeg button").forEach((b) => { b.classList.toggle("on", b.dataset.g === g); b.onclick = () => { S.erGroup = b.dataset.g; renderEarnings(); }; });
+  const pc = (x) => (x == null ? "–" : fmt.pct(x, 1));
+  const cls = (x) => (x == null ? "" : x >= 0 ? "pos" : "neg");
+  const rows = (E.recent || []).filter((e) => g === "all" || (g === "us" && e.market === "us") || (g === "twq" && e.market === "tw" && e.type === "earnings") || (g === "twm" && e.type === "month_rev"));
+  const when = { before: "盤前", during: "盤中", after: "盤後" };
+  $("#erTable").innerHTML = `<thead><tr><th>日期</th><th>公司</th><th>類型</th><th class="num">財報後</th><th class="num">大盤</th><th class="num">相對</th><th class="num">營收年增</th><th class="num">淨利年增</th><th class="num">單季 EPS</th><th></th></tr></thead><tbody>${rows.map((e) => {
+    const r = e.reaction || {}, n = e.numbers || {};
+    const dt = e.type === "month_rev" ? (e.period || "").slice(0, 7) + " 月" : e.market === "tw" ? `${e.first_seen || e.date || ""} 抓到` : (e.date || "") + (when[e.timing] ? ` ${when[e.timing]}` : "");
+    const typ = e.type === "month_rev" ? "月營收" : e.market === "us" ? "財報" : `季報 ${(e.period || "").slice(0, 7)}`;
+    const pend = e.type === "earnings" && !e.reaction ? `<span class="hint">等收盤</span>` : "";
+    return `<tr><td>${esc(dt)}</td><td><b>${esc(e.id)}</b> ${esc(e.name || "")}</td><td>${typ}</td><td class="num ${cls(r.ret)}">${e.type === "month_rev" ? "" : r.ret != null ? pc(r.ret) : pend}</td><td class="num">${r.bench != null ? pc(r.bench) : ""}</td><td class="num ${cls(r.excess)}">${r.excess != null ? pc(r.excess) : ""}</td><td class="num ${cls(n.rev_yoy)}">${pc(n.rev_yoy)}${e.type === "month_rev" && n.rev_yoy_3m != null ? `<br><span class="hint">近 3 月 ${pc(n.rev_yoy_3m)}</span>` : ""}</td><td class="num ${cls(n.ni_yoy)}">${pc(n.ni_yoy)}</td><td class="num">${n.eps != null ? fmt.x(n.eps, 2) : "–"}</td><td>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">財報</a>` : ""}</td></tr>`;
+  }).join("") || `<tr><td colspan="10" class="hint">這段期間沒有財報</td></tr>`}</tbody>`;
+  const U = E.upcoming || [];
+  $("#erUpcoming").innerHTML = U.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>預定日期</th><th>公司</th></tr></thead><tbody>${U.slice(0, 60).map((u) => `<tr><td>${esc(u.date)}</td><td><b>${esc(u.id)}</b> ${esc(u.name || "")}</td></tr>`).join("")}</tbody></table></div><p class="hint">預定日期來自 Yahoo Finance，公司可能更改；台股看上方的法定期限。</p>` : `<p class="hint">還沒有資料（大約每週更新一次）。</p>`;
+}
 
 // ---------------------------------------------------------------- 並行模擬
 function renderPaper() {

@@ -1,5 +1,6 @@
 """更新台股股票清單與財報快取（每次執行有 API 請求上限，可重複執行慢慢回填）。"""
 import argparse
+import json
 import os
 import sys
 
@@ -41,7 +42,13 @@ def main():
     extra = dl[~dl["stock_id"].isin(uni["stock_id"])][uni.columns.tolist()] if len(dl) else uni.iloc[0:0]
     uni_ext = pd.concat([uni, extra], ignore_index=True)
     frozen = set(dl["stock_id"]) if len(dl) else set()
-    data_tw.update_fundamentals(uni_ext, cfg["reporting_lag"]["tw"], fm, frozen=frozen)
+    # 財報快報追蹤的公司（持股、追蹤清單、大型股）：公布期間每天查新一季財報
+    wp = CACHE_DIR / "earnings_watch.json"
+    try:
+        prio = set(json.loads(wp.read_text()).get("tw", [])) if wp.exists() else set()
+    except Exception:  # noqa
+        prio = set()
+    data_tw.update_fundamentals(uni_ext, cfg["reporting_lag"]["tw"], fm, frozen=frozen, priority=prio)
     fm.max_calls = args.max_calls
     # 月營收：OpenAPI 補最新月份，剩餘 FinMind 額度回填歷史
     try:

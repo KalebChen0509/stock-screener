@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import smtplib
+import unicodedata
 from email.mime.text import MIMEText
 
 import requests
@@ -27,15 +28,29 @@ def send_line(text: str) -> bool:
     return True
 
 
+def _clean(v: str | None, drop_spaces: bool = False) -> str:
+    """GitHub Secrets 常見輸入問題：中文輸入法打出全形英數字（ｇｍａｉｌ）、前後空白、應用程式密碼中間的空格。"""
+    v = unicodedata.normalize("NFKC", v or "").strip()
+    return v.replace(" ", "") if drop_spaces else v
+
+
+def _non_ascii(v: str) -> bool:
+    return any(ord(c) > 127 for c in v)
+
+
 def send_email(subject: str, text: str, html: str | None = None) -> bool:
-    host = os.environ.get("SMTP_HOST") or "smtp.gmail.com"
-    port = int(os.environ.get("SMTP_PORT") or 465)
-    user = os.environ.get("SMTP_USER")
-    pw = os.environ.get("SMTP_PASS")
-    to = os.environ.get("EMAIL_TO") or user
+    host = _clean(os.environ.get("SMTP_HOST")) or "smtp.gmail.com"
+    port = int(_clean(os.environ.get("SMTP_PORT")) or 465)
+    user = _clean(os.environ.get("SMTP_USER"))
+    pw = _clean(os.environ.get("SMTP_PASS"), drop_spaces=True)
+    to = _clean(os.environ.get("EMAIL_TO")) or user
     if not user or not pw:
         log.info("SMTP not configured; skip")
         return False
+    for name, val in (("SMTP_USER", user), ("SMTP_PASS", pw), ("EMAIL_TO", to)):
+        if _non_ascii(val):
+            log.warning("email failed: GitHub Secret %s 含有中文或特殊字元（不是半形英數字），請切換成英文輸入後重新填寫", name)
+            return False
     msg = MIMEText(html or text, "html" if html else "plain", "utf-8")
     msg["Subject"] = subject
     msg["From"] = user
