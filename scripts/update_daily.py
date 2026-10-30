@@ -673,7 +673,12 @@ def main():
             if er["digest"]:
                 print("\n" + er["digest"])
                 if not args.no_notify:
-                    log.info("earnings notify %s", notify(f"財報快報 {today.date()}", er["digest"]))
+                    from screener.notify import configured as _nconf
+                    nr = notify(f"財報快報 {today.date()}", er["digest"])
+                    log.info("earnings notify %s", nr)
+                    # 寄成功（或根本沒設定通知管道）才記為已通知；寄失敗的下次會再寄
+                    if any(nr.values()) or not _nconf():
+                        earnings.mark_notified(er["keys"])
     except Exception as e:  # noqa
         log.warning("earnings update failed: %s", e)
     print("\n".join(lines))

@@ -127,10 +127,15 @@ def main():
             assert "營收年增 +20.0%" in o1["digest"] and "相對" in o1["digest"]
             assert o1["site"]["coverage"] == {"tw": 2, "us": 3}
             assert set(__import__("json").loads(E.WATCH_PATH.read_text())["tw"]) == {"2330", "2317"}
+            # 寄信失敗（沒有 mark_notified）：下次會再寄同樣的內容
+            o1b = E.update(cfg, month_rev=wide.iloc[:-1], today="2026-10-30", **kw)
+            assert "MSFT" in o1b["digest"] and "GOOG" in o1b["digest"], "unsent → resend"
+            E.mark_notified(o1b["keys"])
             o2 = E.update(cfg, month_rev=wide.iloc[:-1], today="2026-10-31", **kw)
-            assert o2["digest"] == "", "no duplicate notifications"
+            assert o2["digest"] == "", "no duplicate notifications after a successful send"
             q2.to_csv(fin / "2330.csv.gz", index=False, compression="gzip")
             o3 = E.update(cfg, month_rev=wide, today="2026-11-03", **kw)
+            E.mark_notified(o3["keys"])
             assert "【剛公布，下次回報漲跌】" in o3["digest"] and "2330 台積電" in o3["digest"] and "【台股月營收】" in o3["digest"], o3["digest"]
             dl.loc[pd.Timestamp("2026-11-03")] = dl.iloc[-1]
             dl.loc[pd.Timestamp("2026-11-03"), "2330.TW"] = 1050.0

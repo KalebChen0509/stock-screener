@@ -376,18 +376,16 @@ def update(cfg: dict, results: dict, infos: dict, held: dict | None = None, posi
                 e["numbers"] = us_numbers(sec, e["cik"], e["date"])
             except Exception as ex:  # noqa
                 log.warning("earnings: numbers %s failed: %s", e["id"], ex)
-        # 通知：剛公布一次（反應還沒出來）、反應出來一次；月營收一次
+        # 通知：剛公布一次（反應還沒出來）、反應出來一次；月營收一次。
+        # 這裡只挑出要通知的；真的寄出去之後才由 mark_notified 記錄（寄信失敗下次會再寄）
         if e["type"] == "month_rev":
-            if not e.get("notified"):
-                to_notify.append(e)
-                e["notified"] = True
+            if not e.get("sent"):
+                to_notify.append((e, "sent"))
         elif e.get("reaction"):
-            if not e.get("notified_done"):
-                to_notify.append(e)
-                e["notified_done"] = e["notified_new"] = True
-        elif not e.get("notified_new"):
-            to_notify.append(e)
-            e["notified_new"] = True
+            if not e.get("sent_done"):
+                to_notify.append((e, "sent_done"))
+        elif not e.get("sent_new"):
+            to_notify.append((e, "sent_new"))
     # ---- 美股未來財報日（每週更新一次）----
     if (today - pd.Timestamp(st.get("upcoming_date", "2000-01-01"))).days > 6 or upcoming_fn is not None:
         fn = upcoming_fn or _upcoming_yf
@@ -412,4 +410,21 @@ def update(cfg: dict, results: dict, infos: dict, held: dict | None = None, posi
             "sec_calls": sec.calls}
     log.info("earnings: coverage tw %d us %d, new events %d, notify %d, SEC calls %d",
              len(cov["tw"]), len(cov["us"]), len(found), len(to_notify), sec.calls)
-    return {"site": site, "digest": digest(to_notify, upcoming, today)}
+    return {"site": site, "digest": digest([e for e, _ in to_notify], upcoming, today),
+            "keys": [[e["key"], flag] for e, flag in to_notify]}
+
+
+def mark_notified(keys: list) -> None:
+    """通知真的送出去之後才呼叫：記錄哪些財報已經通知過（反應出來的那次也代表剛公布那次不用再通知）。"""
+    if not keys or not STATE_PATH.exists():
+        return
+    st = json.loads(STATE_PATH.read_text())
+    want = {}
+    for k, flag in keys:
+        want.setdefault(k, set()).add(flag)
+    for e in st.get("events", []):
+        for flag in want.get(e["key"], ()):
+            e[flag] = True
+            if flag == "sent_done":
+                e["sent_new"] = True
+    STATE_PATH.write_text(json.dumps(st, ensure_ascii=False, default=str))
