@@ -1,0 +1,15 @@
+2026-10-23 07:39:33,033 INFO screener: downloading https://www.sec.gov/files/company_tickers_exchange.json
+2026-10-23 07:39:33,234 INFO screener:   -> /tmp/sec/company_tickers_exchange.json (1 MB)
+2026-10-23 07:39:33,252 INFO screener: downloading https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip
+2026-10-23 07:39:40,905 INFO screener:   -> /tmp/sec/submissions.zip (1571 MB)
+2026-10-23 07:39:59,538 INFO screener: US 8-K events: 762741
+2026-10-23 07:39:59,570 INFO screener: US universe: 6014 companies
+2026-10-23 07:39:59,899 INFO screener: downloading https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip
+2026-10-23 07:40:03,710 INFO screener:   -> /tmp/sec/companyfacts.zip (1411 MB)
+2026-10-23 07:40:03,807 INFO screener: parsing 5850 companyfacts files
+2026-10-23 07:54:47,452 INFO screener:   ... 1000/5850
+2026-10-23 08:07:17,135 INFO screener:   ... 2000/5850
+2026-10-23 08:17:48,668 INFO screener:   ... 3000/5850
+2026-10-23 08:25:19,982 INFO screener:   ... 4000/5850
+2026-10-23 08:29:45,236 INFO screener:   ... 5000/5850
+2026-10-23 08:31:50,758 INFO screener: US fundamentals: 182721 rows, 4429 companies
