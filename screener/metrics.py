@@ -67,9 +67,19 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
         lambda x: x.shift(1).rolling(8, min_periods=4).std())
     df["n_quarters"] = df.groupby("_key", sort=False).cumcount() + 1
 
-    # 分割調整後股數（換成今天的股數基準）
+    # 股數缺漏（封面沒標、多類股公司等）：沿用同公司前 4 季內已公布的股數（當時已知的資料，不偷看未來）
     if "shares_date" not in df:
         df["shares_date"] = df["period_end"]
+    df["_sh_ff"] = False
+    if "shares" in df:
+        df["shares"] = pd.to_numeric(df["shares"], errors="coerce")
+        sd = pd.to_datetime(df["shares_date"]).fillna(df["period_end"]).where(df["shares"].notna())
+        miss = df["shares"].isna()
+        df["shares"] = grp("shares").ffill(limit=4)
+        sd_f = sd.groupby(df["_key"], sort=False).ffill(limit=4)
+        df["_sh_ff"] = miss & df["shares"].notna()
+        df["shares_date"] = pd.to_datetime(df["shares_date"]).where(~df["_sh_ff"], sd_f)
+    # 分割調整後股數（換成今天的股數基準）
     df["shares_date"] = pd.to_datetime(df["shares_date"]).fillna(df["period_end"])
     if splits is not None and yahoo_map is not None and not splits.empty:
         td = pd.DataFrame({"ticker": df["id"].map(yahoo_map), "date": df["shares_date"]},
@@ -134,7 +144,7 @@ def fundamental_panel(fund: pd.DataFrame, splits: pd.DataFrame | None = None,
          np.where(c3 <= 0, "丁", "其他"))))))
     out["cf_type"] = t
     out["cf_type_ok"] = pd.Series(t, index=df.index).isin(["甲", "乙"])
-    out["share_growth"] = _div(df["adj_shares"], df["adj_shares_lag4"]) - 1
+    out["share_growth"] = (_div(df["adj_shares"], df["adj_shares_lag4"]) - 1).where(~df["_sh_ff"])   # 沿用舊股數的季度不算膨脹率
     # 成長選股用：營收、每股盈餘近一年成長率（去年同期為負時不計算）；財務槓桿只看「借款」，不含應付帳款
     out["rev_growth_1y"] = (_div(df["revenue_ttm"], df["revenue_ttm_lag4"]) - 1).clip(-0.9, 5)
     eps, eps_l4 = _div(df["net_income_ttm"], df["adj_shares"]), _div(df["ni_ttm_lag4"], df["adj_shares_lag4"])

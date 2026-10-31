@@ -45,6 +45,18 @@ def all_tickers() -> list[str]:
 
 ALT_MISS = CACHE_DIR / "prices_alt.miss"
 NEW_MISS = CACHE_DIR / "prices_new.miss"     # 新加入股票清單、但 Yahoo 抓不到的代號（下市等），不每天重試
+GAP_DONE = CACHE_DIR / "prices_gap.done"     # 股價歷史太短、已補抓過完整歷史的代號（真的是新上市就不再重抓）
+
+
+def short_history(old: pd.DataFrame, tickers, months: int = 12, limit: int = 600) -> list[str]:
+    """股價歷史不到 months 個月的代號（例如某次下載失敗，只留下之後每天補的最近幾個月）。
+    每個代號只補抓一次完整歷史；抓完仍然很短（新上市）就記在 prices_gap.done 不再重抓。"""
+    if old.empty:
+        return []
+    first = old.groupby("ticker")["month"].min()
+    cutoff = old["month"].max() - pd.DateOffset(months=months)
+    done = set(GAP_DONE.read_text().split()) if GAP_DONE.exists() else set()
+    return sorted(t for t in tickers if t in first.index and first[t] > cutoff and t not in done)[:limit]
 
 
 def tw_alt_tickers(have: set) -> tuple[list[str], list[str]]:
@@ -93,8 +105,13 @@ def main():
     alt_found, alt_todo = tw_alt_tickers(prices.monthly_tickers())
     log.info("price tickers: %d (+ TW alternate suffix: %d known, %d to try)", len(tickers), len(alt_found), len(alt_todo))
     if args.full or not prices.MONTHLY_PATH.exists():
-        res = prices.fetch_monthly(sorted(set(tickers) | set(alt_found) | set(alt_todo)), start="2011-01-01")
+        res = prices.fetch_monthly(sorted(set(tickers) | set(alt_found) | set(alt_todo)), start="2011-01-01", save=False)
         _record_alt_miss(alt_todo, set(res["ticker"]))
+        if prices.MONTHLY_PATH.exists():   # 這次下載失敗的代號保留舊資料（不要整批消失）
+            old = prices.load_monthly()
+            res = pd.concat([res, old[~old["ticker"].isin(set(res["ticker"]))]], ignore_index=True)
+        res.sort_values(["ticker", "month"]).to_csv(prices.MONTHLY_PATH, index=False, compression="gzip")
+        log.info("monthly prices (full): %d rows, %d tickers", len(res), res["ticker"].nunique())
         return
     tickers = sorted(set(tickers) | set(alt_found))
     old = prices.load_monthly()
@@ -119,19 +136,42 @@ def main():
     # 新加入的 ETF／基準／固定部位代號：補抓完整歷史（個股不在此列，避免每天重抓下市股票）
     # 新加入股票清單的公司（例如補進來的「其他業」）：抓完整歷史一次；抓不到的記下來不再重試
     new_miss = set(NEW_MISS.read_text().split()) if NEW_MISS.exists() else set()
+    have_recent = set(new["ticker"]) if len(new) else set()
+    # 有最近股價、卻被記成「抓不到」的（當初是暫時下載失敗）：移出清單，重新抓
+    if new_miss & have_recent:
+        new_miss -= have_recent
+        NEW_MISS.write_text("\n".join(sorted(new_miss)))
     new_stocks = sorted(set(tickers) - set(old["ticker"]) - set(key_tickers()) - new_miss)
-    missing = sorted((set(key_tickers()) - set(old["ticker"])) | set(alt_todo) | set(new_stocks))
+    gaps = [t for t in short_history(old, tickers) if t in have_recent]   # 還在交易的才補（下市的不必每天重試）
+    if gaps:
+        log.info("short price history (%d tickers), refetching full history once: %s", len(gaps), gaps[:20])
+    missing = sorted((set(key_tickers()) - set(old["ticker"])) | set(alt_todo) | set(new_stocks) | set(gaps))
     if missing:
         log.info("new tickers, fetching full history: %s", missing[:20])
         full_new = prices.fetch_monthly(missing, start="2011-01-01", save=False)
         got_new = set(full_new["ticker"]) if len(full_new) else set()
+        keep_old, got = set(), set()
         _record_alt_miss(alt_todo, got_new)
-        _record_alt_miss(new_stocks, got_new, NEW_MISS)
+        # 只有連最近的股價也抓不到才記成「抓不到」；抓完整歷史時暫時失敗的，下次再試
+        _record_alt_miss([t for t in new_stocks if t not in have_recent], got_new, NEW_MISS)
         if len(full_new):
+            first_old = old.groupby("ticker")["month"].min()
+            first_new = full_new.groupby("ticker")["month"].min()
+            # 補抓的歷史沒有比原本長（新上市）就保留原本的資料
+            keep_old = {t for t in gaps if t in first_new.index and first_new[t] >= first_old.get(t, first_new[t])}
+            full_new = full_new[~full_new["ticker"].isin(keep_old)]
             got = set(full_new["ticker"])
             merged = [g for g in merged if not (len(g) and g["ticker"].iloc[0] in got)]
             merged.append(full_new)
-    seen = set(new["ticker"]) | set(missing)
+        if gaps:
+            done = set(GAP_DONE.read_text().split()) if GAP_DONE.exists() else set()
+            GAP_DONE.write_text("\n".join(sorted(done | (set(gaps) & got_new))))
+            log.info("price history: %d of %d refetched, %d now longer", len(set(gaps) & got_new), len(gaps),
+                     len((set(gaps) & got_new) - keep_old))
+    else:
+        got = set()
+    # 舊資料：這次有更新（最近幾個月或完整歷史）的代號已經在 merged 裡，其餘照舊保留
+    seen = set(new["ticker"]) | got
     merged.append(old[~old["ticker"].isin(seen)])
     res = pd.concat(merged, ignore_index=True).sort_values(["ticker", "month"])
     res.to_csv(prices.MONTHLY_PATH, index=False, compression="gzip")

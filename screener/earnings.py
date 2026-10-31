@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from . import prices
+from . import names, prices
 from .common import CACHE_DIR, log
 
 STATE_PATH = CACHE_DIR / "earnings_state.json"
@@ -233,17 +233,18 @@ def _pct(x, d=1):
 
 
 def _line(e: dict) -> str:
-    nm = f"{e['id']} {e.get('name') or ''}".strip()
+    """兩行：「・代號 中文名｜說明」＋「公布時間；財報後漲跌；營收、淨利年增」。"""
+    nm = names.tag(e["market"], e["id"], e.get("name"))
     n = e.get("numbers") or {}
     if e["type"] == "month_rev":
-        return f"・{nm} {e['period'][:7]} 月營收 年增 {_pct(n.get('rev_yoy'))}（近 3 個月 {_pct(n.get('rev_yoy_3m'))}）"
+        return f"・{nm}\n    {e['period'][:7]} 月營收 年增 {_pct(n.get('rev_yoy'))}（近 3 個月 {_pct(n.get('rev_yoy_3m'))}）"
     if e["market"] == "tw":
         pe = pd.Timestamp(e.get("period") or e["date"])
-        head = f"・{nm} {pe.year}Q{(pe.month - 1) // 3 + 1} 季報（{pd.Timestamp(e['first_seen']).strftime('%m/%d')} 抓到）" \
-            if e.get("first_seen") else f"・{nm} {pe.year}Q{(pe.month - 1) // 3 + 1} 季報"
+        head = f"{pe.year}Q{(pe.month - 1) // 3 + 1} 季報（{pd.Timestamp(e['first_seen']).strftime('%m/%d')} 抓到）" \
+            if e.get("first_seen") else f"{pe.year}Q{(pe.month - 1) // 3 + 1} 季報"
     else:
         when = {"before": "盤前", "during": "盤中", "after": "盤後"}.get(e.get("timing"), "")
-        head = f"・{nm} {pd.Timestamp(e['date']).strftime('%m/%d')} {when}公布" if e.get("date") else f"・{nm}"
+        head = f"{pd.Timestamp(e['date']).strftime('%m/%d')} {when}公布" if e.get("date") else ""
     r = e.get("reaction")
     parts = [head]
     if r:
@@ -259,7 +260,7 @@ def _line(e: dict) -> str:
             bits.append(f"單季 EPS {n['eps']:.2f}")
         if bits:
             parts.append("、".join(bits))
-    return "｜".join(parts)
+    return f"・{nm}\n    " + "；".join(p_ for p_ in parts if p_)
 
 
 def digest(events: list[dict], upcoming: list[dict], today: pd.Timestamp) -> str:
@@ -284,7 +285,8 @@ def digest(events: list[dict], upcoming: list[dict], today: pd.Timestamp) -> str
     nxt = [u for u in upcoming if 0 <= (pd.Timestamp(u["date"]) - today).days <= 7]
     if nxt:
         lines.append("【未來 7 天預定公布（美股）】")
-        lines.append("、".join(f"{u['id']} {pd.Timestamp(u['date']).strftime('%m/%d')}" for u in nxt[:30]))
+        lines.append("、".join(f"{u['id']} {names.info('us', u['id'], u.get('name'))[0]} {pd.Timestamp(u['date']).strftime('%m/%d')}"
+                               for u in nxt[:30]))
     return "\n".join(lines)
 
 
@@ -318,11 +320,11 @@ def update(cfg: dict, results: dict, infos: dict, held: dict | None = None, posi
     st = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
     cov = coverage(cfg, results, held, positions, watch, paper_log)
     WATCH_PATH.write_text(json.dumps({"tw": sorted(cov["tw"]), "us": sorted(cov["us"])}))
-    names = {mk: infos[mk]["name"].to_dict() for mk in infos}
+    nmap = {mk: infos[mk]["name"].to_dict() for mk in infos}
     for mk, pos in (positions or {}).items():
         for k, v in (pos or {}).items():
             if isinstance(v, dict) and v.get("name"):
-                names.setdefault(mk, {}).setdefault(str(k), v["name"])
+                nmap.setdefault(mk, {}).setdefault(str(k), v["name"])
     sec = sec or Sec()
     # ---- 美股代號 → CIK（股票清單沒有的，例如 BRK-B，用 SEC 的代號表；每週更新一次）----
     tick_cik = {}
@@ -353,7 +355,7 @@ def update(cfg: dict, results: dict, infos: dict, held: dict | None = None, posi
         found = [e for e in found if e["market"] == "us"]     # 第一次：台股只記錄進度
     for e in found:
         if e["key"] not in events:
-            e["name"] = names.get(e["market"], {}).get(e["id"], "")
+            e["name"] = nmap.get(e["market"], {}).get(e["id"], "")
             e["status"] = "new"
             e["first_seen"] = today.strftime("%Y-%m-%d")
             events[e["key"]] = e
@@ -395,7 +397,7 @@ def update(cfg: dict, results: dict, infos: dict, held: dict | None = None, posi
         except Exception as ex:  # noqa
             log.warning("earnings: upcoming failed: %s", ex)
     y2id = {v: k for k, v in ymap["us"].items()}
-    upcoming = sorted([{"id": y2id.get(t, t), "name": names.get("us", {}).get(y2id.get(t, t), ""), "date": d}
+    upcoming = sorted([{"id": y2id.get(t, t), "name": nmap.get("us", {}).get(y2id.get(t, t), ""), "date": d}
                        for t, d in (st.get("upcoming") or {}).items() if pd.Timestamp(d) >= today],
                       key=lambda u: u["date"])
     # ---- 存檔、網站資料 ----

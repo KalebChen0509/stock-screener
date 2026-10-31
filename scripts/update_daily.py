@@ -15,6 +15,7 @@ from screener.common import (CACHE_DIR, ROOT, SITE_DATA, load_etf_universe, load
                              load_watchlist, log, write_json)
 from screener.engine import ret_n_months, screen_market, select_with_buffer  # noqa: E402
 from screener import events as evmod  # noqa: E402
+from screener import names as nmod  # noqa: E402
 from screener.etf import enrich_live, point_in_time_metrics, screen_and_rank, static_frame  # noqa: E402
 from screener.loaders import load_infos, load_panels  # noqa: E402
 from screener.notify import notify  # noqa: E402
@@ -161,7 +162,7 @@ def check_stop_loss(cfg, state, held, infos, today, month_key):
         status[(mkt, sid)] = stt
         if stt["triggered"] and manual:
             state.setdefault("manual_stopped", {})[sid] = today.strftime("%Y-%m-%d")
-            lines.append(f"🛑 停損觸發：{sid} {name}（你原本的持股）自成本已 {ret:+.1%}，請賣出")
+            lines.append(f"🛑 停損觸發：{nmod.tag(mkt, sid, name)}（你原本的持股）自成本已 {ret:+.1%}，請賣出")
         elif stt["triggered"]:
             held[mkt] = [h for h in held[mkt] if h != sid]
             until = (today + pd.DateOffset(months=cool_m)).strftime("%Y-%m-%d")
@@ -171,10 +172,19 @@ def check_stop_loss(cfg, state, held, infos, today, month_key):
                 state["stopped_month"][mkt].append(sid)
             ref = "最高點" if trail else ("你的成本" if p.get("cost") else f"{d0.date()} 買進價")
             again = f"{cool_m} 個月內不再買回" if sl.get("reentry", "cooldown") == "cooldown" else "至少 1 個月後、且站上 10 個月均線才會再買回"
-            lines.append(f"🛑 停損觸發：{sid} {name} 自{ref}已 {ret:+.1%}，請賣出（{again}）")
+            lines.append(f"🛑 停損觸發：{nmod.tag(mkt, sid, name)} 自{ref}已 {ret:+.1%}，請賣出（{again}）")
         elif dist < 0.03:
-            lines.append(f"⚠️ 接近停損：{sid} {name} 目前 {ret:+.1%}（再跌約 {dist:.1%} 觸發）")
+            lines.append(f"⚠️ 接近停損：{nmod.tag(mkt, sid, name)} 目前 {ret:+.1%}（再跌約 {dist:.1%} 觸發）")
     return status, lines
+
+
+def _otag(o: dict) -> str:
+    """下單清單的名稱：個股「代號 中文名｜說明」；ETF 加類型；大盤補位維持原說明。"""
+    if o.get("kind") == "fill":
+        return f"{str(o['id']).split('.')[0]} {nmod.info('etf', o['key'])[0]}｜{o.get('name', '')}"
+    if o.get("kind") in ("etf", "core"):
+        return nmod.tag("etf", o["key"], o.get("name"))
+    return nmod.tag(o.get("market", "us"), o["id"], o.get("name"))
 
 
 def yahoo_of(infos, mkt, sid) -> str:
@@ -469,6 +479,10 @@ def main():
     if mp_.exists():
         meta["tw_month_rev"] = json.loads(mp_.read_text())
     write_json(SITE_DATA / "meta.json", meta)
+    try:   # 公司中文名稱與一句話說明（網站各表格共用）
+        write_json(SITE_DATA / "names.json", nmod.site_table())
+    except Exception as e:  # noqa
+        log.warning("names table failed: %s", e)
     cfg_out = dict(cfg)
     write_json(SITE_DATA / "config.json", cfg_out)
 
@@ -504,9 +518,9 @@ def main():
     if flags or neg:
         ev_lines.append("⚠️ 持股／追蹤清單的事件與負面新聞：")
         for f_ in flags[:10]:
-            ev_lines.append(f"  {'⛔' if f_['veto'] else '•'} {f_['id']} {f_['name']}：{f_['text']}")
+            ev_lines.append(f"  {'⛔' if f_['veto'] else '•'} {nmod.tag(f_['market'], f_['id'], f_['name'])}：{f_['text']}")
         for n in neg[:10]:
-            ev_lines.append(f"  • {n['id']}：{n['title'][:60]}")
+            ev_lines.append(f"  • {nmod.tag(n.get('market', 'us'), n['id'])}：{n['title'][:60]}")
 
     # ---------- 通知 ----------
     cur = {m: sorted(results[m][0][results[m][0]["pass_all"]]["id"]) for m in results}
@@ -519,7 +533,7 @@ def main():
         prev = set(state.get("passed", {}).get(m, []))
         now = set(cur[m])
         new, gone = sorted(now - prev), sorted(prev - now)
-        nm = (lambda i: f"{i} {infos[m].at[i, 'name']}" if m in infos and i in infos[m].index else i)
+        nm = (lambda i: nmod.tag(m, i, infos[m].at[i, "name"] if m in infos and i in infos[m].index else None))
         lines.append(f"{label}：通過 {len(now)} 檔")
         if state.get("passed"):
             if new:
@@ -536,7 +550,7 @@ def main():
             if sid in df.index:
                 ok = bool(df.at[sid, "pass_all"])
                 why = "" if ok else "（未過：" + "、".join(df.at[sid, "failed"][:4]) + "）"
-                wl_lines.append(f"  {sid} {df.at[sid, 'name']}：{'✅ 通過' if ok else '❌'}{why}")
+                wl_lines.append(f"  {nmod.tag(m, sid, df.at[sid, 'name'])}：{'✅ 通過' if ok else '❌'}{why}")
     if wl_lines:
         lines.append("追蹤清單：")
         lines += wl_lines
@@ -613,11 +627,11 @@ def main():
         lines.append("🧾 下單清單（以最新收盤估算）：")
         for o in plan["orders"]:
             if o["action"] == "sell":
-                lines.append(f"  賣出 {o['id']} {o['name']} 全部（{o['reason']}）")
+                lines.append(f"  賣出 {_otag(o)} 全部（{o['reason']}）")
             elif o["action"] == "buy":
                 amt = f"US${o['amount_local']:,.2f}" if o["market"] == "us" else f"NT${o['amount_twd']:,}"
                 unit = f"{o['shares']} 股" if not float(o["shares"]).is_integer() else f"{int(o['shares']):,} 股"
-                lines.append(f"  買進 {o['id']} {o['name']} {unit}（約 {amt}，{o['reason']}）")
+                lines.append(f"  買進 {_otag(o)} {unit}（約 {amt}，{o['reason']}）")
         lines.append(f"  剩餘現金 NT${plan['cash_after_twd']:,} 留到下個月")
     site = os.environ.get("PAGES_URL", "")
     if site:

@@ -118,15 +118,34 @@ async function getJSON(p, opt = false) {
 }
 const toObjs = (t) => (t ? t.rows.map((r) => Object.fromEntries(t.cols.map((c, i) => [c, r[i]]))) : []);
 
+// ---------------------------------------------------------------- 公司中文名稱與一句話說明（data/names.json）
+const mktOf = (id) => (/^\d/.test(String(id)) ? "tw" : "us");
+function zhInfo(m, id, name) {
+  const N = S.names || {}, k = String(id ?? "");
+  const x = (m === "etf" ? null : (N[m] || {})[k]) || (N.etf || {})[k] || (m === "tw" ? (N.tw || {})[k.replace(/\.TWO?$/, "")] : null);
+  return x ? { n: x[0] || name || k, d: x[1] || "" } : { n: name || "", d: "" };
+}
+// 表格名稱欄：中文名＋小字說明（滑鼠移上顯示原本名稱）
+function nameCell(m, id, name) {
+  const z = zhInfo(m, id, name);
+  return `<span title="${esc(name || "")}">${esc(z.n)}</span>${z.d ? `<br><span class="hint">${esc(z.d)}</span>` : ""}`;
+}
+// 清單裡的名稱：「中文名 說明」同一行
+function nameInline(m, id, name) {
+  const z = zhInfo(m, id, name);
+  return `${esc(z.n)}${z.d ? ` <span class="hint">${esc(z.d)}</span>` : ""}`;
+}
+const zhText = (m, id) => { const z = zhInfo(m, id, ""); return `${z.n} ${z.d}`; };
+
 async function init() {
   initTheme();
   try {
-    const [cfg, meta, tw, us, etf, port] = await Promise.all([
+    const [cfg, meta, tw, us, etf, port, names] = await Promise.all([
       getJSON("data/config.json"), getJSON("data/meta.json"),
       getJSON("data/stocks_tw.json", true), getJSON("data/stocks_us.json", true),
-      getJSON("data/etf.json", true), getJSON("data/portfolio.json", true),
+      getJSON("data/etf.json", true), getJSON("data/portfolio.json", true), getJSON("data/names.json", true),
     ]);
-    Object.assign(S, { cfg, meta, port, stocks: { tw: toObjs(tw), us: toObjs(us) }, etf: toObjs(etf) });
+    Object.assign(S, { cfg, meta, port, names: names || {}, stocks: { tw: toObjs(tw), us: toObjs(us) }, etf: toObjs(etf) });
   } catch (e) {
     $("#updated").textContent = "資料尚未產生（等待第一次自動更新）";
     return;
@@ -354,13 +373,13 @@ function renderOverview() {
     html += `<div class="table-wrap"><table class="data compact"><tbody>${hs.map((h) => {
       const click = h.kind === "stock" && h.score != null;
       const stopCells = (sl === "tw" || sl === "us") && h.kind === "stock" ? `<td class="num ${h.since_entry == null ? "" : h.since_entry >= 0 ? "pos" : "neg"}" title="自買進（含息）">${h.since_entry != null ? fmt.pct(h.since_entry) : ""}</td><td class="num hint" title="距離停損">${h.stop_dist != null ? (h.stop_dist < 0.03 ? "⚠️ " : "") + "距停損 " + fmt.pct(h.stop_dist) : ""}</td>` : `<td></td><td></td>`;
-      return `<tr class="${click ? "clickable" : ""}" data-m="${sl}" data-id="${esc(h.id)}"><td>${h.cross_ok ? "⭐ " : ""}<b>${esc(h.id)}</b></td><td>${esc(h.name)}</td><td class="hint">${esc(h.industry || "")}</td><td class="num">${fmt.pct(h.weight, 1)}</td><td class="num">${h.score != null ? h.score.toFixed(1) : ""}</td>${stopCells}</tr>`;
+      return `<tr class="${click ? "clickable" : ""}" data-m="${sl}" data-id="${esc(h.id)}"><td>${h.cross_ok ? "⭐ " : ""}<b>${esc(h.id)}</b></td><td>${h.kind === "fill" ? esc(h.name) : nameCell(h.kind === "stock" ? h.market : "etf", h.id, h.name)}</td><td class="hint">${esc(h.industry || "")}</td><td class="num">${fmt.pct(h.weight, 1)}</td><td class="num">${h.score != null ? h.score.toFixed(1) : ""}</td>${stopCells}</tr>`;
     }).join("")}</tbody></table></div>`;
   }
   const P = S.port || {};
   const slc = P.stop_loss || {};
   if (slc.enabled) {
-    const st = (P.stopped || []).map((x) => `<li>🛑 <b>${esc(x.id)}</b> ${esc(x.name || "")}：${fmt.pct(x.ret)} → 請賣出</li>`).join("");
+    const st = (P.stopped || []).map((x) => `<li>🛑 <b>${esc(x.id)}</b> ${nameInline(x.market, x.id, x.name)}：${fmt.pct(x.ret)} → 請賣出</li>`).join("");
     const cd = (P.cooldown || []).map((x) => `${esc(x.id)}（至 ${esc(x.until)}）`).join("、");
     html += `<p class="hint">停損：${slc.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${slc.vol_mult}」（${fmt.pct(slc.vol_min, 0)}～${fmt.pct(slc.vol_max, 0)}）即賣出` : `個股自${slc.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(slc.pct, 0)} 即賣出`}，含息計算；ETF 不設停損。實際成本可填在 config/positions.yaml。</p>` +
       (st ? `<ul>${st}</ul>` : "") + (cd ? `<p class="hint">冷卻期（暫不買回）：${cd}</p>` : "");
@@ -393,9 +412,9 @@ function renderOverview() {
   renderSectors();
   renderOrders();
   const N = S.news || { news: [], events: [] };
-  const ev = (N.events || []).map((e) => `<li>${e.veto ? "⛔" : "⚠️"} <b>${esc(e.id)}</b> ${esc(e.name || "")}：${esc(e.text)}</li>`).join("");
+  const ev = (N.events || []).map((e) => `<li>${e.veto ? "⛔" : "⚠️"} <b>${esc(e.id)}</b> ${nameInline(e.market, e.id, e.name)}：${esc(e.text)}</li>`).join("");
   const nw = (N.news || []).slice().sort((a, b) => (b.negative - a.negative) || String(b.date).localeCompare(String(a.date))).slice(0, 40)
-    .map((n) => `<li>${n.negative ? "⚠️ " : ""}<b>${esc(n.id)}</b> ${n.source ? `<span class="pill">${esc(n.source)}</span> ` : ""}<span class="hint">${esc(n.date)}</span> ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join("");
+    .map((n) => `<li>${n.negative ? "⚠️ " : ""}<b>${esc(n.id)}</b> ${esc(zhInfo(n.market === "etf" ? "etf" : n.market || mktOf(n.id), n.id, "").n)} ${n.source ? `<span class="pill">${esc(n.source)}</span> ` : ""}<span class="hint">${esc(n.date)}</span> ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join("");
   const wsj = (N.wsj_headlines || []).slice(0, 15).map((n) => `<li>${n.negative ? "⚠️ " : ""}<span class="pill">${esc(n.category)}</span> <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a></li>`).join("");
   $("#ovNews").innerHTML = ((ev ? `<h3>重大事件</h3><ul>${ev}</ul>` : "") + (nw ? `<h3>近 3 天新聞（含華爾街日報提及持股的報導）</h3><ul>${nw}</ul>` : "") + (wsj ? `<h3>華爾街日報頭條（由上而下參考）</h3><ul>${wsj}</ul><p class="hint">標題與連結來自 WSJ 公開 RSS；點開後用你的訂閱帳號閱讀全文。</p>` : "")) || `<p class="hint">目前沒有資料</p>`;
 }
@@ -426,11 +445,12 @@ function renderOrders() {
   const order = { sell: 0, buy: 1, hold: 2 };
   const rows = O.orders.slice().sort((a, b) => order[a.action] - order[b.action] || (a.sleeve > b.sleeve ? 1 : -1));
   $("#ordTable").innerHTML = `<thead><tr><th>部位</th><th>代號</th><th>名稱</th><th class="num">參考價</th><th class="num">目標比重</th><th class="num">下單後比重</th><th>本月動作</th></tr></thead><tbody>${rows.map((o) => `
-    <tr><td>${names[o.sleeve] || o.sleeve}${o.kind === "fill" ? "<br><span class=\"hint\">大盤補位</span>" : ""}</td><td><b>${esc(o.id)}</b></td><td>${esc(o.name || "")}</td><td class="num">${o.price == null ? "–" : o.price + " " + (o.currency || "")}</td>
+    <tr><td>${names[o.sleeve] || o.sleeve}${o.kind === "fill" ? "<br><span class=\"hint\">大盤補位</span>" : ""}</td><td><b>${esc(o.id)}</b></td><td>${o.kind === "fill" ? esc(o.name || "") : nameCell(o.kind === "stock" ? o.market : "etf", o.id, o.name)}</td><td class="num">${o.price == null ? "–" : o.price + " " + (o.currency || "")}</td>
     <td class="num">${fmt.pct(o.target_weight, 1)}</td><td class="num">${o.weight_after == null ? "–" : fmt.pct(o.weight_after, 1)}</td><td>${act(o)}</td></tr>`).join("")}
     <tr class="dim"><td colspan="6">下單後剩餘現金（留到下個月）</td><td>${fmt.ntd(O.cash_after_twd || 0)}</td></tr></tbody>`;
   $("#ordCsv").onclick = () => {
-    const cols = ["sleeve", "kind", "id", "name", "currency", "price", "action", "shares", "amount_local", "amount_twd", "target_weight", "weight_after", "reason"];
+    rows.forEach((o) => { const z = zhInfo(o.kind === "stock" ? o.market : "etf", o.id, o.name); o.name_zh = z.n; o.desc_zh = z.d; });
+    const cols = ["sleeve", "kind", "id", "name", "name_zh", "desc_zh", "currency", "price", "action", "shares", "amount_local", "amount_twd", "target_weight", "weight_after", "reason"];
     const csv = [cols.join(",")].concat(rows.map((o) => cols.map((c) => (typeof o[c] === "string" ? `"${o[c]}"` : o[c] ?? "")).join(","))).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" }));
@@ -441,7 +461,7 @@ function renderOrders() {
 // ---------------------------------------------------------------- 個股篩選
 const STOCK_COLS = [
   ["rank", "#", (r, i) => i + 1, "num"], ["id", "代號", (r) => `<b>${esc(r.id)}</b>`],
-  ["name", "名稱", (r) => esc(r.name)], ["industry", "產業", (r) => `<span class="hint">${esc(r.industry)}</span> ${groupTags(r)}`],
+  ["name", "名稱", (r, i, m) => nameCell(m, r.id, r.name)], ["industry", "產業", (r) => `<span class="hint">${esc(r.industry)}</span> ${groupTags(r)}`],
   ["score", "綜合分數", (r) => (r.score == null ? "–" : `<span title="各指標在全市場${ruleSet() === "new" ? "（同業群組）" : ""}的百分位加權：約等於贏過百分之幾的公司；另有現金流加分">${r.cross ? "⭐ " : ""}${r.score.toFixed(1)}</span>`), "num"],
   ["close", "收盤", (r) => fmt.price(r.close), "num"], ["market_cap", "市值", (r, i, m) => fmt.money(r.market_cap, m), "num"],
   ["pe", "本益比", (r) => fmt.x(r.pe), "num"], ["pb", "P/B", (r) => fmt.x(r.pb, 2), "num"],
@@ -462,7 +482,7 @@ function renderScreener() {
   const q = $("#search").value.trim().toLowerCase();
   const near = $("#showNear").checked, all = $("#showAll").checked;
   let list = rows.filter((r) => all || r.pass || (near && r.failed.length <= 2));
-  if (q) list = list.filter((r) => `${r.id} ${r.name} ${r.industry}`.toLowerCase().includes(q));
+  if (q) list = list.filter((r) => `${r.id} ${r.name} ${r.industry} ${zhText(S.mkt, r.id)}`.toLowerCase().includes(q));
   const { key, dir } = S.sort;
   list.sort((a, b) => {
     if (key === "failed") return dir * (a.failed.length - b.failed.length);
@@ -575,7 +595,7 @@ async function openDetail(mkt, id) {
   if (mkt !== "etf") S.curMkt = mkt;
   const dlg = $("#detail");
   const row = mkt === "etf" ? S.etf.find((r) => r.ticker === id) : (S.lastRows && S.mkt === mkt ? S.lastRows : runScreen(mkt)).find((r) => r.id === id);
-  $("#dTitle").textContent = `${id}　${row ? row.name : ""}`;
+  { const z = zhInfo(mkt, id, row ? row.name : ""); $("#dTitle").textContent = `${id}　${z.n}${z.d ? "｜" + z.d : ""}`; }
   $("#dBody").innerHTML = `<p class="hint">載入中…</p>`;
   dlg.showModal();
   const d = await getJSON(`data/detail/${mkt}/${encodeURIComponent(id)}.json`, true);
@@ -776,8 +796,8 @@ function renderBacktest() {
   sel.innerHTML = bt.holdings.slice().reverse().map((h) => `<option>${h.month}</option>`).join("");
   const showH = () => {
     const h = bt.holdings.find((x) => x.month === sel.value);
-    const blk = (t, a) => `<div><b>${t}（${a.length}）</b><ul>${a.map(([i, n]) => `<li>${esc(i)} ${esc(n)}</li>`).join("") || "<li class='hint'>無 → 現金</li>"}</ul></div>`;
-    $("#btHoldings").innerHTML = blk("台股", h.tw) + blk("美股", h.us) + blk("ETF", h.etf);
+    const blk = (t, a, m) => `<div><b>${t}（${a.length}）</b><ul>${a.map(([i, n]) => `<li>${esc(i)} ${nameInline(m, i, n)}</li>`).join("") || "<li class='hint'>無 → 現金</li>"}</ul></div>`;
+    $("#btHoldings").innerHTML = blk("台股", h.tw, "tw") + blk("美股", h.us, "us") + blk("ETF", h.etf, "etf");
   };
   sel.onchange = showH; showH();
   const c = S.cfg.costs;
@@ -802,7 +822,7 @@ function renderWatchlist() {
     out.push({ m, id, r });
   }
   $("#wlTable").innerHTML = `<thead><tr><th>市場</th><th>代號</th><th>名稱</th><th class="num">分數</th><th class="num">本益比</th><th>狀態</th><th></th></tr></thead><tbody>${out.map(({ m, id, r }) => `<tr class="clickable" data-m="${m}" data-id="${esc(id)}">
-    <td>${m === "tw" ? "台股" : "美股"}</td><td><b>${esc(id)}</b></td><td>${esc(r ? r.name : "（查無資料）")}</td><td class="num">${r && r.score != null ? r.score.toFixed(1) : "–"}</td><td class="num">${r ? fmt.x(r.pe) : "–"}</td>
+    <td>${m === "tw" ? "台股" : "美股"}</td><td><b>${esc(id)}</b></td><td>${r || zhInfo(m, id, "").n ? nameCell(m, id, r ? r.name : "") : "（查無資料）"}</td><td class="num">${r && r.score != null ? r.score.toFixed(1) : "–"}</td><td class="num">${r ? fmt.x(r.pe) : "–"}</td>
     <td>${!r ? "" : r.pass ? `<span class="ok">✔ 通過</span>` : `<span class="ng">✘</span> <span class="hint">${esc(r.failed.map(fname).join("、"))}</span>`}</td>
     <td><button class="ghost small" data-del="${m}:${esc(id)}">移除</button></td></tr>`).join("") || `<tr><td colspan="7" class="hint" style="padding:16px">還沒有追蹤的股票</td></tr>`}</tbody>`;
   $$("#wlTable tr.clickable").forEach((tr) => (tr.onclick = (e) => { if (e.target.dataset.del) return; openDetail(tr.dataset.m, tr.dataset.id); }));
@@ -967,10 +987,10 @@ function renderEarnings() {
     const dt = e.type === "month_rev" ? (e.period || "").slice(0, 7) + " 月" : e.market === "tw" ? `${e.first_seen || e.date || ""} 抓到` : (e.date || "") + (when[e.timing] ? ` ${when[e.timing]}` : "");
     const typ = e.type === "month_rev" ? "月營收" : e.market === "us" ? "財報" : `季報 ${(e.period || "").slice(0, 7)}`;
     const pend = e.type === "earnings" && !e.reaction ? `<span class="hint">等收盤</span>` : "";
-    return `<tr><td>${esc(dt)}</td><td><b>${esc(e.id)}</b> ${esc(e.name || "")}</td><td>${typ}</td><td class="num ${cls(r.ret)}">${e.type === "month_rev" ? "" : r.ret != null ? pc(r.ret) : pend}</td><td class="num">${r.bench != null ? pc(r.bench) : ""}</td><td class="num ${cls(r.excess)}">${r.excess != null ? pc(r.excess) : ""}</td><td class="num ${cls(n.rev_yoy)}">${pc(n.rev_yoy)}${e.type === "month_rev" && n.rev_yoy_3m != null ? `<br><span class="hint">近 3 月 ${pc(n.rev_yoy_3m)}</span>` : ""}</td><td class="num ${cls(n.ni_yoy)}">${pc(n.ni_yoy)}</td><td class="num">${n.eps != null ? fmt.x(n.eps, 2) : "–"}</td><td>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">財報</a>` : ""}</td></tr>`;
+    return `<tr><td>${esc(dt)}</td><td><b>${esc(e.id)}</b> ${nameCell(e.market, e.id, e.name)}</td><td>${typ}</td><td class="num ${cls(r.ret)}">${e.type === "month_rev" ? "" : r.ret != null ? pc(r.ret) : pend}</td><td class="num">${r.bench != null ? pc(r.bench) : ""}</td><td class="num ${cls(r.excess)}">${r.excess != null ? pc(r.excess) : ""}</td><td class="num ${cls(n.rev_yoy)}">${pc(n.rev_yoy)}${e.type === "month_rev" && n.rev_yoy_3m != null ? `<br><span class="hint">近 3 月 ${pc(n.rev_yoy_3m)}</span>` : ""}</td><td class="num ${cls(n.ni_yoy)}">${pc(n.ni_yoy)}</td><td class="num">${n.eps != null ? fmt.x(n.eps, 2) : "–"}</td><td>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">財報</a>` : ""}</td></tr>`;
   }).join("") || `<tr><td colspan="10" class="hint">這段期間沒有財報</td></tr>`}</tbody>`;
   const U = E.upcoming || [];
-  $("#erUpcoming").innerHTML = U.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>預定日期</th><th>公司</th></tr></thead><tbody>${U.slice(0, 60).map((u) => `<tr><td>${esc(u.date)}</td><td><b>${esc(u.id)}</b> ${esc(u.name || "")}</td></tr>`).join("")}</tbody></table></div><p class="hint">預定日期來自 Yahoo Finance，公司可能更改；台股看上方的法定期限。</p>` : `<p class="hint">還沒有資料（大約每週更新一次）。</p>`;
+  $("#erUpcoming").innerHTML = U.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>預定日期</th><th>公司</th></tr></thead><tbody>${U.slice(0, 60).map((u) => `<tr><td>${esc(u.date)}</td><td><b>${esc(u.id)}</b> ${nameInline("us", u.id, u.name)}</td></tr>`).join("")}</tbody></table></div><p class="hint">預定日期來自 Yahoo Finance，公司可能更改；台股看上方的法定期限。</p>` : `<p class="hint">還沒有資料（大約每週更新一次）。</p>`;
 }
 
 // ---------------------------------------------------------------- 並行模擬
@@ -1006,9 +1026,9 @@ function renderPaper() {
   }
   // 目前持股
   $("#paperHoldCard").hidden = false;
-  const blk = (t, a, lab) => a.length ? `<div><b>${t}（${a.length}）</b><ul>${a.map(([i, n, w]) => `<li>${esc(i)} ${esc(n)} <span class="hint">${fmt.pct(w, 1)}</span></li>`).join("")}</ul></div>` : "";
+  const blk = (t, a, m) => a.length ? `<div><b>${t}（${a.length}）</b><ul>${a.map(([i, n, w]) => `<li>${esc(i)} ${m === "etf" ? `${esc(zhInfo("etf", i, "").n)} <span class="hint">${esc(n)}</span>` : nameInline(m, i, n)} <b>${fmt.pct(w, 1)}</b></li>`).join("")}</ul></div>` : "";
   $("#paperHold").innerHTML = V.map((v) => `<details${v === V[0] ? " open" : ""}><summary><b>${esc(v.name)}</b> <span class="hint">${esc(v.decision_month || "")} 月底決策</span></summary>
-    <div class="holdgrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:8px 0">${blk("台股", v.holdings.tw)}${blk("美股", v.holdings.us)}${blk("ETF／大盤", v.holdings.etf)}</div></details>`).join("");
+    <div class="holdgrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:8px 0">${blk("台股", v.holdings.tw, "tw")}${blk("美股", v.holdings.us, "us")}${blk("ETF／大盤", v.holdings.etf, "etf")}</div></details>`).join("");
 }
 
 // ---------------------------------------------------------------- 個股部位 vs 大盤（各方案）
@@ -1115,7 +1135,7 @@ function renderTrades(bt) {
   const R = T[g] || { n: 0, cats: {} };
   const cats = ["大賺", "小賺", "持平", "小跌", "大跌"];
   const cls = { "大賺": "pos", "小賺": "pos", "持平": "", "小跌": "neg", "大跌": "neg" };
-  const nm = (x) => (x ? `${esc(x.id)} ${esc(x.name || "")}（${fmt.pct(x.ret, 0)}，${esc(x.start)}～${esc(String(x.end).slice(0, 7))}）` : "–");
+  const nm = (x) => (x ? `${esc(x.id)} ${esc(zhInfo(x.market || mktOf(x.id), x.id, x.name).n)}（${fmt.pct(x.ret, 0)}，${esc(x.start)}～${esc(String(x.end).slice(0, 7))}）` : "–");
   $("#tradeSummary").innerHTML = R.n ? `共 ${R.n} 筆；<b>賺錢比例 ${fmt.pct(R.win_rate, 0)}</b>、<b>贏過大盤比例 ${fmt.pct(R.beat_rate, 0)}</b>；每筆平均報酬 ${fmt.pct(R.avg_ret)}（中位數 ${fmt.pct(R.median_ret)}），平均持有 ${R.avg_months.toFixed(1)} 個月；停損出場 ${R.stop_exits} 筆。<br>最好：${nm(R.best)}　最差：${nm(R.worst)}` : "沒有資料";
   $("#tradeTable").innerHTML = `<thead><tr><th>結果</th><th class="num">筆數</th><th>占比</th><th class="num">平均報酬</th><th class="num">平均贏／輸大盤</th><th class="num">平均持有（月）</th></tr></thead><tbody>${cats.map((c) => {
     const x = R.cats[c] || {};

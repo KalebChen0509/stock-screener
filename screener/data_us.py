@@ -267,6 +267,32 @@ def _merge_concepts(gaap: dict, concepts: list[str], kind: str) -> pd.DataFrame:
     return merged
 
 
+WAVG_SHARES = ["WeightedAverageNumberOfDilutedSharesOutstanding", "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+               "WeightedAverageNumberOfSharesOutstandingBasic"]
+
+
+def weighted_shares(gaap: dict) -> pd.Series:
+    """各期末的加權平均股數（優先稀釋、優先單季；第 4 季只有全年數字時用全年）。index＝期末日。"""
+    merged = None
+    for c in WAVG_SHARES:
+        f = _facts(gaap, c, ("shares",))
+        if not f:
+            continue
+        d = pd.DataFrame(f)
+        if not {"start", "end", "val"} <= set(d.columns):
+            continue
+        d = d.dropna(subset=["start", "end", "val"])
+        d["start"], d["end"] = pd.to_datetime(d["start"]), pd.to_datetime(d["end"])
+        d["filed"] = pd.to_datetime(d.get("filed"))
+        d["days"] = (d["end"] - d["start"]).dt.days
+        d = d[d["days"].between(60, 400) & (d["val"] > 0)].sort_values(["end", "days", "filed"])
+        if d.empty:
+            continue
+        s_ = d.groupby("end")["val"].first()
+        merged = s_ if merged is None else merged.combine_first(s_)
+    return merged if merged is not None else pd.Series(dtype=float)
+
+
 def company_quarters(cf: dict, cik: int) -> pd.DataFrame:
     facts = cf.get("facts", {})
     gaap = facts.get("us-gaap", {})
@@ -319,11 +345,16 @@ def company_quarters(cf: dict, cik: int) -> pd.DataFrame:
         for pe, av in zip(df.index, df["available_date"]):
             if pd.isna(av):
                 continue
-            cand = tot[(tot.index > pe) & (tot.index <= av + pd.Timedelta(days=5))]
+            # 封面股數的日期可能就是季底（JPM、PG 等），也要採用
+            cand = tot[(tot.index >= pe) & (tot.index <= av + pd.Timedelta(days=5))]
             if not cand.empty:
                 shares[pe] = cand["val"].iloc[-1]
                 shares_date[pe] = cand.index[-1]
     shares = shares.fillna(df["shares_bs"])
+    # 多類股公司（META、MA 等：封面股數按類別標示，companyfacts 不收）：改用當季稀釋加權平均股數
+    wavg = weighted_shares(gaap)
+    if len(wavg):
+        shares = shares.fillna(wavg.reindex(df.index))
     df["shares"] = shares
     df["shares_date"] = shares_date
     df.index.name = "period_end"
