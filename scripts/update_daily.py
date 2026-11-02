@@ -16,6 +16,7 @@ from screener.common import (CACHE_DIR, ROOT, SITE_DATA, load_etf_universe, load
 from screener.engine import ret_n_months, screen_market, select_with_buffer  # noqa: E402
 from screener import events as evmod  # noqa: E402
 from screener import names as nmod  # noqa: E402
+from screener import routine  # noqa: E402
 from screener.etf import enrich_live, point_in_time_metrics, screen_and_rank, static_frame  # noqa: E402
 from screener.loaders import load_infos, load_panels  # noqa: E402
 from screener.notify import notify  # noqa: E402
@@ -636,11 +637,17 @@ def main():
     site = os.environ.get("PAGES_URL", "")
     if site:
         lines.append(f"\n網站：{site}")
-    if not args.no_notify and (changed or rebalance or os.environ.get("NOTIFY_ALWAYS") == "1"):
-        r = notify(f"價值選股日報 {today.date()}", "\n".join(lines))
-        log.info("notify result %s", r)
-    else:
-        log.info("no notification (changed=%s rebalance=%s)", changed, rebalance)
+    # 日報等財報快報算完再寄（最上面的「今天要做的事」要提到財報快報）
+    rcfg = cfg.get("routine") or {}
+    send_daily = changed or rebalance or os.environ.get("NOTIFY_ALWAYS") == "1" or bool(rcfg.get("enabled"))
+    week_first = state.get("routine_week") != routine.week_key(today)
+    if send_daily and not args.no_notify:
+        state["routine_week"] = routine.week_key(today)
+    stop_tags = [nmod.tag(m_, i_, v_.get("name")) for (m_, i_), v_ in sl_status.items() if v_.get("triggered")]
+    near_tags = [nmod.tag(m_, i_, v_.get("name")) for (m_, i_), v_ in sl_status.items()
+                 if not v_.get("triggered") and v_.get("dist") is not None and v_["dist"] < 0.03]
+    list_changed = bool(state.get("passed")) and any(set(cur.get(m_, [])) != set(state["passed"].get(m_, []))
+                                                     for m_ in cur)
     state["passed"] = cur
     state["plan"] = {"month": month_key, "cash_after": plan["cash_after_twd"],
                      "orders": [{"key": o["key"], "action": o["action"], "shares": o["shares"]} for o in plan["orders"]]}
@@ -684,17 +691,34 @@ def main():
                              month_rev=mrev2.wide(), today=today)
         if er:
             write_json(SITE_DATA / "earnings.json", er["site"])
-            if er["digest"]:
-                print("\n" + er["digest"])
-                if not args.no_notify:
-                    from screener.notify import configured as _nconf
-                    nr = notify(f"財報快報 {today.date()}", er["digest"])
-                    log.info("earnings notify %s", nr)
-                    # 寄成功（或根本沒設定通知管道）才記為已通知；寄失敗的下次會再寄
-                    if any(nr.values()) or not _nconf():
-                        earnings.mark_notified(er["keys"])
     except Exception as e:  # noqa
         log.warning("earnings update failed: %s", e)
+        er = None
+    n_earn = len({k for k, _ in er["keys"]}) if er and er.get("digest") else 0
+    # ---------- 寄日報：最上面是今天要做的事（每週第一封加每週例行、月初加下單步驟），每一步附為什麼 ----------
+    if rcfg.get("enabled"):
+        top = routine.build(cfg, week_first, stops=stop_tags, near=near_tags, rebalance=rebalance,
+                            n_orders=sum(1 for o in plan["orders"] if o["action"] in ("buy", "sell")),
+                            n_events=len(flags) + len(neg), n_earn=n_earn, credit_change=bool(credit_line),
+                            list_changed=list_changed)
+        lines = top + ["", "────────────"] + lines
+    if send_daily and not args.no_notify:
+        subj = f"價值選股日報 {today.date()}"
+        if rcfg.get("enabled"):
+            subj += f"｜{routine.headline(stop_tags, rebalance)}"
+        r = notify(subj, "\n".join(lines))
+        log.info("notify result %s", r)
+    else:
+        log.info("no notification (changed=%s rebalance=%s)", changed, rebalance)
+    if er and er.get("digest"):
+        print("\n" + er["digest"])
+        if not args.no_notify:
+            from screener.notify import configured as _nconf
+            nr = notify(f"財報快報 {today.date()}", er["digest"])
+            log.info("earnings notify %s", nr)
+            # 寄成功（或根本沒設定通知管道）才記為已通知；寄失敗的下次會再寄
+            if any(nr.values()) or not _nconf():
+                earnings.mark_notified(er["keys"])
     print("\n".join(lines))
 
 
