@@ -22,37 +22,57 @@ def week_key(today) -> str:
     return f"{y}-W{w:02d}"
 
 
-def todo(cfg: dict, *, stops: list[str], near: list[str], rebalance: bool, n_orders: int, n_events: int,
-         n_earn: int, credit_change: bool, list_changed: bool) -> list[str]:
-    """今天要做的事。stops／near：已排好的「代號 中文名｜說明」字串。"""
-    r = cfg.get("routine") or {}
-    out = ["📋 今天要做的事"]
-    if not r.get("investing"):
-        out.append("（你還沒開始投入真錢：停損和下單先當練習，熟悉流程就好）")
+def todo_items(cfg: dict, *, stops: list[str], near: list[str], rebalance: bool, n_orders: int, n_events: int,
+               n_earn: int, credit_change: bool, list_changed: bool, where: str = "email") -> list[tuple[str, str]]:
+    """今天要做的事：[(做什麼, 為什麼)]。where＝email／site（網站版不提「信件下方」）。"""
+    em = where == "email"
+    out = []
     if stops:
-        out += _item("🛑 賣出（觸發停損）：" + "、".join(stops),
-                     "停損是唯一要當天處理的事；照規則賣，不要等反彈")
+        out.append(("🛑 賣出（觸發停損）：" + "、".join(stops), "停損是唯一要當天處理的事；照規則賣，不要等反彈"))
     if rebalance:
-        out += _item(f"🧾 本月下單：照信件下方的下單清單（{n_orders} 筆），步驟在下面",
-                     "系統每月只在月初用新投入的錢調整一次，平常不換股")
+        out.append((f"🧾 本月下單：照{'信件下方的' if em else ''}下單清單（{n_orders} 筆）{'，步驟在下面' if em else ''}",
+                    "系統每月只在月初用新投入的錢調整一次，平常不換股"))
     if near:
-        out += _item("⚠️ 接近停損，先不用動作：" + "、".join(near),
-                     "這只是預告；真的跌到停損線時會再通知你")
+        out.append(("⚠️ 接近停損，先不用動作：" + "、".join(near), "這只是預告；真的跌到停損線時會再通知你"))
     if n_events:
-        out += _item(f"⚠️ 持股或追蹤清單有 {n_events} 則重大事件或負面新聞：花 2 分鐘看標題（在信件下方）",
-                     "確認買它的理由有沒有改變；系統不會因為新聞自動賣出")
+        out.append((f"⚠️ 持股或追蹤清單有 {n_events} 則重大事件或負面新聞：花 2 分鐘看標題{'（在信件下方）' if em else ''}",
+                    "確認買它的理由有沒有改變；系統不會因為新聞自動賣出"))
     if n_earn:
-        out += _item(f"📰 另一封「財報快報」有 {n_earn} 則：看財報後的漲跌和營收、獲利",
-                     "了解公司實際表現；不需要動作，除非之後觸發停損")
+        out.append((f"📰 {'另一封「財報快報」' if em else '「財報」頁'}有 {n_earn} 則：看財報後的漲跌和營收、獲利",
+                    "了解公司實際表現；不需要動作，除非之後觸發停損"))
     if credit_change:
-        out += _item("📉 信用利差訊號改變（信件下方）：看一下就好",
-                     "回測顯示照這個訊號減碼沒有比較好，所以只當參考")
+        out.append((f"📉 信用利差訊號改變{'（信件下方）' if em else ''}：看一下就好", "回測顯示照這個訊號減碼沒有比較好，所以只當參考"))
     if list_changed and not rebalance:
-        out += _item("🔄 通過條件的名單有變動（信件下方）：不用動作",
-                     "換股只在月初做，避免頻繁買賣的手續費和稅")
-    if len(out) <= 2:
-        out += _item("✅ 今天不用做任何事", "系統的規則是每月調整一次，平常只處理停損")
+        out.append((f"🔄 通過條件的名單有變動{'（信件下方）' if em else ''}：不用動作", "換股只在月初做，避免頻繁買賣的手續費和稅"))
+    if not out:
+        out.append(("✅ 今天不用做任何事", "系統的規則是每月調整一次，平常只處理停損"))
     return out
+
+
+def todo(cfg: dict, **kw) -> list[str]:
+    """今天要做的事（信件文字）。stops／near：已排好的「代號 中文名｜說明」字串。"""
+    out = ["📋 今天要做的事"]
+    if not (cfg.get("routine") or {}).get("investing"):
+        out.append("（你還沒開始投入真錢：停損和下單先當練習，熟悉流程就好）")
+    for head, why in todo_items(cfg, **kw):
+        out += _item(head, why)
+    return out
+
+
+def next_order_day(today) -> str:
+    """下個月第一個平日（下次下單日）。"""
+    d = (pd.Timestamp(today) + pd.offsets.MonthBegin(1)).normalize()
+    while d.weekday() >= 5:
+        d += pd.Timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
+
+
+def site_today(cfg: dict, today, **kw) -> dict:
+    """網站總覽最上面的「今天要做的事」。"""
+    items = todo_items(cfg, where="site", **kw)
+    return {"date": pd.Timestamp(today).strftime("%Y-%m-%d"), "headline": headline(kw.get("stops") or [], bool(kw.get("rebalance"))),
+            "investing": bool((cfg.get("routine") or {}).get("investing")), "next_order": next_order_day(today),
+            "items": [{"head": h, "why": w} for h, w in items]}
 
 
 def headline(stops: list[str], rebalance: bool) -> str:

@@ -155,6 +155,7 @@ async function init() {
   S.orders = await getJSON("data/orders.json", true);
   S.paper = await getJSON("data/paper.json", true);
   S.earn = await getJSON("data/earnings.json", true);
+  S.today = await getJSON("data/today.json", true);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
@@ -178,24 +179,39 @@ function defaultSettings() {
 
 // ---------------------------------------------------------------- 路由
 function route() {
-  const v = (location.hash || "#overview").slice(1);
+  const [v0, ...args] = (location.hash || "#overview").slice(1).split("/");
+  const views = { overview: renderOverview, screener: renderScreener, chart: () => renderChartView(args), etf: renderEtf, backtest: renderBacktest,
+                  paper: renderPaper, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
+  const v = views[v0] ? v0 : "overview";
   $$(".view").forEach((el) => el.classList.toggle("on", el.id === "view-" + v));
   $$("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
-  ({ overview: renderOverview, screener: renderScreener, etf: renderEtf, backtest: renderBacktest,
-     paper: renderPaper, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules }[v] || renderOverview)();
+  const inMore = ["etf", "backtest", "paper", "watchlist", "rules"].includes(v);
+  $$("#bnav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
+  $("#moreBtn") && $("#moreBtn").classList.toggle("on", inMore);
+  $("#moreSheet") && ($("#moreSheet").hidden = true);
+  if (S.kc && v !== "chart") { S.kc.destroy(); S.kc = null; }
+  views[v]();
 }
 
+// ---------------------------------------------------------------- 外觀（三種主題＋自動）
+const SKINS = [["auto", "自動", "手機深色時用 A、淺色時用 C"], ["A", "A 深色看盤", "深色底、數字密集"], ["B", "B 清爽卡片", "白底、大數字"], ["C", "C 柔和儀表板", "米色底、深藍重點卡片"]];
+const darkMQ = matchMedia("(prefers-color-scheme: dark)");
+function applySkin(rerender = true) {
+  const p = store.get("vs_skin", "auto");
+  document.documentElement.dataset.skin = p === "auto" ? (darkMQ.matches ? "A" : "C") : p;
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute("content", cssVar("--bg"));
+  if (rerender && S.cfg) { if (S.kc) S.kc.redraw(); route(); }
+}
+function skinMenu() {
+  const p = store.get("vs_skin", "auto"), pop = $("#skinPop");
+  pop.innerHTML = `<h4>外觀（這台裝置）</h4>${SKINS.map(([k, l, d]) => `<button class="skin-opt ${k === p ? "on" : ""}" data-skin="${k}"><span class="sw sw-${k}"><i></i><i></i></span><span><b>${l}</b><small>${d}</small></span></button>`).join("")}`;
+  $$("[data-skin]", pop).forEach((b) => (b.onclick = () => { store.set("vs_skin", b.dataset.skin); pop.hidden = true; applySkin(); }));
+}
 function initTheme() {
-  const t = store.get("vs_theme", null);
-  if (t) document.documentElement.dataset.theme = t;
-  $("#themeBtn").onclick = () => {
-    const dark = document.documentElement.dataset.theme
-      ? document.documentElement.dataset.theme === "dark"
-      : matchMedia("(prefers-color-scheme: dark)").matches;
-    document.documentElement.dataset.theme = dark ? "light" : "dark";
-    store.set("vs_theme", document.documentElement.dataset.theme);
-    route();
-  };
+  applySkin(false);
+  darkMQ.addEventListener("change", () => { if (store.get("vs_skin", "auto") === "auto") applySkin(); });
+  $("#themeBtn").onclick = (e) => { e.stopPropagation(); const pop = $("#skinPop"); if (pop.hidden) skinMenu(); pop.hidden = !pop.hidden; };
+  document.addEventListener("click", (e) => { const pop = $("#skinPop"); if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true; });
 }
 
 // ---------------------------------------------------------------- 篩選（瀏覽器端重算）
@@ -344,7 +360,19 @@ function runScreen(mkt) {
 }
 
 // ---------------------------------------------------------------- 總覽
+function renderToday() {
+  const T = S.today;
+  const md = (d) => (d ? `${+d.slice(5, 7)}/${+d.slice(8, 10)}` : "");
+  if (!T) { $("#ovToday").innerHTML = ""; return; }
+  const items = T.items || [];
+  const big = items.length === 1 ? items[0].head : T.headline === "今天不用動作" ? "✅ 今天不用動作" : T.headline === "本月下單日" ? "🧾 本月下單日" : "🛑 有停損要賣";
+  const list = items.length === 1 && items[0].head.startsWith("✅") ? "" : `<ul>${items.map((x) => `<li>${esc(x.head)}<span class="why">為什麼：${esc(x.why)}</span></li>`).join("")}</ul>`;
+  $("#ovToday").innerHTML = `<div class="hero"><div class="k"><span>今天要做的事（${md(T.date)}）</span><span>下次下單 ${md(T.next_order)}</span></div>
+    <div class="v">${esc(big)}</div>${items.length === 1 ? `<div class="note">${esc(items[0].why)}</div>` : list}
+    ${T.investing ? "" : `<div class="note" style="margin-top:6px">還沒開始投入真錢：停損和下單先當練習。</div>`}</div>`;
+}
 function renderOverview() {
+  renderToday();
   const m = S.meta, c = m.counts || {};
   const bt = S.bt && S.bt.stats_full ? S.bt.stats_full["策略（扣費後）"] : null;
   const tiles = [
@@ -625,18 +653,23 @@ async function openDetail(mkt, id) {
       return `<div><span class="${ok ? "ok" : "ng"}">${ok ? "✔" : "✘"}</span><span>${esc(f.label)}</span><span class="val">${fmtMetric(f.metric, row[f.metric], "us")}</span></div>`;
     }).join("")}</div></div>`;
   }
-  if (!d) html += `<p class="hint">此標的沒有詳細資料（只有通過或差 1–2 條的股票、ETF 與追蹤清單會產生詳情）。</p>`;
+  html += `<div class="card"><div class="fp-head"><h2>K 線</h2><a href="#chart/${mkt}/${encodeURIComponent(id)}" class="small" onclick="document.getElementById('detail').close()">在看盤頁開啟 ›</a></div><div id="dK"></div><div class="chart-box" id="dPriceBox" hidden><canvas id="dPrice"></canvas></div></div>`;
+  if (!d) html += `<p class="hint">此標的沒有財報圖表（只有通過或差 1–2 條的股票、ETF 與追蹤清單會產生）。</p>`;
   else {
-    html += `<div class="card"><h2>近兩年股價</h2><div class="chart-box"><canvas id="dPrice"></canvas></div></div>`;
     if (d.quarters && d.quarters.length) {
       html += `<div class="grid2"><div class="card"><h2>獲利與現金流（單季）</h2><div class="legend" id="dCfLeg"></div><div class="chart-box"><canvas id="dCf"></canvas></div></div>
                <div class="card"><h2>毛利率與營益率（近四季）</h2><div class="legend" id="dMgLeg"></div><div class="chart-box"><canvas id="dMg"></canvas></div></div></div>`;
     }
   }
   $("#dBody").innerHTML = html;
-  if (!d) return;
   destroyChart("dPrice"); destroyChart("dCf"); destroyChart("dMg");
-  if (d.prices && d.prices.length) {
+  const kdoc = await KC.load(mkt, id);
+  if (S.dkc) { S.dkc.destroy(); S.dkc = null; }
+  if (kdoc) S.dkc = KC.mount($("#dK"), { mkt, id, compact: true, ctx: kctx(mkt, id) });
+  else if (!d) $("#dK").innerHTML = `<p class="hint">這檔還沒有 K 線資料（第一次會分幾天下載完）。</p>`;
+  if (!d) return;
+  if (!kdoc && d.prices && d.prices.length) {
+    $("#dPriceBox").hidden = false;
     S.charts.dPrice = lineChart($("#dPrice"), d.prices.map((p) => p[0]), [{ label: "收盤價", data: d.prices.map((p) => p[1]), color: cssVar("--s1") }], { yfmt: (v) => fmt.price(v) });
   }
   if (d.quarters && d.quarters.length) {
@@ -960,6 +993,9 @@ function bindUI() {
   $("#resetFilters").onclick = () => { S.settings = defaultSettings(); saveSettings(); };
   $("#exportCsv").onclick = exportCsv;
   $("#dClose").onclick = () => $("#detail").close();
+  $("#moreBtn").onclick = () => { $("#moreSheet").hidden = false; };
+  $("#moreSheet").onclick = (e) => { if (e.target.id === "moreSheet" || e.target.closest("a")) $("#moreSheet").hidden = true; };
+  bindChartSearch();
   $("#detail").addEventListener("click", (e) => { if (e.target.id === "detail") $("#detail").close(); });
   $("#wlAdd").onclick = () => {
     const v = $("#wlInput").value.trim().toUpperCase(); if (!v) return;
@@ -1166,4 +1202,80 @@ function valuationCard(v, row, mkt) {
     <p class="hint">市場隱含成長率 <b>${v.implied_g == null ? "–" : fmt.pct(v.implied_g, 1)}</b>（要讓 DCF 等於目前市值，前 5 年每年要成長多少）vs 過去 3 年營收年成長 ${v.hist_g == null ? "–" : fmt.pct(v.hist_g, 1)}：${v.implied_g != null && v.hist_g != null ? (v.implied_g > v.hist_g + 0.05 ? "市場期待明顯高於過去表現。" : v.implied_g < v.hist_g - 0.05 ? "市場期待低於過去表現，若能維持成長就有上漲空間。" : "市場期待與過去表現相當。") : ""}<br>
     要求報酬率 ${fmt.pct(v.r_e, 1)} ＝ 無風險利率＋β ${v.beta == null ? "（資料不足，以 1.0 計）" : (+v.beta).toFixed(2)} × 市場風險溢酬；保留率 ${fmt.pct(v.retention, 0)}。<br>
     估值是區間不是預測：輸入假設（成長率、要求報酬率）稍微改變，價值就會變動不少。三個模型差距很大時，可信度標為「低」。</p></div>`;
+}
+
+
+// ---------------------------------------------------------------- 看盤
+function kctx(mkt, id) {
+  const row = mkt === "etf" ? null : ((S.stocks || {})[mkt] || []).find((r) => r.id === id) || null;
+  return { row, port: S.port, earn: S.earn, bt: S.bt };
+}
+async function kIndex() {
+  if (!S.kidx) S.kidx = (await getJSON("data/kline/index.json", true)) || { tw: [], us: [], etf: [] };
+  return S.kidx;
+}
+function kSearchList(q) {
+  q = q.trim().toLowerCase(); if (!q) return [];
+  const N = S.names || {}, out = [], seen = new Set();
+  const idx = S.kidx || { tw: [], us: [], etf: [] };
+  const has = { tw: new Set(idx.tw), us: new Set(idx.us), etf: new Set(idx.etf) };
+  const push = (m, id, x) => { const k = m + ":" + id; if (seen.has(k)) return; seen.add(k); out.push({ m, id, n: (x && x[0]) || id, d: (x && x[1]) || "", ok: has[m].has(id) }); };
+  for (const m of ["tw", "us", "etf"]) {
+    const E = N[m] || {};
+    if (E[q.toUpperCase()]) push(m, q.toUpperCase(), E[q.toUpperCase()]);
+    if (m === "etf") { for (const t of idx.etf) if (t.toLowerCase().startsWith(q)) push("etf", t, E[t]); }
+  }
+  for (const m of ["tw", "us", "etf"]) {
+    for (const [id, x] of Object.entries(N[m] || {})) {
+      if (out.length > 60) break;
+      if (id.toLowerCase().startsWith(q) || (x[0] || "").toLowerCase().includes(q) || (x[1] || "").toLowerCase().includes(q)) push(m, id, x);
+    }
+  }
+  return out.sort((a, b) => (b.ok - a.ok)).slice(0, 14);
+}
+function bindChartSearch() {
+  const inp = $("#kSearch"), sug = $("#kSug");
+  let sel = -1, list = [];
+  const show = () => {
+    list = kSearchList(inp.value); sel = -1;
+    sug.hidden = !list.length;
+    sug.innerHTML = list.map((x, i) => `<div data-i="${i}"><b>${esc(x.id.replace(/\.TWO?$/, ""))}</b><span>${esc(x.n)}</span><small>${esc(x.d)}${x.ok ? "" : "（K 線下載中）"}</small></div>`).join("");
+    $$("div[data-i]", sug).forEach((el) => (el.onmousedown = (e) => { e.preventDefault(); go(list[+el.dataset.i]); }));
+  };
+  const go = (x) => { if (!x) return; sug.hidden = true; inp.value = ""; inp.blur(); location.hash = `#chart/${x.m}/${encodeURIComponent(x.id)}`; };
+  inp.oninput = async () => { await kIndex(); show(); };
+  inp.onkeydown = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { sel = Math.max(0, Math.min(list.length - 1, sel + (e.key === "ArrowDown" ? 1 : -1))); $$("div[data-i]", sug).forEach((el, i) => el.classList.toggle("on", i === sel)); e.preventDefault(); }
+    else if (e.key === "Enter") go(list[sel >= 0 ? sel : 0]);
+    else if (e.key === "Escape") sug.hidden = true;
+  };
+  inp.onblur = () => setTimeout(() => (sug.hidden = true), 150);
+}
+async function renderChartView(args) {
+  await kIndex();
+  let [mkt, id] = args || [];
+  id = id ? decodeURIComponent(id) : null;
+  const recent = store.get("vs_kline_recent", []);
+  if (!mkt || !id) {
+    const last = recent[0] || ((S.port || {}).holdings || []).filter((h) => h.kind === "stock").map((h) => ({ m: h.market, id: h.id }))[0] || { m: "etf", id: "0050.TW" };
+    mkt = last.m; id = last.id;
+  }
+  store.set("vs_kline_recent", [{ m: mkt, id }, ...recent.filter((x) => !(x.m === mkt && x.id === id))].slice(0, 12));
+  // 快速切換：持股＋最近看過
+  const H = ((S.port || {}).holdings || []).filter((h) => h.kind === "stock").map((h) => ({ m: h.market, id: h.id }));
+  const quick = [...H, ...store.get("vs_kline_recent", [])].filter((x, i, a) => a.findIndex((y) => y.m === x.m && y.id === x.id) === i).slice(0, 20);
+  $("#kQuick").innerHTML = quick.map((x) => `<button class="chip ${x.m === mkt && x.id === id ? "on" : ""}" data-m="${x.m}" data-id="${esc(x.id)}">${esc(x.id.replace(/\.TWO?$/, ""))} ${esc(zhInfo(x.m, x.id, "").n || "")}</button>`).join("");
+  $$("#kQuick [data-id]").forEach((b) => (b.onclick = () => { location.hash = `#chart/${b.dataset.m}/${encodeURIComponent(b.dataset.id)}`; }));
+  const z = zhInfo(mkt, id, "");
+  const mlabel_ = { tw: "台股", us: "美股", etf: "ETF" }[mkt] || "";
+  $("#kTitle").innerHTML = `<div><div class="t">${esc(id.replace(/\.TWO?$/, ""))} ${esc(z.n || "")}</div><div class="s">${esc(z.d || "")}　<span class="pill">${mlabel_}</span> ${mkt !== "etf" ? `<a href="javascript:void 0" id="kDetail">財報與條件 ›</a>` : ""}</div></div><div><div class="px" id="kPx">–</div><div class="pc" id="kPc"></div></div>`;
+  if ($("#kDetail")) $("#kDetail").onclick = () => openDetail(mkt, id);
+  if (S.kc) S.kc.destroy();
+  S.kc = KC.mount($("#kChart"), { mkt, id, ctx: kctx(mkt, id) });
+  const doc = await KC.load(mkt, id);
+  if (doc && doc.c.length > 1) {
+    const c = doc.c[doc.c.length - 1], p = doc.c[doc.c.length - 2], ch = c / p - 1;
+    $("#kPx").textContent = c.toLocaleString("en-US", { maximumFractionDigits: c >= 100 ? 1 : c >= 1 ? 2 : 4 });
+    $("#kPc").innerHTML = `<span style="color:var(${ch >= 0 ? "--up" : "--down"})">${ch >= 0 ? "+" : ""}${(ch * 100).toFixed(2)}%</span> <span class="hint">${new Date(doc.t[doc.t.length - 1] * 864e5).toISOString().slice(5, 10).replace("-", "/")}</span>`;
+  }
 }

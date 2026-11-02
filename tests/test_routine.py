@@ -26,6 +26,9 @@ def main():
     t2 = "\n".join(R.build(cfg2, False, **{**base, "rebalance": True, "n_orders": 3}))
     assert "還沒開始投入" not in t2 and "用「金額」買（碎股）" in t2 and "🗓" not in t2
     assert R.headline([], False) == "今天不用動作" and R.headline(["x"], True) == "有停損要賣" and R.headline([], True) == "本月下單日"
+    st = R.site_today(cfg, "2026-11-28", **{**base, "rebalance": False, "n_earn": 2})
+    assert st["next_order"] == "2026-12-01" and st["headline"] == "今天不用動作" and "信件" not in str(st["items"]) and "「財報」頁" in st["items"][0]["head"]
+    assert R.next_order_day("2027-04-15") == "2027-05-03", "5/1 是週六"
     assert R.week_key("2026-11-02") == R.week_key("2026-11-08") != R.week_key("2026-11-09")
     print("routine ok\n" + txt)
 

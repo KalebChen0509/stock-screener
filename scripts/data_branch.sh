@@ -33,6 +33,7 @@ case "$1" in
   push)
     mkdir -p databr/site_data
     cp -r site/data/. databr/site_data/ 2>/dev/null || true
+    rm -rf databr/site_data/kline     # K 線網站檔每天由快取重新產生，不用再存一份
     push_dir databr
     ;;
   push-tw)

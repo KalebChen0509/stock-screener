@@ -696,11 +696,12 @@ def main():
         er = None
     n_earn = len({k for k, _ in er["keys"]}) if er and er.get("digest") else 0
     # ---------- 寄日報：最上面是今天要做的事（每週第一封加每週例行、月初加下單步驟），每一步附為什麼 ----------
+    rkw = dict(stops=stop_tags, near=near_tags, rebalance=rebalance,
+               n_orders=sum(1 for o in plan["orders"] if o["action"] in ("buy", "sell")),
+               n_events=len(flags) + len(neg), n_earn=n_earn, credit_change=bool(credit_line), list_changed=list_changed)
+    write_json(SITE_DATA / "today.json", routine.site_today(cfg, today, **rkw))   # 網站總覽最上面的「今天要做的事」
     if rcfg.get("enabled"):
-        top = routine.build(cfg, week_first, stops=stop_tags, near=near_tags, rebalance=rebalance,
-                            n_orders=sum(1 for o in plan["orders"] if o["action"] in ("buy", "sell")),
-                            n_events=len(flags) + len(neg), n_earn=n_earn, credit_change=bool(credit_line),
-                            list_changed=list_changed)
+        top = routine.build(cfg, week_first, **rkw)
         lines = top + ["", "────────────"] + lines
     if send_daily and not args.no_notify:
         subj = f"價值選股日報 {today.date()}"
