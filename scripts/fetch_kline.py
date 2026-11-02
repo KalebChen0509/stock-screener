@@ -76,7 +76,13 @@ def main():
         kline.update(tickers, priority=pri, backfill_limit=int(os.environ.get("KLINE_BACKFILL", 1500)))
     except Exception as e:  # noqa
         log.warning("kline update failed: %s", e)
-    kline.export_site(SITE_DATA / "kline", ymap)
+    extra = {}
+    try:   # 台股籌碼（法人買賣超、融資融券）放進同一個 K 線檔，給「法人」副圖用
+        from screener import chips
+        extra = {("tw", sid): {"chip": v} for sid, v in chips.series().items()}
+    except Exception as e:  # noqa
+        log.warning("chips series failed: %s", e)
+    kline.export_site(SITE_DATA / "kline", ymap, extra=extra)
 
 
 if __name__ == "__main__":

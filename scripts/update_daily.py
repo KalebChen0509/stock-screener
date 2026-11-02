@@ -479,6 +479,25 @@ def main():
     mp_ = CACHE_DIR / "tw_month_rev_progress.json"
     if mp_.exists():
         meta["tw_month_rev"] = json.loads(mp_.read_text())
+    # ---------- 資料品質檢查（找出可能算錯的數字；不改變選股結果）----------
+    q_lines = []
+    try:
+        from screener import quality as qmod
+        from screener.data_us import load_fundamentals as _luf
+        q_iss = []
+        for m_ in results:
+            q_iss += qmod.stock_issues(results[m_][0], m_, close, dict(zip(infos[m_].index, infos[m_]["yahoo"])), today)
+        uf = _luf()
+        q_rep = qmod.report(q_iss, qmod.overall(panels, infos, monthly, meta["counts"],
+                                                us_fund_last=uf["available_date"].max() if len(uf) else None, today=today), today)
+        q_prev_p = CACHE_DIR / "quality_prev.json"
+        q_prev = json.loads(q_prev_p.read_text()) if q_prev_p.exists() else None
+        q_lines = qmod.email_lines(q_rep, q_prev)
+        write_json(SITE_DATA / "quality.json", q_rep)
+        q_prev_p.write_text(json.dumps(q_rep, ensure_ascii=False))
+        meta["quality_flags"] = qmod.flags_by_stock(q_iss)
+    except Exception as e:  # noqa
+        log.warning("quality check failed: %s", e)
     write_json(SITE_DATA / "meta.json", meta)
     try:   # 公司中文名稱與一句話說明（網站各表格共用）
         write_json(SITE_DATA / "names.json", nmod.site_table())
@@ -564,6 +583,8 @@ def main():
     if credit_line:
         lines = [credit_line, ""] + lines
         changed = True
+    if q_lines:
+        lines += [""] + q_lines
     rebalance = state.get("last_rebalance_month") != month_key
     # ---------- 下單清單：每月新投入的錢補足低於目標的部位，原則上不賣 ----------
     from screener.orders import plan_orders

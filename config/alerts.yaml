@@ -1,0 +1,22 @@
+# 盤中提醒（.github/workflows/alerts.yml：台股、美股盤中每 30 分鐘檢查一次，Yahoo 報價約延遲 15～20 分鐘）
+# 會檢查：系統持股與你原本的持股、追蹤清單（config/watchlist.yaml）、下面 levels 列的股票。
+# 同一則提醒一天只寄一次；只是提醒，不會下單。
+enabled: true
+rules:
+  stop: true          # 盤中跌破停損線（正式停損仍以收盤價判斷）
+  levels: true        # 你自己設的價位（下面 levels）
+  technical: true     # 站上／跌破均線、KD 低檔黃金交叉／高檔死亡交叉
+  fair_value: true    # 跌到合理價下緣以下、漲到合理價上緣以上
+technical:
+  ma: [20, 60]
+  kd: [9, 3, 3]
+# 自己設的價位：請用網站「看盤」頁的「🔔 提醒」設定（存在 config/alert_levels.yaml）。
+# 也可以直接寫在這裡（兩邊會合併），例如：
+# levels:
+#   tw:
+#     "2330": {above: 2500, below: 2200}
+#   us:
+#     NVDA: {below: 180}
+levels:
+  tw: {}
+  us: {}

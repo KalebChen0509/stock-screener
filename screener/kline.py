@@ -187,8 +187,10 @@ def _r(x: float) -> float:
     return round(float(x), 4 if ax < 1 else 3 if ax < 10 else 2 if ax < 10000 else 1)
 
 
-def export_site(out_dir: Path, ymap: dict, df: pd.DataFrame | None = None, mon: pd.DataFrame | None = None) -> dict:
-    """ymap：Yahoo 代號 → (市場, 網站代號)。每檔一個 JSON：日期用 1970 年起的天數，欄位分開存（檔案較小）。"""
+def export_site(out_dir: Path, ymap: dict, df: pd.DataFrame | None = None, mon: pd.DataFrame | None = None,
+                extra: dict | None = None) -> dict:
+    """ymap：Yahoo 代號 → (市場, 網站代號)。每檔一個 JSON：日期用 1970 年起的天數，欄位分開存（檔案較小）。
+    extra：(市場, 網站代號) → 要一起放進檔案的欄位（例如台股籌碼 chip）。"""
     df = load_daily() if df is None else df
     mon = load_monthly() if mon is None else mon
     out_dir = Path(out_dir)
@@ -209,6 +211,7 @@ def export_site(out_dir: Path, ymap: dict, df: pd.DataFrame | None = None, mon: 
             doc["m"] = {"t": (m["date"].values.astype("datetime64[D]").astype(np.int64)).tolist(),
                         "o": [_r(x) for x in m["open"]], "h": [_r(x) for x in m["high"]], "l": [_r(x) for x in m["low"]],
                         "c": [_r(x) for x in m["close"]], "v": [int(x) if np.isfinite(x) else 0 for x in m["volume"]]}
+        doc.update((extra or {}).get((mkt, sid)) or {})
         p = out_dir / mkt / f"{sid}.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(doc, separators=(",", ":")))

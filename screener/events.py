@@ -201,11 +201,46 @@ def load_tw_pledge() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- 新聞標題
+GNEWS = "https://news.google.com/rss/search?q={q}&hl={hl}&gl={gl}&ceid={ceid}"
+
+
+def google_news(query: str, lang: str = "en", since=None, limit: int = 6, http=None) -> list[dict]:
+    """Google 新聞 RSS（免費、公開）：回傳 [{date, title, url, source}]。"""
+    import urllib.parse
+    import xml.etree.ElementTree as ET
+    hl, gl, ceid = ("en-US", "US", "US:en") if lang == "en" else ("zh-TW", "TW", "TW:zh-Hant")
+    url = GNEWS.format(q=urllib.parse.quote(query), hl=hl, gl=gl, ceid=ceid)
+    try:
+        r = (http or requests).get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0 stock-screener"})
+        if r.status_code != 200:
+            return []
+        root = ET.fromstring(r.content)
+    except Exception as e:  # noqa
+        log.debug("google news %s: %s", query, e)
+        return []
+    out = []
+    for it in root.iter("item"):
+        title = (it.findtext("title") or "").strip()
+        src = (it.findtext("source") or "").strip()
+        if src and title.endswith(" - " + src):
+            title = title[: -len(src) - 3]
+        t = pd.to_datetime(it.findtext("pubDate"), utc=True, errors="coerce")
+        t = t.tz_convert(None) if t is not None and not pd.isna(t) else None
+        if since is not None and t is not None and t < since:
+            continue
+        out.append({"date": str(t)[:16] if t is not None else "", "title": title, "url": it.findtext("link") or "", "source": src})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def fetch_news(items: list[tuple[str, str, str]], days: int = 3, finmind=None) -> list[dict]:
-    """items：[(market, id, yahoo_ticker)]，回傳新聞清單（只用在通知與網站）。"""
+    """items：[(market, id, yahoo_ticker)]，回傳新聞清單（只用在通知與網站）。
+    美股先試 Yahoo，抓不到改用 Google 新聞；台股先試 FinMind，抓不到改用 Google 新聞（中文）。"""
     out = []
     since = pd.Timestamp(date.today() - timedelta(days=days))
     for mkt, sid, yt in items:
+        n0 = len(out)
         try:
             if mkt == "us" or mkt == "etf":
                 import yfinance as yf
@@ -229,6 +264,17 @@ def fetch_news(items: list[tuple[str, str, str]], days: int = 3, finmind=None) -
                                 "negative": bool(NEWS_NEG.search(title or ""))})
         except Exception as e:  # noqa
             log.debug("news %s %s: %s", mkt, sid, e)
+        if len(out) == n0:          # 主要來源沒有 → Google 新聞
+            try:
+                if mkt == "tw":
+                    from . import names
+                    q, lang = f"{sid} {names.info('tw', sid)[0]}", "zh"
+                else:
+                    q, lang = f"{sid} stock", "en"
+                for n in google_news(q, lang, since=since):
+                    out.append({"market": mkt, "id": sid, **n, "negative": bool(NEWS_NEG.search(n["title"]))})
+            except Exception as e:  # noqa
+                log.debug("google news %s %s: %s", mkt, sid, e)
     return out
 
 

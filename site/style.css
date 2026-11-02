@@ -270,3 +270,25 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
   .kc-chart { height: 62vh; min-height: 340px; }
   dialog#detail { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; border: 0; }
 }
+
+/* ---- 資料品質、籌碼、分析師預估、到價提醒 */
+.warnbox { border-left: 4px solid var(--warn); }
+.qcard { border: 1px solid var(--border); border-left: 4px solid var(--warn); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 18px; }
+.qcard h2 { margin-top: 0; }
+.qlist { list-style: none; padding: 0; margin: 6px 0; }
+.qlist li { margin: 3px 0; }
+.qlist li.ng { color: var(--warn); font-weight: 600; }
+.qcard details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
+.grid2.tight { gap: 12px; margin-bottom: 4px; }
+.grid2.tight .table-wrap { margin: 0; }
+.rbar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin: 2px 0 6px; }
+.rbar span { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11.5px; font-weight: 700; min-width: 18px; }
+.rleg { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-2); margin-bottom: 8px; }
+.rleg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.alv-form { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 8px 0 12px; }
+.alv-form input { width: 7.5em; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; }
+.alv-steps { border: 1px dashed var(--accent); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; }
+.alv-steps ol { padding-left: 1.2em; margin: 6px 0; }
+.alv-steps li { margin: 6px 0; }
+.alv-steps textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--surface-2, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px; box-sizing: border-box; }
+a.chip { text-decoration: none; display: inline-block; }

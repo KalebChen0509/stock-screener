@@ -216,14 +216,15 @@ def duration_to_quarters(facts: list[dict]) -> pd.DataFrame:
     df["days"] = (df["end"] - df["start"]).dt.days
     df = df[df["days"].between(60, 400)]
     out = {}
-    q = df[df["days"].between(60, 110)]
+    # 單季約 84～98 天；52／53 週會計年度的第 4 季有 16 週（112 天），上限放寬到 125 天
+    q = df[df["days"].between(60, 125)]
     for r in q.itertuples():
         out[r.end] = (r.val, r.filed)
     for start, g in df.groupby("start"):
         g = g.sort_values("end")
         prev_end, prev_val = None, None
         for r in g.itertuples():
-            if prev_end is not None and 60 <= (r.end - prev_end).days <= 110 \
+            if prev_end is not None and 60 <= (r.end - prev_end).days <= 125 \
                     and r.end not in out:
                 out[r.end] = (r.val - prev_val, r.filed)
             prev_end, prev_val = r.end, r.val
@@ -234,8 +235,8 @@ def duration_to_quarters(facts: list[dict]) -> pd.DataFrame:
             continue
         prior = sorted(e for e in out if r.start < e < r.end)
         prior = [e for e in prior if (r.end - e).days >= 60][-3:]
-        if len(prior) == 3 and 60 <= (r.end - prior[-1]).days <= 110 \
-                and (prior[0] - r.start).days <= 110:
+        if len(prior) == 3 and 60 <= (r.end - prior[-1]).days <= 125 \
+                and (prior[0] - r.start).days <= 125:
             out[r.end] = (r.val - sum(out[e][0] for e in prior), r.filed)
     if not out:
         return pd.DataFrame(columns=["end", "val", "filed"])

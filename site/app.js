@@ -156,6 +156,7 @@ async function init() {
   S.paper = await getJSON("data/paper.json", true);
   S.earn = await getJSON("data/earnings.json", true);
   S.today = await getJSON("data/today.json", true);
+  [S.chips, S.est, S.quality] = await Promise.all([getJSON("data/chips_tw.json", true), getJSON("data/estimates_us.json", true), getJSON("data/quality.json", true)]);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
@@ -630,8 +631,10 @@ async function openDetail(mkt, id) {
   let html = "";
   if (row && mkt !== "etf") {
     html += `<div class="tiles">${[["綜合分數", row.score != null ? row.score.toFixed(1) : "未通過"], ["本益比", fmt.x(row.pe)], ["P/B", fmt.x(row.pb, 2)], ["FCF 殖利率", fmt.pct(row.fcf_yield)], ["市值", fmt.money(row.market_cap, mkt)], ["產業", esc(row.industry)]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("")}</div>`;
+    html += qualityNote(mkt, id);
     if (d && d.valuation) html += valuationCard(d.valuation, row, mkt);
     else if (row.fair_base != null) html += valuationCard(row, row, mkt);
+    html += mkt === "tw" ? chipsCard(id) : estCard(id, row);
     const isNew = ruleSet() === "new";
     html += `<div class="card"><h2>條件檢查${isNew ? "（市場 × 產業規則）" : ""}</h2>${isNew && row.template ? `<p class="hint">產業模板：${tplTag(row)} ${esc(TEMPLATE_NOTE[row.template] || "")}；同業比較群組：${esc(row.peer_group || "")}（${row.peer_n ?? "–"} 家）</p>` : ""}<div class="checklist">${activeFilters().filter((f) => S.settings.filters[f.id]?.enabled).map((f) => {
       const ok = row["f_" + f.id];
@@ -653,6 +656,7 @@ async function openDetail(mkt, id) {
       return `<div><span class="${ok ? "ok" : "ng"}">${ok ? "✔" : "✘"}</span><span>${esc(f.label)}</span><span class="val">${fmtMetric(f.metric, row[f.metric], "us")}</span></div>`;
     }).join("")}</div></div>`;
   }
+  if (!row && mkt !== "etf") html += qualityNote(mkt, id) + (mkt === "tw" ? chipsCard(id) : estCard(id, null));
   html += `<div class="card"><div class="fp-head"><h2>K 線</h2><a href="#chart/${mkt}/${encodeURIComponent(id)}" class="small" onclick="document.getElementById('detail').close()">在看盤頁開啟 ›</a></div><div id="dK"></div><div class="chart-box" id="dPriceBox" hidden><canvas id="dPrice"></canvas></div></div>`;
   if (!d) html += `<p class="hint">此標的沒有財報圖表（只有通過或差 1–2 條的股票、ETF 與追蹤清單會產生）。</p>`;
   else {
@@ -919,7 +923,7 @@ function renderRules() {
   };
   const w = c.ranking.bottom_up;
   const wrow = (g, name) => Object.entries(w[g]).map(([k, v]) => `<li>${mlabel(k)}：${fmt.pct(v, 0)}</li>`).join("");
-  $("#rulesBody").innerHTML = `
+  $("#rulesBody").innerHTML = qualityCard() + `
   <h2>選股流程</h2>
   <ol>
     <li><b>由下而上（Bottom-up）硬性條件</b>：個股要通過下表所有條件才進入候選池。流量項目（營收、利潤、現金流）用近四季合計，資產負債用最新一季。</li>
@@ -976,8 +980,9 @@ function renderRules() {
   <h2>四、交易成本與稅（回測扣費後情境）</h2>
   <ul><li>台股：手續費 0.1425%（買賣各一次）＋賣出證交稅 0.3%（ETF 0.1%）</li><li>美股：複委託手續費假設 0.1%（買賣各一次）＋換匯價差 0.05%；股利預扣稅 30%</li></ul>
   <h2>五、資料來源</h2>
-  <ul><li>台股財報：FinMind（整理自公開資訊觀測站）；台股清單與產業別：FinMind</li><li>美股財報：SEC EDGAR XBRL（含申報日期）；產業：SEC SIC 代碼</li><li>股價、ETF 資訊、匯率：Yahoo Finance</li></ul>
+  <ul><li>台股財報：FinMind（整理自公開資訊觀測站）；台股清單與產業別：FinMind</li><li>美股財報：SEC EDGAR XBRL（含申報日期）；產業：SEC SIC 代碼</li><li>股價、ETF 資訊、匯率：Yahoo Finance</li><li>台股三大法人、融資融券：臺灣證券交易所、櫃買中心（只用在網站，不影響選股）</li><li>美股分析師預估：Yahoo Finance（只用在網站與財報快報）</li><li>新聞：台股 FinMind、美股 Yahoo Finance，抓不到時改用 Google 新聞</li></ul>
   <p class="hint">本系統僅供研究參考，不構成投資建議。</p>`;
+  $$("[data-q]", $("#rulesBody")).forEach((a) => (a.onclick = () => { const [m, i] = a.dataset.q.split("|"); openDetail(m, i); }));
 }
 
 // ---------------------------------------------------------------- 事件
@@ -1018,13 +1023,13 @@ function renderEarnings() {
   const cls = (x) => (x == null ? "" : x >= 0 ? "pos" : "neg");
   const rows = (E.recent || []).filter((e) => g === "all" || (g === "us" && e.market === "us") || (g === "twq" && e.market === "tw" && e.type === "earnings") || (g === "twm" && e.type === "month_rev"));
   const when = { before: "盤前", during: "盤中", after: "盤後" };
-  $("#erTable").innerHTML = `<thead><tr><th>日期</th><th>公司</th><th>類型</th><th class="num">財報後</th><th class="num">大盤</th><th class="num">相對</th><th class="num">營收年增</th><th class="num">淨利年增</th><th class="num">單季 EPS</th><th></th></tr></thead><tbody>${rows.map((e) => {
+  $("#erTable").innerHTML = `<thead><tr><th>日期</th><th>公司</th><th>類型</th><th class="num">財報後</th><th class="num">大盤</th><th class="num">相對</th><th class="num">營收年增</th><th class="num">淨利年增</th><th class="num">單季 EPS</th><th>vs 分析師預估</th><th></th></tr></thead><tbody>${rows.map((e) => {
     const r = e.reaction || {}, n = e.numbers || {};
     const dt = e.type === "month_rev" ? (e.period || "").slice(0, 7) + " 月" : e.market === "tw" ? `${e.first_seen || e.date || ""} 抓到` : (e.date || "") + (when[e.timing] ? ` ${when[e.timing]}` : "");
     const typ = e.type === "month_rev" ? "月營收" : e.market === "us" ? "財報" : `季報 ${(e.period || "").slice(0, 7)}`;
     const pend = e.type === "earnings" && !e.reaction ? `<span class="hint">等收盤</span>` : "";
-    return `<tr><td>${esc(dt)}</td><td><b>${esc(e.id)}</b> ${nameCell(e.market, e.id, e.name)}</td><td>${typ}</td><td class="num ${cls(r.ret)}">${e.type === "month_rev" ? "" : r.ret != null ? pc(r.ret) : pend}</td><td class="num">${r.bench != null ? pc(r.bench) : ""}</td><td class="num ${cls(r.excess)}">${r.excess != null ? pc(r.excess) : ""}</td><td class="num ${cls(n.rev_yoy)}">${pc(n.rev_yoy)}${e.type === "month_rev" && n.rev_yoy_3m != null ? `<br><span class="hint">近 3 月 ${pc(n.rev_yoy_3m)}</span>` : ""}</td><td class="num ${cls(n.ni_yoy)}">${pc(n.ni_yoy)}</td><td class="num">${n.eps != null ? fmt.x(n.eps, 2) : "–"}</td><td>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">財報</a>` : ""}</td></tr>`;
-  }).join("") || `<tr><td colspan="10" class="hint">這段期間沒有財報</td></tr>`}</tbody>`;
+    return `<tr><td>${esc(dt)}</td><td><b>${esc(e.id)}</b> ${nameCell(e.market, e.id, e.name)}</td><td>${typ}</td><td class="num ${cls(r.ret)}">${e.type === "month_rev" ? "" : r.ret != null ? pc(r.ret) : pend}</td><td class="num">${r.bench != null ? pc(r.bench) : ""}</td><td class="num ${cls(r.excess)}">${r.excess != null ? pc(r.excess) : ""}</td><td class="num ${cls(n.rev_yoy)}">${pc(n.rev_yoy)}${e.type === "month_rev" && n.rev_yoy_3m != null ? `<br><span class="hint">近 3 月 ${pc(n.rev_yoy_3m)}</span>` : ""}</td><td class="num ${cls(n.ni_yoy)}">${pc(n.ni_yoy)}</td><td class="num">${n.eps != null ? fmt.x(n.eps, 2) : "–"}</td><td class="${/超乎/.test(e.surprise || "") ? "pos" : /低於/.test(e.surprise || "") ? "neg" : ""}">${esc(e.surprise || "")}</td><td>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">財報</a>` : ""}${e.index ? `<br><a href="${esc(e.index)}" target="_blank" rel="noopener" title="SEC 申報索引頁：新聞稿（Exhibit 99.1）、簡報都在這裡">新聞稿</a>` : ""}</td></tr>`;
+  }).join("") || `<tr><td colspan="11" class="hint">這段期間沒有財報</td></tr>`}</tbody>`;
   const U = E.upcoming || [];
   $("#erUpcoming").innerHTML = U.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>預定日期</th><th>公司</th></tr></thead><tbody>${U.slice(0, 60).map((u) => `<tr><td>${esc(u.date)}</td><td><b>${esc(u.id)}</b> ${nameInline("us", u.id, u.name)}</td></tr>`).join("")}</tbody></table></div><p class="hint">預定日期來自 Yahoo Finance，公司可能更改；台股看上方的法定期限。</p>` : `<p class="hint">還沒有資料（大約每週更新一次）。</p>`;
 }
@@ -1179,6 +1184,133 @@ function renderTrades(bt) {
   }).join("")}</tbody>`;
 }
 
+// ---------------------------------------------------------------- 資料品質、台股籌碼、美股分析師預估
+function qualityNote(mkt, id) {
+  const Q = S.quality, flags = ((S.meta || {}).quality_flags || {})[`${mkt}:${id}`];
+  if (!flags || !flags.length) return "";
+  const det = Q ? Q.issues.filter((o) => o.market === mkt && o.id === id) : [];
+  const items = det.length ? det.map((o) => `<b>${esc(o.label)}</b>：${esc(o.text)}`) : flags.map((f) => `<b>${esc(f)}</b>`);
+  return `<div class="card warnbox"><b>⚠️ 這檔的資料可能有問題</b>：${items.join("；")}。<br><span class="hint">相關數字（市值、本益比、條件判斷）可能不準，下單前請到公開資訊觀測站或 SEC 原始財報核對。</span></div>`;
+}
+function qualityCard() {
+  const Q = S.quality;
+  if (!Q) return "";
+  const bad = Q.checks.filter((c) => !c.ok);
+  const rows = Q.issues.slice(0, 400);
+  return `<div class="qcard"><h2>資料品質檢查 <span class="hint">（${esc(Q.as_of)}，每天自動檢查）</span></h2>
+  <ul class="qlist">${Q.checks.map((c) => `<li class="${c.ok ? "ok" : "ng"}">${c.ok ? "✔" : "⚠️"} ${esc(c.text)}</li>`).join("")}</ul>
+  ${Object.keys(Q.counts || {}).length ? `<p class="hint">個股提醒：${Object.entries(Q.counts).map(([k, v]) => `${esc(k)} ${v}`).join("、")}。這些股票的數字可能不準（不會改變選股結果，但看到時請多核對）。</p>` : ""}
+  ${rows.length ? `<details><summary>看清單（${rows.length} 筆${Q.issues.length > rows.length ? "，只列前 400" : ""}）</summary><div class="table-wrap"><table class="data compact"><thead><tr><th>市場</th><th>公司</th><th>問題</th><th>說明</th></tr></thead><tbody>${rows.map((o) => `<tr><td>${o.market === "tw" ? "台股" : "美股"}</td><td><a href="javascript:void 0" data-q="${o.market}|${esc(o.id)}"><b>${esc(o.id)}</b></a> ${nameInline(o.market, o.id, "")}</td><td>${o.severe ? "<b class=\"neg\">" + esc(o.label) + "</b>" : esc(o.label)}</td><td class="hint">${esc(o.text)}</td></tr>`).join("")}</tbody></table></div></details>` : ""}
+  ${bad.length ? `<p class="hint">有 ⚠️ 的項目代表資料來源可能出了狀況；連續好幾天都這樣再處理就好（通常是免費資料源暫時抓不到）。</p>` : ""}
+  </div>`;
+}
+const lots = (v, sign = true) => (v == null ? "–" : `<span class="${sign ? (v > 0 ? "pos" : v < 0 ? "neg" : "") : ""}">${sign && v > 0 ? "+" : ""}${Math.round(v).toLocaleString()}</span>`);
+function chipsCard(id) {
+  const C = S.chips, r = C && C.rows ? C.rows[id] : null;
+  if (!r) return C && C.as_of ? `<div class="card"><h2>籌碼</h2><p class="hint">這檔沒有法人買賣超資料（${esc(C.as_of)}）。</p></div>` : "";
+  const row = (k, l) => `<tr><td>${l}</td><td class="num">${lots(r[k + "5"])}</td><td class="num">${lots(r[k + "20"])}</td></tr>`;
+  const n = C.days || 0;
+  return `<div class="card"><h2>籌碼：三大法人與融資融券 <span class="hint">（${esc(C.as_of)}）</span></h2>
+  <div class="grid2 tight"><div class="table-wrap"><table class="data compact"><thead><tr><th>買賣超（張）</th><th class="num">近 5 日</th><th class="num">近 ${Math.min(20, n) || 20} 日</th></tr></thead><tbody>
+    ${row("foreign", "外資")}${row("trust", "投信")}${row("dealer", "自營商")}${row("total", "<b>合計</b>")}</tbody></table></div>
+  <div class="table-wrap"><table class="data compact"><tbody>
+    <tr><td>融資餘額</td><td class="num">${lots(r.margin, false)} 張${r.margin_chg20 != null ? `<br><span class="hint">近 20 日 ${r.margin_chg20 >= 0 ? "+" : ""}${fmt.pct(r.margin_chg20, 1)}</span>` : ""}</td></tr>
+    <tr><td>融券餘額</td><td class="num">${lots(r.short, false)} 張</td></tr>
+    <tr><td>券資比</td><td class="num">${r.short_ratio == null ? "–" : fmt.pct(r.short_ratio, 1)}</td></tr></tbody></table></div></div>
+  <p class="hint">外資、投信連續買超代表大資金在買，但不保證會漲；融資（散戶借錢買）短期大增時籌碼較亂、波動較大；券資比高代表放空的人多，股價上漲時可能出現軋空。籌碼只當參考，不影響系統選股。${n < 20 ? `目前只累積了 ${n} 個交易日的資料。` : ""}K 線圖按「法人」可以看每天的買賣超。</p></div>`;
+}
+function estCard(id, row) {
+  const E = S.est, r = E && E.rows ? E.rows[id] : null;
+  if (!r) return E ? `<div class="card"><h2>分析師預估</h2><p class="hint">這檔不在追蹤範圍（只抓持股、追蹤清單、模擬持股和市值前 100 大）。想看的話把它加進追蹤清單。</p></div>` : "";
+  const px = row && row.close ? row.close : null;
+  const up = r.target && px ? r.target / px - 1 : r.upside;
+  const R = r.rating || {}, tot = ["strongBuy", "buy", "hold", "sell", "strongSell"].reduce((a, k) => a + (R[k] || 0), 0);
+  const seg = [["strongBuy", "強力買進", "--good", 1], ["buy", "買進", "--good", 0.6], ["hold", "持有", "--muted", 0.8], ["sell", "賣出", "--bad", 0.6], ["strongSell", "強力賣出", "--bad", 1]];
+  const bar = tot ? `<div class="rbar">${seg.filter(([k]) => R[k]).map(([k, l, c, o]) => `<span style="flex:${R[k]};background:var(${c});opacity:${o}" title="${l} ${R[k]}">${R[k]}</span>`).join("")}</div>
+    <div class="rleg">${seg.filter(([k]) => R[k]).map(([k, l, c, o]) => `<span><i style="background:var(${c});opacity:${o}"></i>${l} ${R[k]}</span>`).join("")}</div>` : "";
+  const L = r.last;
+  const sur = L && L.est != null && L.actual != null ? `${esc(L.date)} 公布：EPS ${L.actual.toFixed(2)} vs 預估 ${L.est.toFixed(2)}${L.surprise != null ? `（<b class="${L.surprise >= 0 ? "pos" : "neg"}">${L.surprise >= 0.005 ? "超乎預期" : L.surprise <= -0.005 ? "低於預期" : "符合預期"} ${L.surprise >= 0 ? "+" : ""}${(L.surprise * 100).toFixed(1)}%</b>）` : ""}` : "";
+  return `<div class="card"><h2>分析師預估 <span class="hint">（Yahoo Finance，${esc(r.asof || "")}）</span></h2>
+  <div class="tiles">
+    <div class="tile"><div class="k">平均目標價</div><div class="v" style="font-size:20px">${r.target ? fmt.price(r.target) : "–"}</div><div class="d">${up != null ? `比目前 <span class="${up >= 0 ? "pos" : "neg"}">${up >= 0 ? "+" : ""}${fmt.pct(up, 0)}</span>` : ""}${r.target_lo ? `<br>區間 ${fmt.price(r.target_lo)}～${fmt.price(r.target_hi)}` : ""}</div></div>
+    <div class="tile"><div class="k">本季 EPS 預估</div><div class="v" style="font-size:20px">${r.eps_q != null ? r.eps_q.toFixed(2) : "–"}</div><div class="d">${r.n ? r.n + " 位分析師" : ""}</div></div>
+    <div class="tile"><div class="k">今年／明年 EPS</div><div class="v" style="font-size:20px">${r.eps_y != null ? r.eps_y.toFixed(2) : "–"} / ${r.eps_ny != null ? r.eps_ny.toFixed(2) : "–"}</div><div class="d">${r.eps_ny_growth != null ? `明年成長 ${fmt.pct(r.eps_ny_growth, 0)}` : ""}</div></div>
+  </div>
+  ${bar ? `<div class="hint" style="margin-bottom:4px">評等分布（${tot} 位）</div>${bar}` : ""}
+  ${sur ? `<p>上次財報：${sur}</p>` : ""}
+  <p class="hint">分析師目標價平均偏樂觀，常跟著股價調整；比較有參考價值的是「超乎／低於預期」和預估有沒有被往上或往下修。只當參考，不影響系統選股。</p></div>`;
+}
+
+// ---------------------------------------------------------------- 自己設的到價提醒（config/alert_levels.yaml）
+const GH = (() => {
+  const h = location.hostname, seg = location.pathname.split("/").filter(Boolean);
+  return h.endsWith(".github.io") && seg[0] ? { owner: h.split(".")[0], repo: seg[0] } : { owner: "KalebChen0509", repo: "stock-screener" };
+})();
+const ALV_PATH = "config/alert_levels.yaml";
+async function alvServer() {
+  if (S.alvServer !== undefined) return S.alvServer;
+  try {
+    const r = await fetch(`https://raw.githubusercontent.com/${GH.owner}/${GH.repo}/main/${ALV_PATH}?t=${Date.now() >> 16}`);
+    if (!r.ok) throw new Error(r.status);
+    const txt = await r.text();
+    S.alvServer = alvNorm(JSON.parse(txt.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n") || "{}"));
+  } catch (e) { S.alvServer = null; }
+  return S.alvServer;
+}
+const alvNorm = (x) => ({ tw: { ...((x || {}).tw || {}) }, us: { ...((x || {}).us || {}) }, etf: { ...((x || {}).etf || {}) } });
+const canon = (x) => (x && typeof x === "object" ? `{${Object.keys(x).sort().map((k) => JSON.stringify(k) + ":" + canon(x[k])).join(",")}}` : JSON.stringify(x));
+const alvSame = (a, b) => canon(alvNorm(a)) === canon(alvNorm(b));
+function alvText(L) {
+  const block = (m) => {
+    const ks = Object.keys(L[m]).sort();
+    return ks.length ? `{\n${ks.map((k) => `    ${JSON.stringify(k)}: ${JSON.stringify(L[m][k])}`).join(",\n")}\n  }` : "{}";
+  };
+  return `# 自己設的到價提醒：網站「看盤」頁按「🔔 提醒」產生，整個檔案直接覆蓋就好。\n# 盤中每 30 分鐘檢查（Yahoo 報價約延遲 15～20 分鐘），同一則提醒一天只寄一次；只是提醒，不會下單。\n{\n  "tw": ${block("tw")},\n  "us": ${block("us")},\n  "etf": ${block("etf")}\n}\n`;
+}
+async function renderAlertPanel(mkt, id) {
+  const box = $("#kAlert");
+  if (!box) return;
+  const server = await alvServer();
+  const draft = store.get("vs_alert_draft", null);
+  let L = alvNorm(draft || server || {});
+  if (draft && server && alvSame(draft, server)) { store.set("vs_alert_draft", null); }
+  const cur = L[mkt][id] || {};
+  const z = zhInfo(mkt, id, "");
+  const all = ["tw", "us", "etf"].flatMap((m) => Object.entries(L[m]).map(([k, v]) => ({ m, k, v })));
+  const pending = draft && !(server && alvSame(draft, server));
+  const edit = `https://github.com/${GH.owner}/${GH.repo}/edit/main/${ALV_PATH}`;
+  box.innerHTML = `<h2>🔔 盤中到價提醒</h2>
+    <p class="hint">持股的停損線、追蹤清單與持股的均線／KD 訊號、合理價上下緣<b>會自動提醒，不用設定</b>。這裡設的是「漲到／跌到某個價位」提醒你。</p>
+    <div class="alv-form"><b>${esc(id.replace(/\.TWO?$/, ""))} ${esc(z.n || "")}</b>
+      <label>漲到 <input id="alvUp" type="number" inputmode="decimal" step="any" value="${cur.above ?? ""}"> 以上</label>
+      <label>跌到 <input id="alvDn" type="number" inputmode="decimal" step="any" value="${cur.below ?? ""}"> 以下</label>
+      <button class="chip on" id="alvSave">${cur.above || cur.below ? "更新" : "加入"}</button></div>
+    ${all.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>股票</th><th class="num">漲到</th><th class="num">跌到</th><th></th></tr></thead><tbody>${all.map((x) => `<tr><td><a href="#chart/${x.m}/${encodeURIComponent(x.k)}"><b>${esc(x.k.replace(/\.TWO?$/, ""))}</b></a> ${esc(zhInfo(x.m, x.k, "").n || "")}</td><td class="num">${x.v.above ?? ""}</td><td class="num">${x.v.below ?? ""}</td><td><button class="chip" data-del="${x.m}|${esc(x.k)}">刪除</button></td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">還沒有設定任何價位。</p>`}
+    ${server === null ? `<p class="hint">讀不到 GitHub 上目前的設定（網路或檔案還沒建立），下面是這台裝置上的版本。</p>` : ""}
+    ${pending ? `<div class="alv-steps"><b>還差一步：把設定存到 GitHub 才會生效</b>
+      <ol><li><button class="chip on" id="alvCopy">① 複製設定</button></li>
+      <li><a class="chip" href="${edit}" target="_blank" rel="noopener">② 打開 GitHub 編輯頁 ›</a>：在編輯框裡<b>全選</b>原本的內容、<b>貼上</b>，再按綠色的 <b>Commit changes</b>（彈出視窗再按一次）。</li>
+      <li>完成後回到這頁，「還差一步」消失就代表生效了（GitHub 最多約 5 分鐘才會更新）。<button class="chip" id="alvReset">放棄這些修改</button></li></ol>
+      <textarea id="alvTxt" readonly rows="6"></textarea></div>` : (all.length ? `<p class="hint">✔ 已存到 GitHub，盤中會檢查。</p>` : "")}`;
+  if ($("#alvTxt")) $("#alvTxt").value = alvText(L);
+  const save = (nl) => { store.set("vs_alert_draft", nl); renderAlertPanel(mkt, id); };
+  $("#alvSave").onclick = () => {
+    const a = parseFloat($("#alvUp").value), b = parseFloat($("#alvDn").value), v = {};
+    if (isFinite(a) && a > 0) v.above = a;
+    if (isFinite(b) && b > 0) v.below = b;
+    const nl = alvNorm(L);
+    if (Object.keys(v).length) nl[mkt][id] = v; else delete nl[mkt][id];
+    save(nl);
+  };
+  $$("[data-del]", box).forEach((b) => (b.onclick = () => { const [m, k] = b.dataset.del.split("|"); const nl = alvNorm(L); delete nl[m][k]; save(nl); }));
+  if ($("#alvCopy")) $("#alvCopy").onclick = async () => {
+    const t = $("#alvTxt");
+    try { await navigator.clipboard.writeText(t.value); } catch (e) { t.select(); document.execCommand("copy"); }
+    $("#alvCopy").textContent = "✔ 已複製";
+  };
+  if ($("#alvReset")) $("#alvReset").onclick = () => { store.set("vs_alert_draft", null); renderAlertPanel(mkt, id); };
+}
+
 function valuationCard(v, row, mkt) {
   const px = row.close;
   const cell = (x) => (x == null || !isFinite(x) ? "–" : fmt.price(x));
@@ -1268,8 +1400,10 @@ async function renderChartView(args) {
   $$("#kQuick [data-id]").forEach((b) => (b.onclick = () => { location.hash = `#chart/${b.dataset.m}/${encodeURIComponent(b.dataset.id)}`; }));
   const z = zhInfo(mkt, id, "");
   const mlabel_ = { tw: "台股", us: "美股", etf: "ETF" }[mkt] || "";
-  $("#kTitle").innerHTML = `<div><div class="t">${esc(id.replace(/\.TWO?$/, ""))} ${esc(z.n || "")}</div><div class="s">${esc(z.d || "")}　<span class="pill">${mlabel_}</span> ${mkt !== "etf" ? `<a href="javascript:void 0" id="kDetail">財報與條件 ›</a>` : ""}</div></div><div><div class="px" id="kPx">–</div><div class="pc" id="kPc"></div></div>`;
+  $("#kTitle").innerHTML = `<div><div class="t">${esc(id.replace(/\.TWO?$/, ""))} ${esc(z.n || "")}</div><div class="s">${esc(z.d || "")}　<span class="pill">${mlabel_}</span> ${mkt !== "etf" ? `<a href="javascript:void 0" id="kDetail">財報與條件 ›</a>` : ""} <button class="chip" id="kBell">🔔 提醒</button></div></div><div><div class="px" id="kPx">–</div><div class="pc" id="kPc"></div></div>`;
   if ($("#kDetail")) $("#kDetail").onclick = () => openDetail(mkt, id);
+  $("#kAlert").hidden = true;
+  $("#kBell").onclick = () => { const b = $("#kAlert"); b.hidden = !b.hidden; if (!b.hidden) { renderAlertPanel(mkt, id); b.scrollIntoView({ behavior: "smooth", block: "nearest" }); } };
   if (S.kc) S.kc.destroy();
   S.kc = KC.mount($("#kChart"), { mkt, id, ctx: kctx(mkt, id) });
   const doc = await KC.load(mkt, id);

@@ -111,7 +111,9 @@ def us_events(sec: Sec, tick_cik: dict, since: pd.Timestamp) -> list[dict]:
             acc_t = (rec.get("acceptanceDateTime") or [None] * len(forms))[i]
             ev.append({"key": f"us:{acc}", "market": "us", "id": tk, "cik": cik, "type": "earnings",
                        "date": day, "timing": _timing(acc_t), "accepted": acc_t,
-                       "url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}/{doc}"})
+                       "url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}/{doc}",
+                       # 申報索引頁：財報新聞稿（Exhibit 99.1）、簡報都在這裡
+                       "index": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}/{acc}-index.htm"})
     return ev
 
 
@@ -260,6 +262,8 @@ def _line(e: dict) -> str:
             bits.append(f"單季 EPS {n['eps']:.2f}")
         if bits:
             parts.append("、".join(bits))
+    if e.get("surprise"):
+        parts.append(e["surprise"])
     return f"・{nm}\n    " + "；".join(p_ for p_ in parts if p_)
 
 
@@ -369,7 +373,14 @@ def update(cfg: dict, results: dict, infos: dict, held: dict | None = None, posi
         log.warning("earnings: daily prices failed: %s", e)
         daily = pd.DataFrame()
     to_notify = []
+    try:
+        from . import estimates as est_
+        est_db = est_.load()
+    except Exception:  # noqa
+        est_db = {}
     for e in events.values():
+        if e["market"] == "us" and e["type"] == "earnings" and not e.get("surprise"):
+            e["surprise"] = est_.surprise_text(est_db.get(e["id"]), e["date"]) if est_db else ""
         if e["type"] == "earnings" and not e.get("reaction"):
             e["reaction"] = reaction(daily, ymap[e["market"]].get(e["id"], e["id"]), BENCH[e["market"]], e["date"], e["timing"])
         if e["market"] == "us" and e["type"] == "earnings" and not e.get("numbers") and e.get("facts_tries", 0) < 7:

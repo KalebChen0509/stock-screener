@@ -1,0 +1,39 @@
+name: 盤中提醒
+on:
+  schedule:
+    - cron: "*/30 1-5 * * 1-5"     # 台股盤中（台北 09:00～13:30）
+    - cron: "*/30 13-21 * * 1-5"   # 美股盤中（夏令 UTC 13:30～20:00、冬令 14:30～21:00；程式會再確認是否開盤）
+  workflow_dispatch:
+    inputs:
+      force: { description: "不管有沒有開盤都檢查一次（測試用）", default: "false" }
+concurrency:
+  group: alerts
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+      PAGES_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+      ALERTS_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '0' }}
+      ALERTS_STATE: alerts_state/state.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with: { path: alerts_state, key: "alerts-${{ github.run_id }}", restore-keys: "alerts-" }
+      - run: python scripts/alerts.py
+      - uses: actions/cache/save@v4
+        if: always()
+        with: { path: alerts_state, key: "alerts-${{ github.run_id }}" }

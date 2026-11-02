@@ -5,3 +5,15 @@ databr/
 debug/
 site/data/
 .DS_Store
+# 永豐 API 金鑰、憑證、實際持股：只留在你的 Mac，絕對不上 GitHub（建議放在 ~/.sinopac/，不要放這個資料夾）
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+trader/secrets/
+trader/private/
+trader/*.log
+# Claude 同步用的暫存檔
+.claude_sync*
