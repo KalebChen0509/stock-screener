@@ -6,5 +6,5 @@
 #   value_now   還沒填股數時，用「目前市值」估算股數（只估一次）
 # 系統下單清單建議買的股票，不用填在這裡；系統會假設你照清單買了。
 tw: {}
-us:
-  BRK-B: {keep: true, name: "Berkshire Hathaway B", cost_total: 600, value_now: 649, shares: null, date: null}
+us: {}
+# 國泰證券的持股（例如 BRK-B）不納入系統；之後實際持股改由 Mac 從永豐帳戶讀取，不放在這裡。
