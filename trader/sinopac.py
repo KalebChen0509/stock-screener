@@ -14,6 +14,10 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 SERVICE = "sinopac-sync"
+# shioaji 的紀錄檔寫到 ~/.sinopac/logs，不要寫在專案資料夾（以免被推上 GitHub）
+_LOGDIR = os.path.join(os.path.expanduser("~"), ".sinopac", "logs")
+os.makedirs(_LOGDIR, mode=0o700, exist_ok=True)
+os.environ.setdefault("SJ_LOG_PATH", os.path.join(_LOGDIR, "shioaji.log"))
 
 
 def keychain(account: str, service: str = SERVICE) -> str:
