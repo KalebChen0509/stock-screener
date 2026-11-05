@@ -25,7 +25,7 @@ def keychain(account: str, service: str = SERVICE) -> str:
                        capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout.strip():
         sys.exit(f"鑰匙圈裡找不到 {service} / {account}。請先執行：\n"
-                 f"  security add-generic-password -U -s {service} -a {account} -w")
+                 f"  ~/.sinopac-venv/bin/python ~/PycharmProjects/stock-screener/trader/setup_key.py {service}")
     return r.stdout.strip()
 
 
@@ -57,13 +57,13 @@ def quiet():
     yield
 
 
-def login(simulation: bool = False):
-    """登入正式環境（預設）。回傳 (api, accounts)。"""
+def login(simulation: bool = False, service: str = SERVICE):
+    """登入（預設正式環境、用 sinopac-sync 這把唯讀 Key）。回傳 (api, accounts)。"""
     try:
         import shioaji as sj
     except ImportError:
         sys.exit("還沒安裝 shioaji：~/.sinopac-venv/bin/pip install -U shioaji")
-    key, secret = keychain("api_key"), keychain("secret_key")
+    key, secret = keychain("api_key", service), keychain("secret_key", service)
     silence()
     api = sj.Shioaji(simulation=simulation)
     accounts = api.login(api_key=key, secret_key=secret)
