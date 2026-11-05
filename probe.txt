@@ -1,0 +1,20 @@
+== 台股籌碼（2026-11-04）==
+✔ 證交所 三大法人（1.5s）：stat=OK 解析 1102 檔；欄位 ['stat', 'date', 'title', 'hints', 'fields', 'data', 'selectType', 'notes']；第一筆 {'id': '2886', 'foreign': -502681.0, 'trust': 7425251.0, 'dealer': 3807991.0, 'total': 10730561.0}
+✔ 證交所 融資融券（1.3s）：stat=OK 解析 1070 檔；欄位 ['stat', 'date', 'tables']；第一筆 {'id': '0050', 'margin': 33518.0, 'short': 257.0}
+⚠️ 櫃買 三大法人 #0（0.9s）：stat=ok 解析 0 檔；欄位 ['columnNum', 'tables', 'template', 'date', 'stat']；第一筆 None
+⚠️ 櫃買 三大法人 #1（2.0s）：stat=ok 解析 0 檔；欄位 ['columnNum', 'tables', 'template', 'date', 'stat']；第一筆 None
+⚠️ 櫃買 三大法人 #2（4.3s）：stat=list[918] 解析 0 檔；欄位 ['Date', 'SecuritiesCompanyCode', 'CompanyName', 'Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Total Buy', ' Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Total Sell', 'Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference', 'Foreign Dealers-Total Buy', 'Foreign Dealers-TotalSell']；第一筆 None
+⚠️ 櫃買 融資融券 #0（4.1s）：stat=ok 解析 0 檔；欄位 ['date', 'tables', 'stat']；第一筆 None
+⚠️ 櫃買 融資融券 #1（1.1s）：stat=ok 解析 0 檔；欄位 ['date', 'tables', 'stat']；第一筆 None
+⚠️ 櫃買 融資融券 #2（0.9s）：stat=list[919] 解析 0 檔；欄位 ['Date', 'SecuritiesCompanyCode', 'CompanyName', 'MarginPurchaseBalancePreviousDay', 'MarginPurchase', 'MarginSales', 'CashRedemption', 'MarginPurchaseBalance']；第一筆 None
+✔ fetch_day 合併（17.6s）：1112 檔；2330 [{'date': Timestamp('2026-11-04 00:00:00'), 'id': '2330', 'foreign': -21603811.0, 'trust': 3715164.0, 'dealer': 5966950.0, 'total': -11921697.0, 'margin': 35144.0, 'short': 16.0}]；6488 []
+
+== 美股分析師預估（Yahoo）==
+✔ NVDA（2.3s）：{'target': {'mean': 327.1431, 'median': 315.0, 'high': 515.0, 'low': 180.0, 'current': 200.13}, 'rating': {'strongBuy': 10, 'buy': 49, 'hold': 2, 'sell': 1, 'strongSell': 0}, 'eps': ['0q', '+1q', '0y', '+1y'], 'last': {'date': '2026-08-26', 'est': 2.09, 'actual': 2.22, 'surprise': 0.0616}}
+
+== Google 新聞 ==
+✔ NVIDIA（英文）（0.6s）：['Nvidia China Clients to Get 1% of $70 Bi', 'Why Nvidia Stock Can Ride Out a Data-Cen', 'Canada’s Avenir Snaps Up Communications ']
+✔ 台積電（中文）（0.5s）：['台積電、英特爾差距曝光！外媒答案明確又殘酷', '11月法人必收20檔台積電、欣興、日月光、和碩、玉山金…最新', '美國選情牽動台積電赴德州布局！\u3000龔明鑫回應投資進度']
+
+== 盤中報價（Yahoo，提醒用）==
+✔ 2330.TW / 6488.TWO / NVDA（0.4s）：{'2330.TW': 2240.0, '6488.TWO': 564.0, 'NVDA': 200.13}
