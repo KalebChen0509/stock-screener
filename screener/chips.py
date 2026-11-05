@@ -85,13 +85,21 @@ def parse_insti(js) -> pd.DataFrame:
     for fields, data in _tables(js):
         if not data:
             continue
-        if fields:
+        if fields and len(fields) >= 24 and str(fields[0]).strip() == "代號" and _find(fields, "外資") is None \
+                and _find(fields, "Foreign") is None:
+            # 櫃買新版（2026）：欄位名稱只剩「買進股數／賣出股數／買賣超股數」重複，外資、投信、自營的分組標題不見了，
+            # 只能照位置對：外資(不含外資自營商) 2-4、外資自營商 5-7、外資合計 8-10、投信 11-13、
+            # 自營商(自行) 14-16、自營商(避險) 17-19、自營商合計 20-22、三大法人合計 23（跟舊版 aaData 同順序）
+            ic, fi, ti, di, to = 0, 4, 13, 22, 23
+        elif fields:
             ic = _first(_find(fields, "代號"), _find(fields, "Code"))
             fi = _first(_find(fields, "外陸資買賣超"), _find(fields, "外資及陸資", "買賣超"),
-                        _find(fields, "外資", "買賣超", avoid=("外資自營商買", "自營商買賣超")))
-            ti = _find(fields, "投信", "買賣超")
-            di = _find(fields, "自營商買賣超", avoid=("外資自營商", "自行", "避險"))
-            to = _first(_find(fields, "三大法人", "買賣超"), _find(fields, "合計", "買賣超"))
+                        _find(fields, "外資", "買賣超", avoid=("外資自營商買", "自營商買賣超")),
+                        _find(fields, "Foreign Dealers excluded", "Difference"))       # 櫃買 OpenAPI（英文欄位）
+            ti = _first(_find(fields, "投信", "買賣超"), _find(fields, "InvestmentTrust", "Difference"))
+            di = _first(_find(fields, "自營商買賣超", avoid=("外資自營商", "自行", "避險")),
+                        _find(fields, "Dealers-Difference", avoid=("Foreign",)))
+            to = _first(_find(fields, "三大法人", "買賣超"), _find(fields, "合計", "買賣超"), _find(fields, "TotalDifference"))
         else:                                   # 櫃買舊版 aaData：代號、名稱、外資買進、賣出、買賣超、…
             ic, fi, ti, di, to = 0, 4, 13, 22, 23
         if ic is None or fi is None:
@@ -121,9 +129,12 @@ def parse_margin(js) -> pd.DataFrame:
         if fields and len(fields) >= 13 and str(fields[6]).startswith("今日餘額") and str(fields[12]).startswith("今日餘額"):
             ic, mi, si = 0, 6, 12
         elif fields:
-            ic = _find(fields, "代號")
-            mi = _find(fields, "融資", "餘額", avoid=("前日", "限額"))
-            si = _find(fields, "融券", "餘額", avoid=("前日", "限額"))
+            ic = _first(_find(fields, "代號"), _find(fields, "Code"))
+            # 證交所：「融資…餘額」；櫃買新版：「資餘額」「券餘額」（要避開「前資餘額」）；櫃買 OpenAPI：英文欄位
+            mi = _first(_find(fields, "融資", "餘額", avoid=("前日", "限額")), _find(fields, "資餘額", avoid=("前",)),
+                        _find(fields, "MarginPurchaseBalance", avoid=("Previous", "Belong")))
+            si = _first(_find(fields, "融券", "餘額", avoid=("前日", "限額")), _find(fields, "券餘額", avoid=("前",)),
+                        _find(fields, "ShortSaleBalance", avoid=("Previous", "Belong")))
             if mi is None or si is None:
                 continue
         else:                                   # 櫃買舊版 aaData：代號、名稱、前資餘額、資買、資賣、現償、資餘額…

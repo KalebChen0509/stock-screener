@@ -73,9 +73,33 @@ def test_parse_margin_twse_table():
 def test_parse_tpex_openapi_list():
     js = [{"SecuritiesCompanyCode": "6488", "CompanyName": "環球晶", "Foreign Investors include Mainland Area Investors-Difference": "1000",
            "SecuritiesInvestmentTrustCompanies-Difference": "-2000", "Dealers-Difference": "0", "TotalDifference": "-1000"}]
-    # OpenAPI 欄位是英文：找不到中文欄位時應該回傳空表，而不是亂對欄位
+    # 欄位名稱不完整（缺「Foreign Dealers excluded」）時寧可回傳空表，也不要亂對欄位
     d = chips.parse_insti(js)
     assert d.empty or set(d.columns) >= {"id", "foreign"}
+
+
+def test_parse_tpex_2026_formats():
+    """櫃買 2026 新格式：中文欄位只剩「買進股數／賣出股數／買賣超股數」重複；OpenAPI 是英文欄位。兩者要解析出一樣的數字。"""
+    row = ["6488", "環球晶", "1", "2", "-3,016,686", "0", "0", "0", "1", "2", "-3,016,686", "3", "4", "-1,279,149",
+           "0", "0", "0", "5", "6", "-252,785", "5", "6", "-252,785", "-4,548,620"]
+    zh = {"stat": "ok", "tables": [{"fields": ["代號", "名稱"] + ["買進股數", "賣出股數", "買賣超股數"] * 7 + ["三大法人買賣超股數合計"],
+                                    "data": [row]}, {}]}
+    en = [{"SecuritiesCompanyCode": "6488", "CompanyName": "環球晶",
+           "Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference": "-3016686",
+           "ForeignDealers-Difference": "0", "ForeignInvestorsInclude MainlandAreaInvestors-Difference": "-3016686",
+           "SecuritiesInvestmentTrustCompanies-Difference": "-1279149", "Dealers-Difference": "-252785", "TotalDifference": "-4548620"}]
+    for js in (zh, en):
+        r = chips.parse_insti(js).set_index("id").loc["6488"]
+        assert (r.foreign, r.trust, r.dealer, r.total) == (-3016686, -1279149, -252785, -4548620), js
+    mzh = {"stat": "ok", "tables": [{"fields": ["代號", "名稱", "前資餘額(張)", "資買", "資賣", "現償", "資餘額", "資屬證金", "資使用率(%)",
+                                                "資限額", "前券餘額(張)", "券賣", "券買", "券償", "券餘額", "券屬證金"],
+                                     "data": [["6488", "環球晶", "12,000", "1", "1", "0", "12,116", "0", "1", "9", "250", "5", "0", "0", "255", "0"]]}]}
+    men = [{"SecuritiesCompanyCode": "6488", "MarginPurchaseBalancePreviousDay": "12000", "MarginPurchaseBalance": "12116",
+            "MarginPurchaseBalanceBelongSecuritiesFinanceEnterprise": "0", "ShortSaleBalancePreviousDay": "250",
+            "ShortSaleBalance": "255", "ShortSaleBalanceBelongSecuritiesFinanceEnterprise": "0"}]
+    for js in (mzh, men):
+        r = chips.parse_margin(js).set_index("id").loc["6488"]
+        assert (r.margin, r.short) == (12116, 255), js
 
 
 def _fake_http(by_url):
