@@ -30,6 +30,8 @@ SITE = os.environ.get("SITE_URL", "https://kalebchen0509.github.io/stock-screene
 TZ = dt.timezone(dt.timedelta(hours=8))
 CLOSE = dt.time(14, 30)
 NEAR_STOP = 0.05          # 離停損線 5% 以內就提醒
+# 打招呼（EHLO）用的名稱：手機熱點下 Mac 的本機名稱會變成一長串怪名字，Gmail 收到會直接斷線
+HELO = "stock-screener.local"
 
 
 # ---------------------------------------------------------------- 時間
@@ -206,10 +208,32 @@ def send_mail(subj: str, body: str):
     user, pw, to = keychain("smtp_user", "stock-mail"), keychain("smtp_pass", "stock-mail"), keychain("email_to", "stock-mail")
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"], msg["From"], msg["To"] = subj, user, to
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as s:
-        s.starttls(context=_ssl_ctx())
-        s.login(user, pw.replace(" ", ""))
-        s.sendmail(user, [to], msg.as_string())
+    pw = pw.replace(" ", "")
+    errors = []
+    # 先用 465（SSL）；有些網路會擋 587，或在 587 握手時斷線，再試 587（STARTTLS）
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30, context=_ssl_ctx(), local_hostname=HELO) as s:
+            s.login(user, pw)
+            s.sendmail(user, [to], msg.as_string())
+            return
+    except smtplib.SMTPAuthenticationError:
+        raise SystemExit("寄信失敗：Gmail 不接受帳號或應用程式密碼。請重新存一次 smtp_user／smtp_pass（應用程式密碼是 16 個字母，不是登入密碼）。")
+    except (OSError, smtplib.SMTPException) as e:
+        errors.append(f"465：{e.__class__.__name__} {e}")
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30, local_hostname=HELO) as s:
+            s.ehlo()
+            s.starttls(context=_ssl_ctx())
+            s.ehlo()
+            s.login(user, pw)
+            s.sendmail(user, [to], msg.as_string())
+            return
+    except smtplib.SMTPAuthenticationError:
+        raise SystemExit("寄信失敗：Gmail 不接受帳號或應用程式密碼。請重新存一次 smtp_user／smtp_pass。")
+    except (OSError, smtplib.SMTPException) as e:
+        errors.append(f"587：{e.__class__.__name__} {e}")
+    raise SystemExit("寄信失敗（" + "；".join(errors) + "）。Gmail 在帳號或應用程式密碼不對時也會直接斷線："
+                     "請先重跑 setup_mail.py，確認寄件信箱沒打錯、應用程式密碼是 16 個字母。")
 
 
 # ---------------------------------------------------------------- 主程式
@@ -266,8 +290,9 @@ def main(argv=None):
         say("✔ 已寄出對帳信")
     else:
         say("內容跟上一封一樣，不寄信")
-    state["synced"] = str(day)
-    state_p.write_text(json.dumps(state))
+    if not dry:                     # 試跑不算同步過，免得當天的自動同步被跳過、不寄信
+        state["synced"] = str(day)
+        state_p.write_text(json.dumps(state))
 
 
 if __name__ == "__main__":
