@@ -20,3 +20,4 @@ trader/*.log
 # shioaji 自己寫的紀錄檔（不上 GitHub）
 *.log
 shioaji.log
+.venv/

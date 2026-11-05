@@ -134,8 +134,21 @@ def place(argv=None):
             return
         if not in_session():
             say("\n⚠️ 現在不是台股盤中（週一到週五 09:00～13:30）：盤中零股的模擬單可能被退回。建議盤中再跑。")
-        ans = input("\n要把上面的台股送到「模擬環境」嗎？輸入 y 送出，其他鍵取消：").strip().lower()
-        if ans != "y":
+        # 防止同一個月的清單重複下單（之後真單也會用同一套檢查）
+        sent = []
+        for f in sorted(SIM_DIR.glob("*.json")) if SIM_DIR.exists() else []:
+            try:
+                d = json.loads(f.read_text())
+                if d.get("month") == month and any(x["status"] not in ("Failed", "Error", "Cancelled") for x in d.get("orders", [])):
+                    sent.append(f.stem.replace("_", " "))
+            except Exception:  # noqa
+                pass
+        need = "y"
+        if sent:
+            say(f"\n⚠️ {month} 的清單已經送過 {len(sent)} 次（{'、'.join(sent)}）。再送一次會重複下單。")
+            need = "again"
+        ans = input(f"\n要把上面的台股送到「模擬環境」嗎？輸入 {need} 送出，其他鍵取消：").strip().lower()
+        if ans != need:
             say("已取消，沒有送出任何單。")
             return
         Lot = C("StockOrderLot")
