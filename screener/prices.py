@@ -179,6 +179,33 @@ def _fetch_daily_adj(tickers: list[str], start: str, chunk: int = 100) -> pd.Dat
     return out
 
 
+def repair_tw_jumps(wide: pd.DataFrame, ref: str = "^TWII", limit: float = 0.11) -> tuple[pd.DataFrame, dict]:
+    """修正 Yahoo 台股日線的錯價：台股有漲跌幅限制（2015/6 前 7%、之後 10%），單日超過 limit 一定是錯的
+    （例如 0050 在 2014-01-02 −75%：分割還原套錯日期；減資後股價跳升也沒有還原）。
+    錯的那天改用 ref（加權指數）當天的報酬，沒有指數就當 0；中間有缺資料時，容許幅度依間隔交易日數放寬。
+    價格從最後一天往回重建（最新價格不變）。回傳 (修正後寬表, {代號: [修正的日期]})。"""
+    out, fixed = wide.copy(), {}
+    rr = wide[ref].pct_change(fill_method=None) if ref in wide else None
+    for c in wide.columns:
+        if not str(c).endswith((".TW", ".TWO")):
+            continue
+        s = wide[c].dropna()
+        if len(s) < 3:
+            continue
+        r = s.pct_change()
+        pos = pd.Series(range(len(wide.index)), index=wide.index).reindex(s.index)
+        gap = pos.diff().fillna(1).clip(lower=1)
+        bad = r.abs() > ((1 + limit) ** gap - 1)
+        if not bad.any():
+            continue
+        r = r.where(~bad, rr.reindex(s.index) if rr is not None else 0.0).fillna(0.0)
+        r.iloc[0] = 0.0
+        growth = (1 + r).cumprod()
+        out.loc[s.index, c] = s.iloc[-1] * growth / growth.iloc[-1]
+        fixed[c] = [d.strftime("%Y-%m-%d") for d in s.index[bad]]
+    return out, fixed
+
+
 def load_daily_adj(tickers, start: str = "2015-06-01", path=None, max_age_days: int = 20) -> pd.DataFrame:
     """回傳日線含息還原價寬表（index=日期, columns=代號）。
 

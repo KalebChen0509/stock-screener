@@ -297,6 +297,15 @@ def test_estimates_update_and_site(tmp_path, monkeypatch):
     db = estimates.load()
     assert estimates.surprise_text(db["NVDA"], "2026-08-27") == "EPS 1.08 vs 預估 1.00（超乎預期 +8.0%）"
     assert estimates.surprise_text(db["NVDA"], "2026-11-20") == ""           # 不是同一次財報
+    # 歷史快照：每次更新到的公司各存一列；同一天重跑只留一筆
+    monkeypatch.setattr(estimates, "HIST", tmp_path / "h.csv.gz")
+    fake["NVDA"]["eps_trend"] = {"0y": {"current": 4.5, "30daysAgo": 4.3, "90daysAgo": 4.0}}
+    fake["NVDA"]["eps_rev"] = {"0y": {"upLast30days": 5, "downLast30days": 1}}
+    estimates.update(["NVDA", "AAPL"], today="2026-11-09", fetch=lambda s: fake.get(s), sleep=0)
+    estimates.update(["NVDA", "AAPL"], today="2026-11-09", recent=["NVDA"], fetch=lambda s: fake.get(s), sleep=0)
+    h = pd.read_csv(tmp_path / "h.csv.gz")
+    assert len(h) == 1 and h.iloc[0]["ticker"] == "NVDA" and h.iloc[0]["rating_buy"] == 40
+    assert h.iloc[0]["eps_0y_90d"] == 4.0 and h.iloc[0]["up30_0y"] == 5 and h.iloc[0]["eps_1y"] == 6.0
 
 
 # ---------------------------------------------------------------- Google 新聞

@@ -24,3 +24,6 @@ shioaji.log
 
 # Claude Code 本機設定（預覽伺服器等），不上 GitHub
 .claude/
+
+# 研究程式的中間結果（research/）
+research/out/

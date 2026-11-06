@@ -68,6 +68,23 @@ def main():
     full_calls = [c for c in calls if c[1] == "2011-01-01"]
     assert full_calls and set(full_calls[0][0]) == {"FLAKY"}, full_calls
     print("price history repair ok")
+    test_repair_tw_jumps()
+
+
+def test_repair_tw_jumps():
+    """台股日線錯價（超過漲跌幅）改用加權指數當天報酬；最新價不變；美股不動；缺資料的間隔放寬。"""
+    from screener.prices import repair_tw_jumps
+    idx = pd.bdate_range("2014-01-01", periods=6)
+    w = pd.DataFrame({"^TWII": [100, 101, 102, 101, 103, 104.0],
+                      "0050.TW": [40, 40.4, 10.2, 10.1, 10.3, 10.4],        # 第 3 天 −75%（分割套錯日期）
+                      "6488.TWO": [100, None, None, 120, 121, 122.0],         # 隔 3 天 +20%：在放寬範圍內，不改
+                      "SPY": [100, 50, 100, 100, 100, 100.0]})                # 美股不檢查
+    fx, fixed = repair_tw_jumps(w.set_index(idx))
+    assert list(fixed) == ["0050.TW"] and fixed["0050.TW"] == ["2014-01-03"], fixed
+    r = fx["0050.TW"].pct_change()
+    assert abs(r.iloc[2] - (102 / 101 - 1)) < 1e-12 and fx["0050.TW"].iloc[-1] == 10.4
+    assert fx["SPY"].equals(w.set_index(idx)["SPY"]) and fx["6488.TWO"].iloc[3] == 120
+    print("tw jump repair ok")
 
 
 if __name__ == "__main__":

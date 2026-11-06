@@ -1,6 +1,8 @@
 """美股分析師預估（Yahoo Finance 免費資料）：目標價、評等分布、EPS 預估、財報超乎／低於預期。
 
 快取 cache/us_estimates.json：{代號: {...}, "_meta": {...}}
+歷史 cache/us_estimates_hist.csv.gz：每次更新到的公司都存一列快照（2026/11/07 起），累積一兩年後才能回測
+「分析師上修／下修預估」能不能幫選股；eps_trend（7～90 天前的預估）讓最近 3 個月的修正現在就看得到。
 每週一整批更新追蹤的公司；其他日子只更新最近幾天公布財報的公司（拿到「超乎預期」數字）。
 台股沒有可靠的免費分析師預估來源，所以只做美股。只用在網站與財報快報，不影響選股。
 """
@@ -15,6 +17,7 @@ import pandas as pd
 from .common import CACHE_DIR, log
 
 PATH = CACHE_DIR / "us_estimates.json"
+HIST = CACHE_DIR / "us_estimates_hist.csv.gz"
 
 
 def _f(x):
@@ -50,6 +53,13 @@ def one(sym: str, yf=None) -> dict | None:
                           for i in ee.index}
     except Exception as e:  # noqa
         log.debug("eps est %s: %s", sym, e)
+    for key, attr in (("eps_trend", "eps_trend"), ("eps_rev", "eps_revisions")):
+        try:                                    # 預估怎麼變：7／30／60／90 天前的預估、最近上修／下修的人數
+            x = getattr(t, attr)
+            if x is not None and len(x):
+                out[key] = {str(i): {c: _f(x.loc[i].get(c)) for c in x.columns if _f(x.loc[i].get(c)) is not None} for i in x.index}
+        except Exception as e:  # noqa
+            log.debug("%s %s: %s", attr, sym, e)
     try:
         ed = t.get_earnings_dates(limit=8)
         if ed is not None and len(ed):
@@ -70,6 +80,44 @@ def load() -> dict:
     return json.loads(PATH.read_text()) if PATH.exists() else {}
 
 
+def snapshot_rows(db: dict, syms: list[str], date: str) -> list[dict]:
+    """把 db 裡這些公司的預估攤平成一列一家（存歷史用）。"""
+    rows = []
+    for sym in syms:
+        r = db.get(sym) or {}
+        if not r:
+            continue
+        tg, rt, eps, tr, rv, last = (r.get(k) or {} for k in ("target", "rating", "eps", "eps_trend", "eps_rev", "last"))
+        row = {"date": date, "ticker": sym, "price": tg.get("current"), "target_mean": tg.get("mean"),
+               "rating_buy": (rt.get("strongBuy") or 0) + (rt.get("buy") or 0) if rt else None,
+               "rating_hold": rt.get("hold") if rt else None,
+               "rating_sell": (rt.get("sell") or 0) + (rt.get("strongSell") or 0) if rt else None,
+               "last_date": last.get("date"), "last_surprise": last.get("surprise")}
+        for per, tag in (("0q", "0q"), ("+1q", "1q"), ("0y", "0y"), ("+1y", "1y")):
+            row[f"eps_{tag}"] = (eps.get(per) or {}).get("avg")
+            row[f"n_{tag}"] = (eps.get(per) or {}).get("numberOfAnalysts")
+            t_ = tr.get(per) or {}
+            row[f"eps_{tag}_30d"], row[f"eps_{tag}_90d"] = t_.get("30daysAgo"), t_.get("90daysAgo")
+            v_ = rv.get(per) or {}
+            row[f"up30_{tag}"], row[f"down30_{tag}"] = v_.get("upLast30days"), v_.get("downLast30days")
+        rows.append(row)
+    return rows
+
+
+def save_snapshot(db: dict, syms: list[str], date: str) -> int:
+    """附加到歷史檔（同一天同一家只留最後一筆）。"""
+    rows = snapshot_rows(db, syms, date)
+    if not rows:
+        return 0
+    new = pd.DataFrame(rows)
+    old = pd.read_csv(HIST) if HIST.exists() else pd.DataFrame()
+    allr = pd.concat([old, new], ignore_index=True) if len(old) else new
+    allr = allr.drop_duplicates(["date", "ticker"], keep="last").sort_values(["date", "ticker"])
+    HIST.parent.mkdir(parents=True, exist_ok=True)
+    allr.to_csv(HIST, index=False, compression="gzip")
+    return len(rows)
+
+
 def update(tickers: list[str], today=None, recent: list[str] | None = None, full_weekday: int = 0,
            sleep: float = 0.6, fetch=one) -> dict:
     """週一（full_weekday）整批更新；其他天只更新 recent（最近公布財報的）與還沒有資料的。"""
@@ -78,7 +126,7 @@ def update(tickers: list[str], today=None, recent: list[str] | None = None, full
     meta = db.get("_meta", {})
     full = today.weekday() == full_weekday and meta.get("full") != str(today.date())
     todo = list(dict.fromkeys(tickers if full else [t for t in (recent or []) if t in tickers] + [t for t in tickers if t not in db]))
-    ok = 0
+    ok, got = 0, []
     for sym in todo[:400]:
         try:
             r = fetch(sym)
@@ -89,6 +137,7 @@ def update(tickers: list[str], today=None, recent: list[str] | None = None, full
             r["asof"] = str(today.date())
             db[sym] = r
             ok += 1
+            got.append(sym)
         time.sleep(sleep)
     if full:
         meta["full"] = str(today.date())
@@ -96,6 +145,10 @@ def update(tickers: list[str], today=None, recent: list[str] | None = None, full
     db["_meta"] = meta
     PATH.parent.mkdir(parents=True, exist_ok=True)
     PATH.write_text(json.dumps(db, ensure_ascii=False))
+    try:
+        save_snapshot(db, got, str(today.date()))
+    except Exception as e:  # noqa
+        log.warning("estimates history failed: %s", e)
     log.info("estimates: %d/%d updated (full=%s)", ok, len(todo), full)
     return {"updated": ok, "tried": len(todo), "full": full}
 

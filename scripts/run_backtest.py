@@ -369,6 +369,9 @@ def main():
                     rules[v["name"]] = StopRule(apply_patch(cfg, patch))
             sd = prices.load_daily_adj(sc.get("assets", []), start="1999-01-01",
                                        path=CACHE_DIR / "stress_daily.csv.gz")
+            sd, fixed = prices.repair_tw_jumps(sd)          # Yahoo 台股日線錯價（例如 0050 在 2014-01-02 −75%）
+            if fixed:
+                log.info("stress daily repaired: %s", {k: len(v) for k, v in fixed.items()})
             res["stress"] = {"rules": list(rules), "episodes": sc.get("episodes", []),
                              "results": run_stress(sd, rules, sc)}
             log.info("stress test: %d assets", len(res["stress"]["results"]))
