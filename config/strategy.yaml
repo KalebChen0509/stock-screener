@@ -94,6 +94,7 @@ risk:
     cooldown_months: 3
     reentry_ma_months: 10
     exit_delay_days: 1              # 回測：觸發後「隔 1 個交易日」才以收盤價賣出（模擬跳空、來不及成交）
+    check: daily                    # daily = 每天看收盤價（現行）；monthly = 只在月底檢查（只用在回測比較，日報尚未支援）
     proceeds: cash                  # 停損賣出的錢先放現金，下次月初調倉再重新分配
   # 信用利差風險訊號（企業信用）：訊號成立的月份，把指定部位按比例減碼、放現金
   # 先回測驗證，確定有效再把 enabled 改成 true（每日系統也會照做）
@@ -847,6 +848,16 @@ backtest:
     - name: "成長動能（照市值）"
       group: style
       patch: {portfolio: {stock_style: growth, weighting: cap}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}
+    # ---- 成長版的停損比較（2026/11/06 本機實驗：每日停損在 V 型急跌時會在低點被洗出場）----
+    - name: "成長動能（上限 10%）＋月底檢查停損"
+      group: style
+      patch: {portfolio: {stock_style: growth, weighting: cap_capped, max_weight: 0.10}, risk: {stop_loss: {basis: vol, proceeds: redistribute, check: monthly}}}
+    - name: "成長動能（上限 10%）＋停損放寬"
+      group: style
+      patch: {portfolio: {stock_style: growth, weighting: cap_capped, max_weight: 0.10}, risk: {stop_loss: {basis: vol, proceeds: redistribute, vol_mult: 3.5, vol_max: 0.5}}}
+    - name: "成長動能（上限 10%）＋不停損"
+      group: style
+      patch: {portfolio: {stock_style: growth, weighting: cap_capped, max_weight: 0.10}, risk: {stop_loss: {enabled: false}}}
     - name: "價值＋成長各半"
       group: style
       patch: {portfolio: {stock_style: blend}, risk: {stop_loss: {basis: vol, proceeds: redistribute}}}

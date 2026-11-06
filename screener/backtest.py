@@ -94,6 +94,8 @@ class StopRule:
         self.ma_months = int(c.get("reentry_ma_months", 10))
         self.delay = int(c.get("exit_delay_days", 1))
         self.cash = c.get("proceeds", "cash") == "cash"
+        # check：daily = 每天用收盤價檢查（有日線時）；monthly = 只在月底檢查（成長股在 V 型急跌時比較不會被洗出場）
+        self.monthly = c.get("check", "daily") == "monthly"
 
     @property
     def trailing(self):
@@ -334,9 +336,10 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
             if rule.on and mkt in rule.apply:
                 for sid in held[mkt]:
                     tk = ym.get(sid)
-                    if tk in dcols:
+                    if tk in dcols and not rule.monthly:
                         continue
-                    p_now, r0 = _madj(tk, t), ref[mkt].get(sid)
+                    # 跟參考價用同一個來源（有日線就用日線月底價），避免日線、月線的還原基準不同
+                    p_now, r0 = _ref_now(tk, t), ref[mkt].get(sid)
                     if r0 and np.isfinite(p_now) and p_now / r0 - 1 <= -spct[mkt].get(sid, rule.pct):
                         stopped.append(sid)
                         cooldown[mkt][sid] = i + max(rule.cool if rule.reentry == "cooldown" else 1, 1)
@@ -394,7 +397,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                     if sid not in ref[mkt] or not ref[mkt][sid]:
                         ref[mkt][sid] = p_now if np.isfinite(p_now) else None
                         spct[mkt][sid] = rule.pct_for(adj, tk, t)
-                    elif rule.trailing and np.isfinite(p_now) and tk not in dcols:
+                    elif rule.trailing and np.isfinite(p_now) and (tk not in dcols or rule.monthly):   # 月底檢查時最高價也在月底更新
                         ref[mkt][sid] = max(ref[mkt][sid], p_now)
                 ref[mkt] = {k: v for k, v in ref[mkt].items() if k in ids}
                 spct[mkt] = {k: v for k, v in spct[mkt].items() if k in ids}
@@ -448,7 +451,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
 
         # ---------- 月中逐日停損（有日線者） ----------
         mid_stop = {}  # key -> 出場時的累積報酬（當地幣、含息）
-        if rule.on and dcols:
+        if rule.on and dcols and not rule.monthly:
             for k, (mkt, sid) in stock_meta.items():
                 tk = k[1]
                 if mkt not in rule.apply or tk not in dcols or not ref[mkt].get(sid):

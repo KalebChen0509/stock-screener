@@ -123,6 +123,23 @@ def main():
     assert nd and np.isfinite(o3["monthly"]["nav_net"].iloc[-1])
     for x in nd:
         assert x["ret_from_ref"] < -0.0999 or True
+    # check: monthly（只在月底檢查）：有沒有日線資料，結果都要一樣（2026/11/06 曾經因為最高價沒在月底更新而不一樣）
+    c_mo = apply_patch(c_tr, {"risk": {"stop_loss": {"check": "monthly"}}})
+    m1 = run_backtest(c_mo, panels, infos, prices, etf_static, screen_cache=cache)
+    # 合成日線在週末月底跟月資料對不上；真實資料的「月底最後一個交易日」就是月收盤 → 先對齊再比
+    daily_m = daily.copy()
+    for t_ in adjw.index:
+        d_ = daily_m.index[daily_m.index <= t_]
+        if len(d_):
+            cols = [c for c in daily_m.columns if c in adjw.columns]
+            daily_m.loc[d_[-1], cols] = adjw.loc[t_, cols].values
+    m2 = run_backtest(c_mo, panels, infos, prices, etf_static, daily=daily_m, screen_cache=cache)
+    assert len(m1["stops"]) == len(m2["stops"]) > 0 and not any(x["daily"] for x in m2["stops"]), (len(m1["stops"]), len(m2["stops"]))
+    s1 = {(x["date"], x["id"]) for x in m1["stops"]}
+    s2 = {(x["date"], x["id"]) for x in m2["stops"]}
+    print("monthly-check diff", len(s1 ^ s2), "max ret diff", float((m1["monthly"]["ret_net"] - m2["monthly"]["ret_net"]).abs().max()))
+    assert s1 == s2, "monthly check depends on daily data"
+    print("monthly-check stops", len(m2["stops"]), "(daily stops", len(nd), ")")
     c_vol = apply_patch(cfg, {"risk": {"stop_loss": {"basis": "vol", "reentry": "ma"}}})
     o4 = run_backtest(c_vol, panels, infos, prices, etf_static, daily=daily, screen_cache=cache)
     print("vol+ma stops", len(o4["stops"]), "nav", o4["monthly"]["nav_net"].iloc[-1])
