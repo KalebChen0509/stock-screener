@@ -2,7 +2,7 @@
 
 流程：讀網站上的下單清單 → 列出台股要買的每一筆 → 你輸入 y 才送出 → 顯示委託狀態 → 寄結果信（含美股要手動下的部分）。
 - 只送台股（含 0050 等台股 ETF）；美股／VT 永豐 API 不能下複委託，信裡提醒你自己下。
-- 價格：昨收（參考價）+1%，對齊台股跳動單位，不超過漲停。
+- 價格：昨收（參考價）+1%，對齊台股跳動單位，不超過漲停。盤後／盤前送單改用最新收盤價當參考價。
 - 1000 股以上拆成整股（張）＋零股；零股用盤中零股。
 - 用鑰匙圈「sinopac-sim」那把 Key（沒勾正式環境，只能模擬）。
 
@@ -50,6 +50,23 @@ def limit_price(ref: float, limit_up: float | None = None, etf: bool = False) ->
     if limit_up:
         p = min(p, limit_up)
     return round(p, 2)
+
+
+def next_limit_up(ref: float, etf: bool = False) -> float:
+    """下一盤的漲停價：參考價 +10%，往下對齊跳動單位。"""
+    raw = ref * 1.10
+    t = (etf_tick if etf else tick)(raw)
+    return round(math.floor(round(raw / t, 6)) * t, 2)
+
+
+def latest_close(api, codes: list[str]) -> dict:
+    """最新收盤價（快照）。抓不到就回傳空的，呼叫端改用商品檔的參考價。"""
+    try:
+        cs = [api.Contracts.Stocks[c] for c in codes]
+        snaps = api.snapshots([c for c in cs if c is not None])
+        return {s.code: float(s.close) for s in snaps if getattr(s, "close", 0)}
+    except Exception:  # noqa
+        return {}
 
 
 # ---------------------------------------------------------------- 清單
@@ -108,13 +125,22 @@ def place(argv=None):
         if api.stock_account is None:
             sys.exit("模擬環境沒有證券帳戶：確認 sinopac-sim 這把 Key 有勾「交易」、帳戶有勾證券帳戶。")
         rows = []
+        # 盤後／盤前送單：商品檔的參考價可能還是「今天這一盤」的（＝前一天收盤），
+        # 下一盤真正的參考價是最新收盤價 → 改用快照的收盤價，漲停也自己算（參考價 +10%，往下對齊跳動單位）。
+        # （11/05 收盤後送單，3406 用了 11/04 的收盤價，11/05 跌停後就超過 11/06 的漲停，被退單）
+        latest = {} if in_session() else latest_close(api, [x["code"] for x in tw])
         for x in tw:
             c = api.Contracts.Stocks[x["code"]]
             if c is None:
                 say(f"⚠️ 找不到 {x['code']} 的商品資料，略過")
                 continue
-            ref = float(c.reference or x["ref_hint"] or 0)
-            px = limit_price(ref, float(c.limit_up) if getattr(c, "limit_up", None) else None, x["etf"])
+            if latest.get(x["code"]):
+                ref = latest[x["code"]]
+                up = next_limit_up(ref, x["etf"])
+            else:
+                ref = float(c.reference or x["ref_hint"] or 0)
+                up = float(c.limit_up) if getattr(c, "limit_up", None) else None
+            px = limit_price(ref, up, x["etf"])
             for lot, qty in split_lots(x["shares"]):
                 n_sh = qty * (1000 if lot == "Common" else 1)
                 rows.append({**x, "name": getattr(c, "name", "") or x["name"], "lot": lot, "qty": qty, "ref": ref, "price": px,
