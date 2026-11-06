@@ -21,3 +21,6 @@ trader/*.log
 *.log
 shioaji.log
 .venv/
+
+# Claude Code 本機設定（預覽伺服器等），不上 GitHub
+.claude/

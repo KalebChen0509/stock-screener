@@ -391,9 +391,38 @@ def _pct_rank(s: pd.Series, days: int = 252) -> float | None:
     return float((w <= w.iloc[-1]).mean())
 
 
-def summary() -> dict:
+def trend_status(monthly: pd.DataFrame | None = None, n: int = 10) -> dict:
+    """大盤趨勢（回測用的規則）：價格跟「近 n 個月月收盤均價」比。
+    official＝上一個「完整月份」月底的判斷（回測的避險訊號用這個，下個月才生效）；
+    now＝用最新價（含本月至今）的即時狀態，只是預告，月底才算數。
+    台股看加權指數（^TWII）、美股看 SPY。"""
+    if monthly is None:
+        from . import prices
+        monthly = prices.load_monthly()
+    w = monthly.pivot_table(index="month", columns="ticker", values="close", aggfunc="last").sort_index()
+    out = {}
+    for mk, tk in (("tw", "^TWII"), ("us", "SPY")):
+        if tk not in w:
+            continue
+        s = w[tk].dropna()
+        if len(s) < n + 2:
+            continue
+        gap = s / s.rolling(n).mean() - 1            # 價格比 n 個月均價高（＋）或低（−）幾成
+        last_full = s.index[-2]                       # 最後一筆是本月至今（還沒收完）
+        out[mk] = {"ticker": tk, "price": float(s.iloc[-1]), "ma": float(s.iloc[-n:].mean()), "gap_now": float(gap.iloc[-1]),
+                   "below_now": bool(gap.iloc[-1] < 0), "official_month": last_full.strftime("%Y-%m"),
+                   "gap_official": float(gap.iloc[-2]), "below_official": bool(gap.iloc[-2] < 0),
+                   "series": [[d.strftime("%Y-%m"), round(float(v), 4)] for d, v in gap.dropna().iloc[-72:].items()]}
+    return out
+
+
+def summary(monthly: pd.DataFrame | None = None) -> dict:
     """最新的市場訊號，以及在近一年的位置（百分位：0＝一年最低、1＝一年最高）。只是資料，不是買賣建議。"""
-    out = {"as_of": None, "signals": [], "progress": progress()}
+    out = {"as_of": None, "signals": [], "progress": progress(), "trend": {}}
+    try:
+        out["trend"] = trend_status(monthly)
+    except Exception as e:  # noqa
+        log.warning("trend status failed: %s", e)
     fut, pcr, ins, vol = _load("fut_daily"), _load("pcr"), _load("insti_fut"), _load("us_vol")
 
     def add(key, label, s, fmt, note):

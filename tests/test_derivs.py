@@ -152,6 +152,24 @@ def test_update_budget_progress_and_resume(monkeypatch=None):
         P._download, P._to_long = orig
 
 
+def test_trend_status_official_vs_now():
+    """正式判斷看「最後一個完整月份」月底；現價（含本月至今）只是預告。"""
+    months = pd.date_range("2026-01-31", periods=12, freq="ME")          # 2026-01 ~ 2026-12；最後一筆＝本月至今
+    base = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110]       # 前 11 個月一路漲
+    rows = []
+    for tk, last in (("^TWII", 90.0), ("SPY", 115.0)):                   # 台股本月急跌跌破均線、美股繼續漲
+        for m, v in zip(months, base + [last]):
+            rows.append({"month": m, "ticker": tk, "close": v})
+    t = D.trend_status(pd.DataFrame(rows))
+    tw, us = t["tw"], t["us"]
+    assert tw["below_now"] and not tw["below_official"] and tw["official_month"] == "2026-11"
+    assert abs(tw["ma"] - sum(base[-9:] + [90.0]) / 10) < 1e-9
+    assert not us["below_now"] and not us["below_official"]
+    s = D.summary(pd.DataFrame(rows))
+    assert s["trend"]["tw"]["below_now"] is True
+    json.dumps(s)                                                        # 網站要能存成 JSON
+
+
 def test_progress_ignores_recent_two_months():
     st = {k: [p.strftime("%Y-%m") for p in pd.period_range(s, "2026-09", freq="M")]
           for k, s in [("fut_TX", "2007-01"), ("fut_MTX", "2007-01"), ("fut_TMF", "2024-07"), ("opt_TXO", "2007-01"),

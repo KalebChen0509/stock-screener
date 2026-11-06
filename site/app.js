@@ -156,7 +156,7 @@ async function init() {
   S.paper = await getJSON("data/paper.json", true);
   S.earn = await getJSON("data/earnings.json", true);
   S.today = await getJSON("data/today.json", true);
-  [S.chips, S.est, S.quality] = await Promise.all([getJSON("data/chips_tw.json", true), getJSON("data/estimates_us.json", true), getJSON("data/quality.json", true)]);
+  [S.chips, S.est, S.quality, S.derivs] = await Promise.all([getJSON("data/chips_tw.json", true), getJSON("data/estimates_us.json", true), getJSON("data/quality.json", true), getJSON("data/derivs.json", true)]);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
@@ -182,11 +182,11 @@ function defaultSettings() {
 function route() {
   const [v0, ...args] = (location.hash || "#overview").slice(1).split("/");
   const views = { overview: renderOverview, screener: renderScreener, chart: () => renderChartView(args), etf: renderEtf, backtest: renderBacktest,
-                  paper: renderPaper, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
+                  paper: renderPaper, signals: renderSignals, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
   const v = views[v0] ? v0 : "overview";
   $$(".view").forEach((el) => el.classList.toggle("on", el.id === "view-" + v));
   $$("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
-  const inMore = ["etf", "backtest", "paper", "watchlist", "rules"].includes(v);
+  const inMore = ["etf", "backtest", "paper", "signals", "watchlist", "rules"].includes(v);
   $$("#bnav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
   $("#moreBtn") && $("#moreBtn").classList.toggle("on", inMore);
   $("#moreSheet") && ($("#moreSheet").hidden = true);
@@ -1032,6 +1032,56 @@ function renderEarnings() {
   }).join("") || `<tr><td colspan="11" class="hint">這段期間沒有財報</td></tr>`}</tbody>`;
   const U = E.upcoming || [];
   $("#erUpcoming").innerHTML = U.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>預定日期</th><th>公司</th></tr></thead><tbody>${U.slice(0, 60).map((u) => `<tr><td>${esc(u.date)}</td><td><b>${esc(u.id)}</b> ${nameInline("us", u.id, u.name)}</td></tr>`).join("")}</tbody></table></div><p class="hint">預定日期來自 Yahoo Finance，公司可能更改；台股看上方的法定期限。</p>` : `<p class="hint">還沒有資料（大約每週更新一次）。</p>`;
+}
+
+// ---------------------------------------------------------------- 市場訊號（衍生性商品資料＋大盤趨勢）
+function renderSignals() {
+  const D = S.derivs, meta = $("#sgMeta"), box = $("#sgTrend"), grid = $("#sgGrid"), note = $("#sgNote");
+  Object.keys(S.charts).filter((k) => k.startsWith("sg_")).forEach(destroyChart);
+  if (!D) {
+    meta.textContent = "";
+    box.innerHTML = `<p class="hint">市場訊號資料還沒產生，每日更新跑過一次之後就會出現。</p>`;
+    grid.innerHTML = ""; note.innerHTML = "";
+    return;
+  }
+  meta.textContent = `資料到 ${D.as_of || "–"}。這些只是「市場現在的狀態」，不是買賣建議，也不會影響選股。`;
+  const T = D.trend || {};
+  const gap = (x) => (x == null ? "–" : (x >= 0 ? "+" : "") + fmt.pct(x, 1));
+  const row = (mk, name) => {
+    const t = T[mk];
+    if (!t) return "";
+    const nowTxt = t.below_now ? "目前在均線<b class=\"neg\">下方</b>" : "目前在均線<b class=\"pos\">上方</b>";
+    const offTxt = t.below_official ? `<span class="pill neg">${esc(t.official_month)} 月底：已跌破</span>` : `<span class="pill">${esc(t.official_month)} 月底：還在均線上</span>`;
+    return `<div class="sg-trend"><div><b>${name}</b> ${offTxt}</div>
+      <div class="sg-big ${t.below_now ? "neg" : "pos"}">${gap(t.gap_now)}</div>
+      <div class="hint">${nowTxt}（現價 ${fmt.int(t.price)}，近 10 個月月收盤均價 ${fmt.int(t.ma)}）</div></div>`;
+  };
+  box.innerHTML = `<h3 class="sg-h">大盤趨勢：現價 vs 近 10 個月均價</h3><div class="sg-trends">${row("tw", "台股（加權指數）")}${row("us", "美股（SPY）")}</div>
+    <p class="hint">回測用的避險規則是「月底收盤跌破 10 個月均線，下個月才降低風險」，所以<b>月底的狀態才算數</b>；上面的「目前」只是預告。
+    回測結果（2007～2026）：這個規則只對 2008、2022 這種<b>慢慢跌的長空頭</b>有幫助，碰到 2020、2024、2025 這種急跌又急漲來不及反應（只會少賺）。
+    比較適合當成「提醒你暫停加碼、重新檢討」的警報。</p>`;
+  const pos = (p) => (p == null ? "" : p >= 0.8 ? "近一年偏高" : p <= 0.2 ? "近一年偏低" : "近一年中間");
+  grid.innerHTML = (D.signals || []).filter((x) => x.key !== "tx_front").map((x) => {
+    const v = x.fmt === "int" ? fmt.int(x.value) : x.fmt === "ratio" ? x.value.toFixed(2) : (+x.value).toFixed(2);
+    const p = x.pct_1y;
+    return `<div class="card sg-card"><div class="sg-top"><b>${esc(x.label)}</b><span class="hint">${esc(x.date)}</span></div>
+      <div class="sg-val">${v}</div>
+      ${p == null ? "" : `<div class="sg-bar" title="近一年的位置：${Math.round(p * 100)}%（0＝一年最低、100＝一年最高）"><i style="left:${Math.round(p * 100)}%"></i></div><div class="hint">${pos(p)}（第 ${Math.round(p * 100)} 百分位）</div>`}
+      <div class="chart-box sm"><canvas id="sg_${esc(x.key)}"></canvas></div>
+      ${x.note ? `<p class="hint">${esc(x.note)}</p>` : ""}</div>`;
+  }).join("");
+  if (window.Chart) for (const x of D.signals || []) {
+    const cv = $("#sg_" + x.key);
+    if (!cv) continue;
+    S.charts["sg_" + x.key] = lineChart(cv, x.series.map((r) => r[0]), [{ label: x.label, data: x.series.map((r) => r[1]), color: cssVar("--s1"), width: 1.6 }],
+      { yfmt: (v) => (x.fmt === "int" ? fmt.int(v) : (+v).toFixed(2)) });
+  }
+  const pr = D.progress || {};
+  const lacking = Object.entries(pr).filter(([, v]) => v && typeof v === "object" && v.have < v.total);
+  note.innerHTML = `<p><b>怎麼看這些訊號：</b>外資期貨淨部位、Put/Call 比、VIX 都是「市場情緒」的參考，單獨看不代表會漲或跌。
+    回測（2007～2026）測過外資期貨空單、VIX 倒掛、跌深三種「恐慌訊號」當避險依據，<b>都沒有比不避險好</b>，所以目前只顯示、不用來決定買賣。</p>
+    <p class="hint">資料來源：期交所（期貨、選擇權、三大法人）、Yahoo（VIX）。外資期貨部位 2018 年 6 月起才有完整歷史；選擇權每天只存最近 2 個到期月、價平 ±10% 內的合約。
+    ${lacking.length ? `回補進度：${lacking.map(([k, v]) => `${esc(k)} ${v.have}/${v.total}`).join("、")}。` : "歷史資料已補齊。"}</p>`;
 }
 
 // ---------------------------------------------------------------- 並行模擬

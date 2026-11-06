@@ -292,3 +292,18 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .alv-steps li { margin: 6px 0; }
 .alv-steps textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--surface-2, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px; box-sizing: border-box; }
 a.chip { text-decoration: none; display: inline-block; }
+
+/* 市場訊號 */
+.sg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 12px 0; }
+.sg-grid .card { margin: 0; }
+.sg-h { margin: 0 0 8px; font-size: 15px; }
+.sg-trends { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.sg-trend { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--surface-2); display: grid; gap: 4px; }
+.sg-big { font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.sg-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sg-val { font-size: 26px; font-weight: 800; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.sg-bar { position: relative; height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border); margin: 6px 0 2px; }
+.sg-bar i { position: absolute; top: -4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+.chart-box.sm { height: 120px; margin: 6px 0; }
+.pill.neg { color: var(--bad); border-color: currentColor; }
+@media (max-width: 640px) { .sg-grid { grid-template-columns: 1fr; } .sg-big { font-size: 24px; } }
