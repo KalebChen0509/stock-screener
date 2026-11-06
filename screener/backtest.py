@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .common import log
-from .engine import px_frame_monthly, ret_n_months, screen_growth, screen_market, select_with_buffer
+from .engine import px_frame_monthly, ret_n_months, screen_growth, screen_market, screen_momsue, select_with_buffer
 from .etf import point_in_time_metrics, screen_and_rank
 from .screen import market_regime
 
@@ -252,7 +252,6 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
     scheme = pcfg.get("weighting", "equal") or "equal"
     max_w = float(pcfg.get("max_weight", 0.10) or 0.10)
     core_sat = pcfg.get("core_satellite") or {}
-    gcfg = cfg.get("growth") or {}
     held_s = {}                     # (市場, 風格) -> 持股
     _inputs = {}                    # 本月的股價輸入（各風格共用）
     # 下市資訊（回測載入下市公司時才有）：(市場, 代號) -> (下市日, 最後交易日)
@@ -283,7 +282,9 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                                  ret_n_months(adj, t, td.get("sector_momentum_months", 6), ym),
                                  ret_n_months(adj, t, 11, ym, skip=1))
         px, r6, r12 = _inputs[(mkt, t)]
-        if style == "growth":
+        if style == "momsue":
+            res = screen_momsue(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12)
+        elif style == "growth":
             res = screen_growth(panels[mkt], infos[mkt], px, r6, t, cfg, mkt, ret12=r12,
                                 events=(events or {}).get(mkt), month_rev=month_rev)
         else:
@@ -363,7 +364,7 @@ def run_backtest(cfg: dict, panels: dict, infos: dict, prices: pd.DataFrame,
                 rk = ranked_by[style]
                 if len(rk) and (blocked or gone):
                     rk = rk[~rk["id"].isin(blocked | gone)]
-                n_max = int(gcfg.get("max_holdings", max_n)) if style == "growth" else max_n
+                n_max = int((cfg.get(style) or {}).get("max_holdings", max_n)) if style in ("growth", "momsue") else max_n
                 prev_s = held_s.get((mkt, style), [])
                 ids_s = select_with_buffer(rk, [h for h in prev_s if h in held[mkt] and h not in blocked], n_max, mult)
                 held_s[(mkt, style)] = ids_s

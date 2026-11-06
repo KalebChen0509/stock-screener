@@ -198,6 +198,42 @@ def screen_growth(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
     return {"all": df, "ranked": ranked, "sectors": sectors}
 
 
+def screen_momsue(panel: pd.DataFrame, info: pd.DataFrame, px: pd.DataFrame,
+                  ret6: pd.Series, date: pd.Timestamp, cfg: dict, market: str,
+                  ret12: pd.Series | None = None, **_ignored) -> dict:
+    """動能＋財報驚喜（設定在 cfg["momsue"]；2026/11/06 依因子掃描事先定好參數，之後不依結果調整）：
+    可選股：市值、流動性達門檻、排除金融股、兩個指標都有值。
+    分數：12 個月股價動能（扣最近 1 個月）的百分位 ＋ 財報驚喜（SUE：最新一季淨利比去年同季多出幾個標準差）的百分位，
+          百分位只跟「可選股」比。回傳格式同 screen_market。"""
+    m = cfg.get("momsue") or {}
+    empty = {"all": pd.DataFrame(), "ranked": pd.DataFrame(), "sectors": pd.DataFrame()}
+    pm = panel[panel["market"] == market]
+    f = asof_fundamentals(pm, date)
+    if f.empty:
+        return empty
+    icols = [c_ for c_ in ("name", "industry", "is_financial", "sic") if c_ in info]
+    f = f.join(info[icols], on="id", how="inner")
+    df = add_valuation(f, px)
+    df = df[df["close"].notna() & df["market_cap"].notna()].copy()
+    if df.empty:
+        return empty
+    df["ret_12m"] = pd.to_numeric(df["id"].map(ret12), errors="coerce") if ret12 is not None and len(ret12) else np.nan
+    cap = float((m.get("min_market_cap") or {}).get(market, 0) or 0)
+    liq = float((m.get("min_traded_value") or {}).get(market, 0) or 0)
+    ok = (df["market_cap"] >= cap) & (pd.to_numeric(df.get("avg_traded_value"), errors="coerce") >= liq)
+    if m.get("exclude_financials", True) and "is_financial" in df:
+        ok &= ~df["is_financial"].fillna(False).astype(bool)
+    ok &= df["ret_12m"].notna() & pd.to_numeric(df["sue"], errors="coerce").notna()
+    df["pass_all"] = ok
+    cand = df[ok].copy()
+    if cand.empty:
+        return {"all": df, "ranked": pd.DataFrame(), "sectors": pd.DataFrame()}
+    cand["score"] = cand["ret_12m"].rank(pct=True) + pd.to_numeric(cand["sue"], errors="coerce").rank(pct=True)
+    ranked = cand.sort_values(["score", "market_cap"], ascending=False).reset_index(drop=True)
+    ranked["rank"] = np.arange(1, len(ranked) + 1)
+    return {"all": df, "ranked": ranked, "sectors": pd.DataFrame()}
+
+
 def select_with_buffer(ranked: pd.DataFrame, held: list[str], n: int, mult: float = 2.0) -> list[str]:
     """換股緩衝區：已持有者放寬門檻後仍通過、且排名 ≤ n×mult 就續抱；其餘名額由完全通過者依排名補滿。"""
     if ranked is None or ranked.empty:

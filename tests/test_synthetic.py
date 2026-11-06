@@ -164,6 +164,28 @@ def main():
     m5 = o5["monthly"]
     print("credit_off months", int(m5["credit_off"].sum()), "max cash", round(m5["cash_weight"].max(), 3))
     assert m5["credit_off"].sum() > 0 and m5.loc[m5["credit_off"] == 1, "cash_weight"].min() > 0.1
+    # 動能＋財報驚喜（momsue）：最多 max_holdings 檔、核心＋衛星時大盤 ETF 占個股部位的 70%
+    from screener.engine import screen_momsue
+    c_ms = apply_patch(cfg, {"portfolio": {"stock_style": "momsue", "core_satellite": {"tw": 0.7, "us": 0.7},
+                                           "fill_with_index": {"min_holdings": 3}},
+                             "momsue": {"max_holdings": 3, "min_market_cap": {"tw": 0, "us": 0}, "min_traded_value": {"tw": 0, "us": 0}}})
+    o6 = run_backtest(c_ms, panels, infos, prices, etf_static, screen_cache=cache)
+    h6 = [h for h in o6["holdings"] if h.get("tw")]
+    assert h6 and max(len(h["tw"]) for h in o6["holdings"]) <= 3 and max(len(h["us"]) for h in o6["holdings"]) <= 3
+    w6 = h6[-1]["weights"]
+    fill_tw = sum(x["w"] for x in w6 if x["kind"] == "fill" and x["ticker"] == "0050.TW")
+    stock_tw = sum(x["w"] for x in w6 if x["kind"] == "stock" and x["mkt"] == "tw")
+    assert abs(fill_tw / (fill_tw + stock_tw) - 0.7) < 0.02, (fill_tw, stock_tw)
+    # 排名：分數＝動能百分位＋SUE 百分位，由高到低
+    t_ = h6[-1]["month"]
+    ym_ = dict(zip(infos["tw"].index, infos["tw"]["yahoo"]))
+    from screener.engine import px_frame_monthly, ret_n_months
+    from screener.backtest import wide as _wide
+    cl_, ad_, vo_ = _wide(prices, "close"), _wide(prices, "adj_close"), _wide(prices, "volume")
+    rk6 = screen_momsue(panels["tw"], infos["tw"], px_frame_monthly(cl_, vo_, t_, ym_), ret_n_months(ad_, t_, 6, ym_),
+                        t_, c_ms, "tw", ret12=ret_n_months(ad_, t_, 11, ym_, skip=1))["ranked"]
+    assert len(rk6) and rk6["score"].is_monotonic_decreasing and list(rk6["rank"]) == list(range(1, len(rk6) + 1))
+    print("momsue ok: holdings", [len(h["tw"]) for h in h6[-3:]], "core share", round(fill_tw / (fill_tw + stock_tw), 3))
     m = out["monthly"]
     print(m.tail(3).T)
     for c in ["ret_gross", "ret_net"] + [c for c in m if c.startswith("bench_")]:

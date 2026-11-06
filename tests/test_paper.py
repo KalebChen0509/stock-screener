@@ -64,7 +64,7 @@ def main():
             r0 = paper.update(cfg, panels, infos, monthly, etf_static, today="2026-07-20", daily_loader=loader)
             assert r0["status"] == "waiting" and not paper.PAPER_LOG.exists()
             r = paper.update(cfg, panels, infos, monthly, etf_static, today="2026-09-15", daily_loader=loader)
-            assert r["status"] == "running" and len(r["versions"]) == 4, r
+            assert r["status"] == "running" and len(r["versions"]) == len(paper.versions(cfg)) >= 4, r
             for v in r["versions"]:
                 assert v["decision_month"] == "2026-08" and v["months"] == ["2026-08"], v
                 assert v["cum_closed"] is not None and v["mtd"] is not None and v["mtd_to"] == "2026-09-15"
