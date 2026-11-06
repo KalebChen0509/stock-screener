@@ -48,6 +48,13 @@ case "$1" in
     done
     push_dir databr_latest
     ;;
+  push-us-delisted)
+    # 美股下市資料只更新 cache/us_delisted，避免蓋掉其他工作的結果
+    pull_into databr_latest
+    mkdir -p databr_latest/cache/us_delisted
+    cp -r databr/cache/us_delisted/. databr_latest/cache/us_delisted/ 2>/dev/null || true
+    push_dir databr_latest
+    ;;
   push-derivs)
     # 衍生性商品回補只更新 derivs 資料夾和網站的 derivs.json，避免蓋掉其他工作的結果
     pull_into databr_latest
