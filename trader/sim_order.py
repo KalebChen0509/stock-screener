@@ -9,6 +9,7 @@
 執行（建議在台股盤中 09:00～13:30）：
   ~/.sinopac-venv/bin/python ~/PycharmProjects/stock-screener/trader/sim_order.py
   ~/.sinopac-venv/bin/python ~/PycharmProjects/stock-screener/trader/sim_order.py --check   # 查今天送過的模擬單有沒有成交
+  ~/.sinopac-venv/bin/python ~/PycharmProjects/stock-screener/trader/sim_order.py --only 3406   # 只補送清單裡的某幾檔（逗號分隔）
 """
 from __future__ import annotations
 
@@ -105,11 +106,53 @@ def in_session(now: dt.datetime | None = None) -> bool:
 
 
 # ---------------------------------------------------------------- 主程式
+def only_codes(argv) -> set[str] | None:
+    """--only 3406,2330 → {'3406', '2330'}；沒給就是 None（整份清單）。"""
+    argv = list(argv or [])
+    for i, a in enumerate(argv):
+        if a == "--only" and i + 1 < len(argv):
+            return {c.strip().upper() for c in argv[i + 1].split(",") if c.strip()}
+        if a.startswith("--only="):
+            return {c.strip().upper() for c in a.split("=", 1)[1].split(",") if c.strip()}
+    return None
+
+
+BAD = ("Failed", "Error", "Cancelled")
+
+
+def already_sent(month: str, codes: set[str], live: dict[str, list[str]]) -> dict[str, str]:
+    """這個月已經送過、而且沒失敗的代號 → 說明。
+    先看永豐目前查得到的委託（最準：送出當下記的是 PreSubmitted，之後才可能變 Failed）；查不到的再看本機紀錄。"""
+    out = {}
+    for c in codes:
+        if c in live:
+            ok = [st for st in live[c] if st not in BAD]
+            if ok:
+                out[c] = "永豐委託狀態 " + "、".join(ok)
+            continue
+        for f in sorted(SIM_DIR.glob("*.json")) if SIM_DIR.exists() else []:
+            try:
+                d = json.loads(f.read_text())
+            except Exception:  # noqa
+                continue
+            if d.get("month") == month and any(x.get("code") == c and x.get("status") not in BAD for x in d.get("orders", [])):
+                out[c] = f"本機紀錄 {f.stem.replace('_', ' ')}"
+    return out
+
+
 def place(argv=None):
     from sinopac import login, logout, say
+    argv = sys.argv[1:] if argv is None else argv
     orders = get_json("orders.json")
     tw, us = plan(orders)
     month = orders.get("month", "")
+    only = only_codes(argv)
+    if only is not None:
+        missing = only - {x["code"] for x in tw}
+        if missing:
+            sys.exit(f"{month} 下單清單裡沒有這些台股：{'、'.join(sorted(missing))}（只能補送清單裡有的）")
+        tw = [x for x in tw if x["code"] in only]
+        us = []                                   # 補送只處理台股；美股提醒在第一次送單時已經寄過
     if not tw:
         say(f"{month} 下單清單裡沒有台股要買的。")
     import shioaji as sj
@@ -160,18 +203,20 @@ def place(argv=None):
             return
         if not in_session():
             say("\n⚠️ 現在不是台股盤中（週一到週五 09:00～13:30）：盤中零股的模擬單可能被退回。建議盤中再跑。")
-        # 防止同一個月的清單重複下單（之後真單也會用同一套檢查）
-        sent = []
-        for f in sorted(SIM_DIR.glob("*.json")) if SIM_DIR.exists() else []:
-            try:
-                d = json.loads(f.read_text())
-                if d.get("month") == month and any(x["status"] not in ("Failed", "Error", "Cancelled") for x in d.get("orders", [])):
-                    sent.append(f.stem.replace("_", " "))
-            except Exception:  # noqa
-                pass
+        # 防止重複下單（之後真單也會用同一套檢查）：逐檔看這個月是不是已經送過、而且沒失敗
+        live = {}
+        try:
+            api.update_status(api.stock_account)
+            for t in api.list_trades():
+                live.setdefault(t.contract.code, []).append(str(getattr(t.status, "status", "")).split(".")[-1])
+        except Exception:  # noqa
+            pass
+        dup = already_sent(month, {r["code"] for r in rows}, live)
         need = "y"
-        if sent:
-            say(f"\n⚠️ {month} 的清單已經送過 {len(sent)} 次（{'、'.join(sent)}）。再送一次會重複下單。")
+        if dup:
+            say(f"\n⚠️ 這些已經送過、而且沒有失敗，再送會重複下單：")
+            for c, why in sorted(dup.items()):
+                say(f"   {c}（{why}）")
             need = "again"
         ans = input(f"\n要把上面的台股送到「模擬環境」嗎？輸入 {need} 送出，其他鍵取消：").strip().lower()
         if ans != need:
@@ -210,7 +255,8 @@ def place(argv=None):
         logout(api)
     SIM_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     now = dt.datetime.now(TZ)
-    (SIM_DIR / f"{now:%Y-%m-%d_%H%M}.json").write_text(json.dumps({"month": month, "time": str(now), "orders": log, "us_manual": us},
+    (SIM_DIR / f"{now:%Y-%m-%d_%H%M}.json").write_text(json.dumps({"month": month, "time": str(now), "only": sorted(only) if only else None,
+                                                                   "orders": log, "us_manual": us},
                                                                   ensure_ascii=False, indent=1))
     ok = sum(1 for x in log if x["status"] not in ("Failed", "Error", "Cancelled"))
     body = [f"{month} 下單清單已送到永豐「模擬環境」（不是真的單）：{ok}/{len(log)} 筆委託成功送出。", ""]
@@ -250,4 +296,4 @@ if __name__ == "__main__":
     if "--check" in sys.argv[1:]:
         check()
     else:
-        place()
+        place(sys.argv[1:])

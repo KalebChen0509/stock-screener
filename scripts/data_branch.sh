@@ -48,4 +48,12 @@ case "$1" in
     done
     push_dir databr_latest
     ;;
+  push-derivs)
+    # 衍生性商品回補只更新 derivs 資料夾和網站的 derivs.json，避免蓋掉其他工作的結果
+    pull_into databr_latest
+    mkdir -p databr_latest/cache/derivs databr_latest/site_data
+    cp -r databr/cache/derivs/. databr_latest/cache/derivs/ 2>/dev/null || true
+    [ -f site/data/derivs.json ] && cp site/data/derivs.json databr_latest/site_data/ || true
+    push_dir databr_latest
+    ;;
 esac

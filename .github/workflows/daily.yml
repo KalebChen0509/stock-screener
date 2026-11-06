@@ -65,6 +65,9 @@ jobs:
       - name: 台股籌碼＋美股分析師預估
         run: mkdir -p site/data/logs && python scripts/fetch_extra.py 2>&1 | tee -a site/data/logs/fetch_extra.txt
         continue-on-error: true
+      - name: 衍生性商品（期交所＋VIX；只當訊號，不影響選股）
+        run: mkdir -p site/data/logs && python scripts/fetch_derivs.py --max-requests 40 2>&1 | tee -a site/data/logs/fetch_derivs.txt
+        continue-on-error: true
       - name: K 線資料（第一次分幾天回填 5 年日線）
         run: mkdir -p site/data/logs && python scripts/fetch_kline.py 2>&1 | tee -a site/data/logs/fetch_kline.txt
         continue-on-error: true

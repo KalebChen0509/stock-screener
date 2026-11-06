@@ -1,0 +1,40 @@
+name: 衍生性商品回補
+# 第一次把 2007 年起的期交所期貨、選擇權、P/C 比、法人資料抓下來（約 1,000 次請求，分批跑）。
+# 每批跑完存到 data 分支；還沒抓完就自動再啟動下一輪。抓完之後每天的「每日更新」會接著補新資料。
+on:
+  workflow_dispatch:
+concurrency:
+  group: data-branch
+  cancel-in-progress: false
+permissions:
+  contents: write
+  actions: write
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SCREENER_CACHE: ${{ github.workspace }}/databr/cache
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: bash scripts/data_branch.sh pull
+      - name: 分批回補
+        id: loop
+        run: |
+          mkdir -p site/data/logs
+          for i in 1 2 3 4 5 6; do
+            out=$(python scripts/fetch_derivs.py --max-requests 200 2>&1 | tee -a site/data/logs/fetch_derivs.txt | tail -1)
+            bash scripts/data_branch.sh push-derivs || true
+            echo "batch $i: $out"
+            if [ "$out" = "complete=1" ]; then echo "complete=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "complete=0" >> "$GITHUB_OUTPUT"
+      - name: 還沒完成 → 自動接下一輪
+        if: steps.loop.outputs.complete == '0'
+        run: gh workflow run derivs.yml -R "$GITHUB_REPOSITORY"
