@@ -95,10 +95,11 @@ def parse_insti(js) -> pd.DataFrame:
             ic = _first(_find(fields, "代號"), _find(fields, "Code"))
             fi = _first(_find(fields, "外陸資買賣超"), _find(fields, "外資及陸資", "買賣超"),
                         _find(fields, "外資", "買賣超", avoid=("外資自營商買", "自營商買賣超")),
-                        _find(fields, "Foreign Dealers excluded", "Difference"))       # 櫃買 OpenAPI（英文欄位）
-            ti = _first(_find(fields, "投信", "買賣超"), _find(fields, "InvestmentTrust", "Difference"))
+                        _find(fields, "Foreign Dealers excluded", "Difference"),       # 櫃買 OpenAPI（英文欄位）
+                        _find(fields, "外資及陸資", "淨買"))                             # 櫃買 2018 年以前：「淨買股數」
+            ti = _first(_find(fields, "投信", "買賣超"), _find(fields, "InvestmentTrust", "Difference"), _find(fields, "投信", "淨買"))
             di = _first(_find(fields, "自營商買賣超", avoid=("外資自營商", "自行", "避險")),
-                        _find(fields, "Dealers-Difference", avoid=("Foreign",)))
+                        _find(fields, "Dealers-Difference", avoid=("Foreign",)), _find(fields, "自營淨買"))
             to = _first(_find(fields, "三大法人", "買賣超"), _find(fields, "合計", "買賣超"), _find(fields, "TotalDifference"))
         else:                                   # 櫃買舊版 aaData：代號、名稱、外資買進、賣出、買賣超、…
             ic, fi, ti, di, to = 0, 4, 13, 22, 23

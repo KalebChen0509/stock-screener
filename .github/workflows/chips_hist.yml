@@ -1,0 +1,38 @@
+name: 籌碼歷史回補
+# 台股三大法人＋融資融券歷史（2015 年起，每月彙總），用來測試籌碼能不能幫選股。
+# 一輪最多約 5 小時；每補完一批就存到 data 分支（只更新 cache/chips_hist）；還沒補完自動接下一輪。
+on:
+  workflow_dispatch:
+concurrency:
+  group: chips-hist
+  cancel-in-progress: false
+permissions:
+  contents: write
+  actions: write
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SCREENER_CACHE: ${{ github.workspace }}/databr/cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.txt
+      - run: bash scripts/data_branch.sh pull
+      - name: 分批回補（每批約 1 小時就存檔）
+        id: loop
+        run: |
+          for i in 1 2 3 4 5; do
+            out=$(python scripts/fetch_chips_hist.py --max-minutes 55 | tail -1)
+            bash scripts/data_branch.sh push-chips-hist || true
+            echo "batch $i: $out"
+            if [ "$out" = "left=0" ]; then echo "complete=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "complete=0" >> "$GITHUB_OUTPUT"
+      - name: 還沒補完 → 自動接下一輪
+        if: steps.loop.outputs.complete == '0'
+        run: gh workflow run chips_hist.yml -R "$GITHUB_REPOSITORY"

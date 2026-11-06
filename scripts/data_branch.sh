@@ -55,6 +55,13 @@ case "$1" in
     cp -r databr/cache/us_delisted/. databr_latest/cache/us_delisted/ 2>/dev/null || true
     push_dir databr_latest
     ;;
+  push-chips-hist)
+    # 籌碼歷史回補只更新 cache/chips_hist，避免蓋掉其他工作的結果
+    pull_into databr_latest
+    mkdir -p databr_latest/cache/chips_hist
+    cp -r databr/cache/chips_hist/. databr_latest/cache/chips_hist/ 2>/dev/null || true
+    push_dir databr_latest
+    ;;
   push-derivs)
     # 衍生性商品回補只更新 derivs 資料夾和網站的 derivs.json，避免蓋掉其他工作的結果
     pull_into databr_latest
