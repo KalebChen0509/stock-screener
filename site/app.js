@@ -156,7 +156,7 @@ async function init() {
   S.paper = await getJSON("data/paper.json", true);
   S.earn = await getJSON("data/earnings.json", true);
   S.today = await getJSON("data/today.json", true);
-  [S.chips, S.est, S.quality, S.derivs] = await Promise.all([getJSON("data/chips_tw.json", true), getJSON("data/estimates_us.json", true), getJSON("data/quality.json", true), getJSON("data/derivs.json", true)]);
+  [S.chips, S.est, S.quality, S.derivs, S.events] = await Promise.all([getJSON("data/chips_tw.json", true), getJSON("data/estimates_us.json", true), getJSON("data/quality.json", true), getJSON("data/derivs.json", true), getJSON(eventsURL(), true)]);
   S.settings = store.get("vs_settings_v1", null) || defaultSettings();
   // 舊的瀏覽器設定沒有新規則的條件：補上預設值
   for (const x of allFilters()) if (!S.settings.filters[x.id]) S.settings.filters[x.id] = { enabled: x.enabled !== false, value: x.value };
@@ -372,7 +372,56 @@ function renderToday() {
     <div class="v">${esc(big)}</div>${items.length === 1 ? `<div class="note">${esc(items[0].why)}</div>` : list}
     ${T.investing ? "" : `<div class="note" style="margin-top:6px">還沒開始投入真錢：停損和下單先當練習。</div>`}</div>`;
 }
+// 市場重大事件：每 30 分鐘由「市場事件偵測」寫到 events 分支，網站直接讀（不用等重新部署）
+function eventsURL() {
+  if (location.hostname.endsWith("github.io")) {
+    const owner = location.hostname.split(".")[0], repo = location.pathname.split("/")[1] || "stock-screener";
+    return `https://raw.githubusercontent.com/${owner}/${repo}/events/market_events.json`;
+  }
+  return "data/market_events.json";          // 本機預覽
+}
+function evMore(e) {
+  try { return Array.isArray(e.more) ? e.more : (e.more ? JSON.parse(String(e.more).replace(/'/g, '"')) : []); } catch (_) { return []; }
+}
+function evItem(e) {
+  const more = evMore(e);
+  return `<div class="ev ${e.level === "重大" ? "major" : ""}"><div class="ev-top"><span class="pill ${e.level === "重大" ? "neg" : ""}">${esc(e.level)}</span> <b>${esc(e.label)}</b> <span class="hint">${esc(e.time)}${e.category ? "｜" + esc(e.category) : ""}</span></div>
+    <div>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>` : esc(e.title)}${e.source ? ` <span class="hint">（${esc(e.source)}）</span>` : ""}</div>
+    ${more.length ? `<div class="hint">${more.slice(0, 3).map((m) => esc(m.title) + "（" + esc(m.source || "") + "）").join("<br>")}</div>` : ""}</div>`;
+}
+function renderEventsBanner() {
+  const el = $("#ovEvents");
+  if (!el) return;
+  const E = (S.events && S.events.events) || [];
+  const cut = Date.now() - 48 * 3600e3;
+  const seen = new Set();   // 同一類事件（例如多家媒體報導國安基金）只算一件
+  const recent = E.filter((e) => e.level === "重大" && Date.parse(String(e.time).replace(" ", "T") + ":00+08:00") >= cut && !seen.has(e.label) && seen.add(e.label));
+  el.innerHTML = recent.length ? `<div class="card ev-banner"><b>⚠️ 過去 48 小時有 ${recent.length} 件重大市場事件</b>
+    <div>${recent.slice(0, 3).map((e) => `${esc(e.label)}：${esc(e.title)}`).join("<br>")}</div>
+    <a href="#signals">看全部 ›</a></div>` : "";
+}
+function renderEvents() {
+  const V = S.events, list = $("#evList");
+  if (!list) return;
+  if (!V) { $("#evMeta").textContent = "事件資料還沒產生（「市場事件偵測」第一次執行後就會出現）。"; list.innerHTML = ""; $("#evRead").innerHTML = ""; return; }
+  $("#evMeta").textContent = `每 30 分鐘自動檢查（含晚上、週末），更新：${V.updated}。「重大」＝確定發生（立刻 Email／LINE 通知）；「注意」＝傳聞、評論或數字警報（每天早上彙整一封）。分級靠標題用字判斷，可能有誤。`;
+  const R = V.reading || {}, t = R["^TWII"], u = R["^GSPC"], v = R["^VIX"], f = R.flows || {};
+  const tile = (k, val, d, bad) => `<div class="tile"><div class="k">${k}</div><div class="v ${bad ? "neg" : ""}" style="font-size:18px">${val}</div><div class="d">${d || ""}</div></div>`;
+  $("#evRead").innerHTML = `<div class="tiles">${[
+    t && tile("台股單日", fmt.pct(t.day_chg), `${t.date}　距一年高點 ${fmt.pct(t.from_1y_high)}`, t.day_chg <= -0.03 || t.from_1y_high <= -0.2),
+    u && tile("美股 S&P 500 單日", fmt.pct(u.day_chg), `${u.date}　距一年高點 ${fmt.pct(u.from_1y_high)}`, u.day_chg <= -0.03 || u.from_1y_high <= -0.2),
+    v && tile("VIX 恐慌指數", (+v.price).toFixed(1), v.date, v.price >= 30),
+    f.foreign_net != null && tile("外資買賣超", `${Math.round(f.foreign_net).toLocaleString()} 億`, f.date, f.foreign_net <= -800),
+    f.margin_chg != null && tile("融資餘額變化", `${Math.round(f.margin_chg).toLocaleString()} 億`, `剩 ${Math.round(f.margin || 0).toLocaleString()} 億`, f.margin_chg <= -200),
+  ].filter(Boolean).join("")}</div>`;
+  const lv = S.evLevel || "all";
+  $$("#evSeg button").forEach((b) => { b.classList.toggle("on", b.dataset.l === lv); b.onclick = () => { S.evLevel = b.dataset.l; renderEvents(); }; });
+  const E = (V.events || []).filter((e) => lv === "all" || e.level === lv).slice(0, 60);
+  list.innerHTML = E.length ? E.map(evItem).join("") : `<p class="hint">最近 60 天沒有${lv === "all" ? "" : "「" + lv + "」"}事件。</p>`;
+}
+
 function renderOverview() {
+  renderEventsBanner();
   renderToday();
   const m = S.meta, c = m.counts || {};
   const bt = S.bt && S.bt.stats_full ? S.bt.stats_full["策略（扣費後）"] : null;
@@ -504,13 +553,25 @@ const STOCK_COLS = [
 ];
 function fname(id) { const f = activeFilters().find((x) => x.id === id) || allFilters().find((x) => x.id === id) || (S.cfg.etf.hard_filters || []).find((x) => x.id === id); return f ? f.label.replace(/^[\d]+[ab']?\.\s*/, "").split("：")[0] : id; }
 
+// 外部連結：系統沒有的資料（例如即時股價、新聞、完整財報）一鍵查；美股可直接在 Mac／iPhone 的「股市」App 打開
+function extLinks(mkt, id) {
+  const raw = String(id || "").trim().toUpperCase(), tw = mkt === "tw" || /\.TWO?$/.test(raw);
+  const code = raw.replace(/\.TWO?$/, "");
+  if (!code) return "";
+  const L = tw
+    ? [["Yahoo 股市", `https://tw.stock.yahoo.com/quote/${encodeURIComponent(code)}`], ["Goodinfo", `https://goodinfo.tw/tw/StockDetail.asp?STOCK_ID=${encodeURIComponent(code)}`]]
+    : [["在「股市」App 開啟", `stocks://?symbol=${encodeURIComponent(raw)}`], ["Yahoo Finance", `https://finance.yahoo.com/quote/${encodeURIComponent(raw)}`]];
+  return `<p class="ext-links">${L.map(([t, u]) => `<a href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join("")}</p>`;
+}
+
 function renderScreener() {
   buildFilterPanel();
   const rows = runScreen(S.mkt);
   S.lastRows = rows;
   const q = $("#search").value.trim().toLowerCase();
   const near = $("#showNear").checked, all = $("#showAll").checked;
-  let list = rows.filter((r) => all || r.pass || (near && r.failed.length <= 2));
+  // 有輸入搜尋字時在全部股票裡找（不只通過條件的），才找得到例如波克夏這種沒通過篩選的公司
+  let list = q ? rows.slice() : rows.filter((r) => all || r.pass || (near && r.failed.length <= 2));
   if (q) list = list.filter((r) => `${r.id} ${r.name} ${r.industry} ${zhText(S.mkt, r.id)}`.toLowerCase().includes(q));
   const { key, dir } = S.sort;
   list.sort((a, b) => {
@@ -526,7 +587,9 @@ function renderScreener() {
   const shown = list.slice(0, 600);
   $("#stockTable").innerHTML = `<thead><tr>${STOCK_COLS.map(([k, l, , c]) => `<th data-k="${k}" class="${c || ""}">${l}${S.sort.key === k ? (S.sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead>
   <tbody>${shown.map((r, i) => `<tr class="clickable ${r.pass ? "" : "dim"}" data-id="${esc(r.id)}">${STOCK_COLS.map(([, , f, c]) => `<td class="${c || ""}">${f(r, i, S.mkt)}</td>`).join("")}</tr>`).join("")}</tbody>`;
-  if (!shown.length) $("#stockTable").innerHTML += `<tbody><tr><td colspan="${STOCK_COLS.length}" class="hint" style="padding:20px">沒有股票符合目前條件。可勾選「顯示差 1–2 條的股票」看看是哪幾條卡住。</td></tr></tbody>`;
+  if (!shown.length) $("#stockTable").innerHTML += q
+    ? `<tbody><tr><td colspan="${STOCK_COLS.length}" class="hint" style="padding:20px">系統的股票池裡沒有「${esc(q.toUpperCase())}」（可能是太新、財報資料還沒抓到、不在台美主要交易所，或是 ETF：ETF 請到「ETF」頁）。可以直接查：${extLinks(S.mkt, q)}</td></tr></tbody>`
+    : `<tbody><tr><td colspan="${STOCK_COLS.length}" class="hint" style="padding:20px">沒有股票符合目前條件。可勾選「顯示差 1–2 條的股票」看看是哪幾條卡住。</td></tr></tbody>`;
   $$("#stockTable th").forEach((th) => (th.onclick = () => {
     const k = th.dataset.k; if (k === "rank") return;
     S.sort = { key: k, dir: S.sort.key === k ? -S.sort.dir : (["id", "name", "industry", "pe", "pb", "failed"].includes(k) ? 1 : -1) };
@@ -628,7 +691,7 @@ async function openDetail(mkt, id) {
   $("#dBody").innerHTML = `<p class="hint">載入中…</p>`;
   dlg.showModal();
   const d = await getJSON(`data/detail/${mkt}/${encodeURIComponent(id)}.json`, true);
-  let html = "";
+  let html = extLinks(mkt, id);
   if (row && mkt !== "etf") {
     html += `<div class="tiles">${[["綜合分數", row.score != null ? row.score.toFixed(1) : "未通過"], ["本益比", fmt.x(row.pe)], ["P/B", fmt.x(row.pb, 2)], ["FCF 殖利率", fmt.pct(row.fcf_yield)], ["市值", fmt.money(row.market_cap, mkt)], ["產業", esc(row.industry)]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("")}</div>`;
     html += qualityNote(mkt, id);
@@ -1038,6 +1101,7 @@ function renderEarnings() {
 function renderSignals() {
   const D = S.derivs, meta = $("#sgMeta"), box = $("#sgTrend"), grid = $("#sgGrid"), note = $("#sgNote");
   Object.keys(S.charts).filter((k) => k.startsWith("sg_")).forEach(destroyChart);
+  renderEvents();
   if (!D) {
     meta.textContent = "";
     box.innerHTML = `<p class="hint">市場訊號資料還沒產生，每日更新跑過一次之後就會出現。</p>`;

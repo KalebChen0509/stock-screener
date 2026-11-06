@@ -121,6 +121,19 @@ def _download(url: str, dest: Path) -> Path:
 
 
 # ----------------------------------------------------------------------------
+def one_ticker_per_company(df: pd.DataFrame) -> pd.DataFrame:
+    """每家公司（cik）留一個代號：優先沒有「-」的普通股（同一家有好幾個時取最短的，例如 GOOG）；
+    只有 A／B 股的公司（例如波克夏 BRK-A／BRK-B、Brown-Forman BF-B）留 B 股（價格低、成交量大）；
+    其他帶「-」的（特別股、權證，例如 BAC-PB）不要。2026/11/07 以前只有 A／B 股的公司會整家被刪掉。"""
+    df = df.copy()
+    df["ticker"] = df["ticker"].astype(str)
+    dash = df["ticker"].str.contains("-")
+    cls_ab = df["ticker"].str.fullmatch(r"[A-Z]+-[AB]")
+    df["prio"] = np.where(~dash, 0, np.where(cls_ab & df["ticker"].str.endswith("-B"), 1, np.where(cls_ab, 2, 9)))
+    df["tlen"] = df["ticker"].str.len()
+    return df[df["prio"] < 9].sort_values(["cik", "prio", "tlen"]).drop_duplicates("cik", keep="first").drop(columns=["prio", "tlen"])
+
+
 def build_universe(download: bool = True) -> pd.DataFrame:
     tick_path = RAW_DIR / "company_tickers_exchange.json"
     subs_path = RAW_DIR / "submissions.zip"
@@ -130,10 +143,7 @@ def build_universe(download: bool = True) -> pd.DataFrame:
     df = pd.DataFrame(js["data"], columns=js["fields"])
     df = df[df["exchange"].isin(["Nasdaq", "NYSE"])].copy()
     df["ticker"] = df["ticker"].astype(str)
-    df["has_dash"] = df["ticker"].str.contains("-")
-    df["tlen"] = df["ticker"].str.len()
-    df = df.sort_values(["cik", "has_dash", "tlen"]).drop_duplicates("cik", keep="first")
-    df = df[~df["has_dash"]]
+    df = one_ticker_per_company(df)
 
     if download or not subs_path.exists():
         _download(SUBS_URL, subs_path)

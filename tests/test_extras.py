@@ -340,6 +340,15 @@ def test_52_53_week_fiscal_year_q4_derived():
     assert approx(q.loc[pd.Timestamp("2025-08-31"), "val"], 85.0)     # 270 − 185（16 週的第四季）
 
 
+def test_us_one_ticker_per_company():
+    """美股每家公司留一個代號：只有 A／B 股的公司（波克夏）留 B 股，不能整家被刪；特別股、權證不要。"""
+    from screener.data_us import one_ticker_per_company
+    df = pd.DataFrame([(1, "BRK-A"), (1, "BRK-B"), (2, "HEI"), (2, "HEI-A"), (3, "BAC"), (3, "BAC-PB"), (4, "XYZ-P"),
+                       (5, "BF-A"), (5, "BF-B"), (6, "GOOGL"), (6, "GOOG"), (7, "MOG-A")], columns=["cik", "ticker"])
+    out = one_ticker_per_company(df)
+    assert dict(zip(out["cik"], out["ticker"])) == {1: "BRK-B", 2: "HEI", 3: "BAC", 5: "BF-B", 6: "GOOG", 7: "MOG-A"}
+
+
 if __name__ == "__main__":
     import inspect
     ok = 0

@@ -307,3 +307,16 @@ a.chip { text-decoration: none; display: inline-block; }
 .chart-box.sm { height: 120px; margin: 6px 0; }
 .pill.neg { color: var(--bad); border-color: currentColor; }
 @media (max-width: 640px) { .sg-grid { grid-template-columns: 1fr; } .sg-big { font-size: 24px; } }
+
+/* 外部連結（Yahoo、Goodinfo、股市 App） */
+.ext-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.ext-links a { font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 99px; text-decoration: none; color: var(--text-2); background: var(--surface-2); }
+.ext-links a:hover { color: var(--text); border-color: var(--accent); }
+
+/* 市場重大事件 */
+.ev { border-top: 1px solid var(--border); padding: 8px 0; display: grid; gap: 3px; }
+.ev:first-child { border-top: 0; }
+.ev.major { background: color-mix(in srgb, var(--bad) 7%, transparent); border-radius: 8px; padding: 8px; }
+.ev-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.ev a { color: var(--text); }
+.ev-banner { border-left: 4px solid var(--bad); display: grid; gap: 6px; }

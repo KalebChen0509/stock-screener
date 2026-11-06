@@ -43,6 +43,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
 <main>
   <!-- ======================= 總覽 ======================= -->
   <section id="view-overview" class="view">
+    <div id="ovEvents"></div>
     <div id="ovToday"></div>
     <div class="tiles" id="ovTiles"></div>
     <div class="grid2">
@@ -229,6 +230,13 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
       <h2>市場訊號</h2>
       <p class="hint" id="sgMeta"></p>
       <div id="sgTrend"></div>
+    </div>
+    <div class="card" id="evCard">
+      <h2>市場重大事件</h2>
+      <p class="hint" id="evMeta"></p>
+      <div id="evRead"></div>
+      <div class="seg" id="evSeg" style="margin:8px 0"><button data-l="all" class="on">全部</button><button data-l="重大">重大</button><button data-l="注意">注意</button></div>
+      <div id="evList"></div>
     </div>
     <div class="sg-grid" id="sgGrid"></div>
     <div class="card note" id="sgNote"></div>
