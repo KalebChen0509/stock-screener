@@ -141,7 +141,7 @@ def already_sent(month: str, codes: set[str], live: dict[str, list[str]]) -> dic
 
 
 def place(argv=None):
-    from sinopac import login, logout, say
+    from sinopac import ask, login, logout, say
     argv = sys.argv[1:] if argv is None else argv
     orders = get_json("orders.json")
     tw, us = plan(orders)
@@ -218,7 +218,7 @@ def place(argv=None):
             for c, why in sorted(dup.items()):
                 say(f"   {c}（{why}）")
             need = "again"
-        ans = input(f"\n要把上面的台股送到「模擬環境」嗎？輸入 {need} 送出，其他鍵取消：").strip().lower()
+        ans = ask(f"\n要把上面的台股送到「模擬環境」嗎？輸入 {need} 送出，其他鍵取消：").strip().lower()
         if ans != need:
             say("已取消，沒有送出任何單。")
             return

@@ -58,6 +58,9 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 
 ## 已知的坑
 
+- `silence()` 只擋 stdout；shioaji 連線**出錯**時的訊息走 stderr、也含身分證字號 → 11/06 起 `silence()` 會把 stderr 經過 `redact()` 遮成「A*********」。
+  `silence()` 之後 `input()` 的提示文字會消失 → 一律用 `sinopac.ask()`。`api_test.py` 原本沒呼叫 `silence()`（已補）。
+
 - Gmail 在帳號或應用程式密碼錯誤時會**直接斷線**（SMTPServerDisconnected），不會回「密碼錯誤」。先跑 `trader/mailtest.py`。
 - shioaji 1.7 的 `login()` 沒有 `contracts_timeout`；常數改放在 `sj.Action` 等（舊的 `shioaji.constant` 會出 DeprecationWarning）。
 - Cowork 連到 Mac 的環境不能刪檔案、不能上網；`tar` 解壓覆蓋既有檔案會失敗，要用 Python 讀寫檔案。

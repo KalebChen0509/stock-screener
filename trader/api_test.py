@@ -13,9 +13,15 @@ import sys
 import time
 
 import inspect
+import os
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sinopac import ask, say, silence  # noqa: E402  先關掉 shioaji 的畫面輸出（連線訊息含身分證字號）
+
+silence()
+print = say  # noqa: A001  這支程式自己的訊息照常顯示
 try:
     import shioaji as sj
 except ImportError:
@@ -101,7 +107,7 @@ def main():
 
     # ---- 期貨測試單（有期貨帳戶才需要；證券和期貨要分開測）
     if api.futopt_account is not None:
-        if input("你有期貨帳戶。要一起測試期貨嗎？只有之後要用 API 做期貨才需要（y/N）：").strip().lower() == "y":
+        if ask("你有期貨帳戶。要一起測試期貨嗎？只有之後要用 API 做期貨才需要（y/N）：").strip().lower() == "y":
             time.sleep(1.5)                        # 證券和期貨的測試單要間隔 1 秒以上
             fc = min([x for x in api.Contracts.Futures.TXF if x.code[-2:] not in ("R1", "R2")], key=lambda x: x.delivery_date)
             fo = make_order(api, "FuturesOrder", action=Action.Buy, price=(fc.reference or 15000), quantity=1, price_type=FuturesPriceType.LMT,
