@@ -306,12 +306,11 @@ def render(evs: list[dict], header: str, pages_url: str = "") -> str:
 def notify(majors: list[dict], digest: list[dict], pages_url: str = "", send=None) -> dict:
     """重大＝立刻寄；digest＝每日彙整。send(subject, text) 預設用 Email＋LINE。"""
     if send is None:
-        from .notify import send_email, send_line
+        from .notify import notify as _notify
 
         def send(subject, text):
-            a = send_email(subject, text)
-            b = send_line(f"{subject}\n\n{text}")
-            return a or b
+            r = _notify(subject, text, scope="events")
+            return bool(r.get("email") or r.get("line"))
     sent = {"major": 0, "digest": 0}
     if majors:
         subj = "【重大】" + "、".join(dict.fromkeys(e["label"] for e in majors))

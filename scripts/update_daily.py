@@ -736,7 +736,7 @@ def main():
         print("\n" + er["digest"])
         if not args.no_notify:
             from screener.notify import configured as _nconf
-            nr = notify(f"財報快報 {today.date()}", er["digest"])
+            nr = notify(f"財報快報 {today.date()}", er["digest"], scope="earnings")
             log.info("earnings notify %s", nr)
             # 寄成功（或根本沒設定通知管道）才記為已通知；寄失敗的下次會再寄
             if any(nr.values()) or not _nconf():

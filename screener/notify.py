@@ -90,5 +90,15 @@ def send_email(subject: str, text: str, html: str | None = None) -> bool:
         return False
 
 
-def notify(subject: str, text: str) -> dict:
-    return {"line": send_line(f"{subject}\n\n{text}"), "email": send_email(subject, text)}
+def line_wanted(scope: str) -> bool:
+    """LINE 免費方案每月有則數上限，預設只發「市場重大事件」（events）。
+    要讓日報（daily）、盤中提醒（alerts）、財報快報（earnings）也發 LINE：GitHub → Settings → Secrets and variables → Actions →
+    Variables 新增 LINE_FOR，例如 events,daily。"""
+    allowed = {x.strip() for x in (os.environ.get("LINE_FOR") or "events").split(",") if x.strip()}
+    return "all" in allowed or scope in allowed
+
+
+def notify(subject: str, text: str, scope: str = "daily") -> dict:
+    """Email 一律寄；LINE 只在 line_wanted(scope) 時發。scope：daily（日報）、alerts、earnings、events、test。"""
+    line = send_line(f"{subject}\n\n{text}") if line_wanted(scope) else False
+    return {"line": line, "email": send_email(subject, text)}

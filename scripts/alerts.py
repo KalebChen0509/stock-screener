@@ -148,7 +148,7 @@ def main():
         body += "\n\n報價來自 Yahoo，約延遲 15～20 分鐘；只是提醒，不會下單。" + (f"\n網站：{site}/" if site else "")
         t_local = now.tz_convert("Asia/Taipei").strftime("%H:%M")
         print(body)
-        r = notify(f"盤中提醒 {t_local}（台北）：{len(fresh)} 則", body)
+        r = notify(f"盤中提醒 {t_local}（台北）：{len(fresh)} 則", body, scope="alerts")
         log.info("notify %s", r)
 
 

@@ -155,6 +155,7 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   ＋壓力數字（台股／美股單日 ≤−3%／−5%、距一年高點 −10%／−20%（一個波段只通知一次）、VIX 30／40、外資賣超 800／2000 億、融資單日減 200／400 億、新台幣 ±1%、月底趨勢翻轉）。
   分級：「重大」＝標題有確定字且沒有推測字（宣布、拍板…／可能、恐、？、nearly…），還要包含主題關鍵字（MUST）；重大不分日夜立刻 Email＋LINE，「注意」早上 7～12 點彙整一封。
   使用者：Email＋LINE、半夜也立刻寄、分兩級。LINE 要使用者自己建 Messaging API 並設 Secrets `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_USER_ID`（notify.py 已支援）。
+  LINE 免費方案每月有則數上限 → `notify(…, scope=)`＋GitHub 變數 `LINE_FOR`（預設只有 events；可加 daily、alerts、earnings 或 all）。「通知測試」workflow 手動測 Email／LINE。
   紀錄在 `events` 分支（state.json、events.csv、market_events.json）；網站從 raw.githubusercontent.com 讀，不用重新部署。第一次執行只建立基準、不寄信。
   坑：Yahoo 的 ^TWII 會漏最新一天（11/06 就漏）→ 台股指數改用證交所 MI_5MINS_HIST；Yahoo 多檔一起下載也會對錯日期 → 一檔一檔抓。
   網站：總覽頁 48 小時內有重大事件就顯示提示；市場訊號頁加「市場重大事件」（壓力讀數＋清單，可篩重大／注意）。
