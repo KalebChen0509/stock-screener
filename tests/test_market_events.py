@@ -74,7 +74,7 @@ def test_run_first_baseline_then_major_now_digest_morning():
     def fetch(q, lang="zh-TW", since=None, limit=8):
         return [x for x in news.get(q, []) if since is None or pd.Timestamp(x["date"]) >= since]
     calm = _px(tw_last_drop=0.0, dd_level=1.0)
-    kw = dict(fetch_news=fetch, px=calm, flows={}, send=lambda s, t: sent.append((s, t)) or True)
+    kw = dict(fetch_news=fetch, px=calm, flows={}, send=lambda s, t: sent.append((s, t)) or True, macro=False)
     r = M.run(store, now="2026-11-06 18:30", **kw)
     assert r["first_run"] and sent == []                                            # 第一次只建立基準
     news["國安基金"].append({"date": "2026-11-06 12:00", "title": "國安基金宣布第十次進場 下周一開始護盤", "source": "經濟日報", "url": "u2"})  # 同一件事：不重寄

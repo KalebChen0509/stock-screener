@@ -249,7 +249,7 @@ def stress_events(now: pd.Timestamp, px: pd.DataFrame, flows: dict, state: dict)
 # ---------------------------------------------------------------- 合併、去重、通知
 def _key(e: dict) -> str:
     """同一主題、同一天（台北）、同一級＝同一件事。數字事件本身的 topic 已含日期。"""
-    if e["kind"] == "stress":
+    if e["kind"] in ("stress", "macro", "macro_rel"):        # 數字事件、總經指標的 topic 已含日期
         return e["topic"]
     return f"{e['topic']}|{e['time'][:10]}|{e['level']}"
 
@@ -322,8 +322,9 @@ def notify(majors: list[dict], digest: list[dict], pages_url: str = "", send=Non
     return sent
 
 
-def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, pages_url: str = "") -> dict:
-    """完整流程（workflow 每 30 分鐘跑一次）。store＝events 分支的資料夾。"""
+def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, pages_url: str = "", macro=True) -> dict:
+    """完整流程（workflow 每 30 分鐘跑一次）。store＝events 分支的資料夾。
+    macro：True＝也檢查總經指標；False＝不檢查（測試用）；dict＝傳給 macro_ind.check 的參數（例如假的 http）。"""
     store = Path(store)
     store.mkdir(parents=True, exist_ok=True)
     now = pd.Timestamp(now).tz_localize(TZ) if now is not None and pd.Timestamp(now).tz is None else (pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz=TZ))
@@ -356,6 +357,14 @@ def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, 
         evs += sev
     except Exception as e:  # noqa
         log.warning("market stress failed: %s", e)
+    if macro:                                           # 總經指標（領先／同時／落後）轉折訊號
+        try:
+            from . import macro_ind
+            mev, _ = macro_ind.check(store, state.setdefault("macro", {}), now, pages_url=pages_url,
+                                     **({} if macro is True else macro))
+            evs += mev
+        except Exception as e:  # noqa
+            log.warning("macro indicators failed: %s", e)
     fresh, hist = merge(evs, state)
     majors = [e for e in fresh if e["level"] == "重大"]
     pend = state.setdefault("pending", [])

@@ -32,6 +32,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     <a href="#backtest">回測</a>
     <a href="#paper">並行模擬</a>
     <a href="#signals">市場訊號</a>
+    <a href="#macro">總經指標</a>
     <a href="#earnings">財報</a>
     <a href="#watchlist">追蹤清單</a>
     <a href="#rules">條件說明</a>
@@ -224,6 +225,18 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     </div>
   </section>
 
+  <!-- ======================= 總經指標 ======================= -->
+  <section id="view-macro" class="view">
+    <div class="card">
+      <h2>總經指標</h2>
+      <p class="hint" id="mcMeta"></p>
+      <div class="tiles" id="mcSum"></div>
+      <div class="seg mc-seg" id="mcSeg"></div>
+      <div id="mcList"></div>
+      <p class="hint" id="mcNote" style="margin-top:12px"></p>
+    </div>
+  </section>
+
   <!-- ======================= 市場訊號 ======================= -->
   <section id="view-signals" class="view">
     <div class="card">
@@ -303,6 +316,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     <a href="#backtest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>回測</a>
     <a href="#paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg>並行模擬</a>
     <a href="#signals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>市場訊號</a>
+    <a href="#macro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>總經指標</a>
     <a href="#watchlist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>追蹤清單</a>
     <a href="#rules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z"/><path d="M8 9h8M8 13h6"/></svg>條件說明</a>
   </div>

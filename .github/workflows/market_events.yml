@@ -1,5 +1,5 @@
 name: 市場事件偵測
-# 每 30 分鐘、全天候（含晚上、週末）：政策新聞（國安基金、限空令、央行、聯準會、熔斷…）＋市場壓力數字。
+# 每 30 分鐘、全天候（含晚上、週末）：政策新聞（國安基金、限空令、央行、聯準會、熔斷…）＋市場壓力數字＋總經指標轉折（台美中日歐）。
 # 「重大」立刻 Email＋LINE；「注意」每天早上彙整一封。紀錄存在 events 分支（網站直接讀，不用重新部署）。
 on:
   schedule:
@@ -25,6 +25,7 @@ jobs:
       LINE_FOR: ${{ vars.LINE_FOR }}
       PAGES_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}   # 總經指標（美國）；沒設定就改用 FRED 網頁 CSV
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

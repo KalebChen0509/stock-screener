@@ -320,3 +320,15 @@ a.chip { text-decoration: none; display: inline-block; }
 .ev-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
 .ev a { color: var(--text); }
 .ev-banner { border-left: 4px solid var(--bad); display: grid; gap: 6px; }
+
+/* ---- 總經指標 */
+.mc-seg { margin: 10px 0 4px; flex-wrap: wrap; }
+.mc-h { font-size: 15px; margin: 18px 0 4px; }
+.mc-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: center; }
+.mc-row .mc-st { text-align: right; }
+.mc-row .mc-t { grid-column: 1 / -1; font-size: 12px; }
+.mc-sp { width: 120px; height: 30px; display: block; }
+.mc-sp polyline { fill: none; stroke: var(--accent); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.mc-sp .thr { stroke: var(--text-2); stroke-dasharray: 3 3; stroke-width: 1; opacity: .6; vector-effect: non-scaling-stroke; }
+.pill.okp { color: var(--good-ink); border-color: currentColor; }
+.mc-seg { border-radius: 16px; }

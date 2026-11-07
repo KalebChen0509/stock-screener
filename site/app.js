@@ -182,11 +182,11 @@ function defaultSettings() {
 function route() {
   const [v0, ...args] = (location.hash || "#overview").slice(1).split("/");
   const views = { overview: renderOverview, screener: renderScreener, chart: () => renderChartView(args), etf: renderEtf, backtest: renderBacktest,
-                  paper: renderPaper, signals: renderSignals, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
+                  paper: renderPaper, signals: renderSignals, macro: renderMacro, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
   const v = views[v0] ? v0 : "overview";
   $$(".view").forEach((el) => el.classList.toggle("on", el.id === "view-" + v));
   $$("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
-  const inMore = ["etf", "backtest", "paper", "signals", "watchlist", "rules"].includes(v);
+  const inMore = ["etf", "backtest", "paper", "signals", "macro", "watchlist", "rules"].includes(v);
   $$("#bnav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
   $("#moreBtn") && $("#moreBtn").classList.toggle("on", inMore);
   $("#moreSheet") && ($("#moreSheet").hidden = true);
@@ -389,6 +389,66 @@ function evItem(e) {
     <div>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>` : esc(e.title)}${e.source ? ` <span class="hint">（${esc(e.source)}）</span>` : ""}</div>
     ${more.length ? `<div class="hint">${more.slice(0, 3).map((m) => esc(m.title) + "（" + esc(m.source || "") + "）").join("<br>")}</div>` : ""}</div>`;
 }
+// ---------------------------------------------------------------- 總經指標（領先／同時／落後）
+function macroURL() { return eventsURL().replace("market_events.json", "macro.json"); }
+const MC_BAD = new Set(["趨緩", "衰退", "倒掛", "上升警訊", "觸發", "衰退警訊", "偏緊", "擴大", "收縮", "負成長", "藍燈", "黃藍燈"]);
+const MC_THR = { cli: 100, level50: 50, level0: 0, curve: 0, nfci: 0, sahm: 0.5, cfnai: -0.7 };
+function mcVal(r) {
+  if (r.value == null) return r.public === false ? "有版權，只顯示狀態" : "–";
+  const v = +r.value;
+  if (r.tf === "yoy") return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+  return Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2);
+}
+function mcSpark(r) {
+  const pts = r.spark || [];
+  if (pts.length < 3) return "";
+  const w = 120, h = 30, vs = pts.map((p) => +p[1]);
+  const thr = MC_THR[r.rule];
+  let lo = Math.min(...vs), hi = Math.max(...vs);
+  if (thr != null && thr >= lo - (hi - lo) && thr <= hi + (hi - lo)) { lo = Math.min(lo, thr); hi = Math.max(hi, thr); }
+  const sc = (v) => (hi === lo ? h / 2 : h - 2 - ((v - lo) / (hi - lo)) * (h - 4));
+  const line = vs.map((v, i) => `${((i / (vs.length - 1)) * w).toFixed(1)},${sc(v).toFixed(1)}`).join(" ");
+  const tl = thr != null && thr >= lo && thr <= hi ? `<line x1="0" x2="${w}" y1="${sc(thr).toFixed(1)}" y2="${sc(thr).toFixed(1)}" class="thr"/>` : "";
+  return `<svg class="mc-sp" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${tl}<polyline points="${line}"/></svg>`;
+}
+function mcDate(r) {
+  if (!r.date) return "";
+  return ["curve", "credit", "nfci", "claims"].includes(r.rule) ? r.date.replaceAll("-", "/") : r.date.slice(0, 7).replace("-", "/");
+}
+async function renderMacro() {
+  if (S.macro === undefined) { $("#mcMeta").textContent = "讀取中…"; S.macro = await getJSON(macroURL(), true); }
+  const M = S.macro, list = $("#mcList");
+  if (!M) {
+    $("#mcMeta").textContent = "總經指標資料還沒產生（「市場事件偵測」執行後就會出現）。";
+    $("#mcSum").innerHTML = ""; $("#mcSeg").innerHTML = ""; list.innerHTML = ""; return;
+  }
+  $("#mcMeta").textContent = `更新：${M.updated}。領先指標通常比景氣早幾個月轉向；同時指標跟景氣一起動；落後指標用來確認。🔔＝轉折時立刻 Email／LINE 通知，其他轉折進每天早上的彙整。`;
+  const CC = [["tw", "台灣"], ["us", "美國"], ["cn", "中國"], ["jp", "日本"], ["eu", "歐洲"], ["gl", "全球"]];
+  const sum = M.summary || {};
+  $("#mcSum").innerHTML = CC.filter(([k]) => sum[k]).map(([k, n]) => {
+    const s = sum[k], bad = s.weak / s.n >= 0.5;
+    return `<div class="tile"><div class="k">${n} 領先指標</div><div class="v ${bad ? "neg" : ""}" style="font-size:18px">${s.weak} / ${s.n} 轉弱</div></div>`;
+  }).join("");
+  const cur = S.mcC || "tw";
+  $("#mcSeg").innerHTML = CC.map(([k, n]) => `<button data-c="${k}" class="${k === cur ? "on" : ""}">${n}</button>`).join("");
+  $$("#mcSeg button").forEach((b) => (b.onclick = () => { S.mcC = b.dataset.c; renderMacro(); }));
+  const rows = (M.rows || []).filter((r) => r.country === cur);
+  const KIND = [["lead", "領先指標", "通常比景氣早 3～9 個月轉向"], ["coin", "同時指標", "跟景氣同步"], ["lag", "落後指標", "景氣轉向後才變化，用來確認"]];
+  list.innerHTML = KIND.map(([k, t, d]) => {
+    const rs = rows.filter((r) => r.kind === k);
+    if (!rs.length) return "";
+    return `<h3 class="mc-h">${t}<span class="hint">　${d}</span></h3>` + rs.map((r) => {
+      const st = r.state ? `<span class="pill ${MC_BAD.has(r.state) ? "neg" : "okp"}">${esc(r.state)}</span>` : "";
+      const last = (r.turns || []).slice(-1)[0];
+      const turn = last ? `上次轉折：${last.date.slice(0, 7).replace("-", "/")} 轉為「${esc(last.to)}${r.rule === "light" ? "燈" : ""}」` : "";
+      return `<div class="mc-row"><div class="mc-name">${r.level === "重大" ? "🔔 " : ""}<b>${esc(r.name)}</b></div><div class="mc-st">${st}</div>
+        <div class="mc-v"><b>${mcVal(r)}</b> <span class="hint">${esc(mcDate(r))}${r.unit ? "｜" + esc(r.unit) : ""}</span></div><div>${mcSpark(r)}</div>
+        ${turn ? `<div class="mc-t hint">${turn}</div>` : ""}</div>`;
+    }).join("");
+  }).join("") || `<p class="hint">這個地區還沒有資料。</p>`;
+  $("#mcNote").innerHTML = `${esc(M.note || "")}<br>資料來源：國發會（景氣指標及燈號）、FRED（聖路易聯準銀行）、OECD（綜合領先指標）、新聞標題（各國 PMI）。這是研究工具，不是投資建議。`;
+}
+
 function renderEventsBanner() {
   const el = $("#ovEvents");
   if (!el) return;
