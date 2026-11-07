@@ -1,0 +1,79 @@
+2026-11-07 06:00:50,160 INFO screener: tw panel: 109860 rows, 2075 companies
+2026-11-07 06:01:25,056 INFO screener: us panel: 182721 rows, 4429 companies
+/home/runner/work/stock-screener/stock-screener/screener/events.py:98: UserWarning: This pattern is interpreted as a regular expression, and has match groups. To actually get the groups, use str.extract.
+  np.where(new["text"].str.contains(TW_WARN), "warn", "info"))
+2026-11-07 06:01:32,796 INFO screener: TW events: +686 (total 3660)
+2026-11-07 06:01:43,548 INFO screener: TW pledge ratios: 1979 companies
+2026-11-07 06:01:48,607 INFO screener: cycle phase: {'tw': '擴張', 'us': '擴張'}
+/home/runner/work/stock-screener/stock-screener/screener/valuation.py:87: RuntimeWarning: Mean of empty slice
+  xc = x - np.nanmean(x, axis=0)
+/home/runner/work/stock-screener/stock-screener/screener/valuation.py:88: RuntimeWarning: Mean of empty slice
+  mc = m - np.nanmean(m, axis=0)
+2026-11-07 06:01:49,747 INFO screener: tw: 1987 with data, 11 passed
+/home/runner/work/stock-screener/stock-screener/screener/valuation.py:87: RuntimeWarning: Mean of empty slice
+  xc = x - np.nanmean(x, axis=0)
+/home/runner/work/stock-screener/stock-screener/screener/valuation.py:88: RuntimeWarning: Mean of empty slice
+  mc = m - np.nanmean(m, axis=0)
+2026-11-07 06:01:52,514 INFO screener: us: 3737 with data, 1 passed
+2026-11-07 06:02:33,280 INFO screener: daily (backtest): fetching 60 tickers
+2026-11-07 06:02:34,690 INFO screener: daily (backtest) 60/60
+2026-11-07 06:02:38,760 INFO screener: paper: {'成長動能（單檔上限 10%）': -0.0765, '大盤一半＋成長動能一半': -0.0552, '核心＋衛星（動能＋財報驚喜 10 檔，衛星 30%）': -0.0549, '只買 ETF（VT50＋0050 25＋SPY 25）': -0.0363, '目前版（買進價停損15%）': -0.0249}
+2026-11-07 06:03:04,408 INFO screener: daily (backtest): fetching 105 tickers
+2026-11-07 06:03:06,877 INFO screener: daily (backtest) 100/105
+2026-11-07 06:03:08,067 INFO screener: daily (backtest) 105/105
+2026-11-07 06:03:16,400 INFO screener: earnings: coverage tw 77 us 128, new events 64, notify 12, SEC calls 134
+2026-11-07 06:03:16,410 INFO screener: LINE not configured; skip
+2026-11-07 06:03:18,019 INFO screener: notify result {'line': False, 'email': True}
+2026-11-07 06:03:18,019 INFO screener: LINE not configured; skip
+2026-11-07 06:03:19,534 INFO screener: earnings notify {'line': False, 'email': True}
+
+【美股：財報後漲跌】
+・KRT Karat Packaging｜餐飲包材
+    11/05 盤後公布；財報後 -34.8%（SPY +0.3%，相對 -35.1%）；營收年增 +8.2%、淨利年增 -40.0%、單季 EPS 0.22；EPS 0.24 vs 預估 0.46（低於預期 -47.8%）
+・AMN AMN Healthcare｜醫護人力派遣
+    11/05 盤後公布；財報後 -23.7%（SPY +0.3%，相對 -24.0%）；營收年增 +13.0%、淨利年增 +14.0%、單季 EPS 0.87；EPS 1.16 vs 預估 0.23（超乎預期 +407.4%）
+・ETON Eton Pharmaceuticals｜製藥與生技
+    11/05 盤後公布；財報後 +19.7%（SPY +0.3%，相對 +19.4%）；營收年增 +157.9%、單季 EPS 1.22；EPS 0.50 vs 預估 0.37（超乎預期 +35.1%）
+・AXTI AXT｜電子與半導體
+    10/29 盤後公布；財報後 -9.6%（SPY -1.8%，相對 -7.8%）；EPS 0.41 vs 預估 0.31（超乎預期 +33.1%）
+・IOVA Iovance Biotherapeutics｜製藥與生技
+    11/05 盤中公布；財報後 -11.0%（SPY -4.4%，相對 -6.6%）；營收年增 +80.1%、單季 EPS -0.05；EPS -0.05 vs 預估 -0.09（超乎預期 +41.4%）
+・PANL Pangaea Logistics｜散裝航運
+    11/05 盤後公布；財報後 +2.7%（SPY +0.3%，相對 +2.4%）；營收年增 +29.9%、淨利年增 +213.4%、單季 EPS 0.58；EPS 0.52 vs 預估 0.31（超乎預期 +70.5%）
+・LPG Dorian LPG｜液化石油氣運輸船
+    11/05 盤後公布；財報後 +1.0%（SPY +0.3%，相對 +0.7%）；營收年增 +78.4%、淨利年增 +286.1%、單季 EPS 4.98；EPS 3.46 vs 預估 2.84（超乎預期 +21.9%）
+【剛公布，下次回報漲跌】
+・1326 台化｜化纖與石化原料（台塑集團）
+    2026Q3 季報（11/07 抓到）；營收年增 +36.9%、淨利年增 +172.3%、單季 EPS 0.94
+・5289 宜鼎｜工業用儲存裝置
+    2026Q3 季報（11/07 抓到）；營收年增 +342.2%、淨利年增 -386.1%、單季 EPS -13.64
+・6213 聯茂｜銅箔基板
+    2026Q3 季報（11/07 抓到）；營收年增 +102.2%、淨利年增 +841.9%、單季 EPS 8.41
+・6669 緯穎｜雲端資料中心伺服器（緯創子公司）
+    2026Q3 季報（11/07 抓到）；營收年增 +62.9%、淨利年增 +51.6%、單季 EPS 39.98
+・7769 鴻勁｜半導體測試分選設備
+    2026Q3 季報（11/07 抓到）；營收年增 +97.5%、淨利年增 +85.7%、單季 EPS 37.33
+【未來 7 天預定公布（美股）】
+PAYS Paysign 11/09、AMAT 應用材料 11/12、CSCO 思科 11/12
+📋 今天要做的事
+（你還沒開始投入真錢：停損和下單先當練習，熟悉流程就好）
+⚠️ 持股或追蹤清單有 3 則重大事件或負面新聞：花 2 分鐘看標題（在信件下方）
+   ↳ 為什麼：確認買它的理由有沒有改變；系統不會因為新聞自動賣出
+📰 另一封「財報快報」有 12 則：看財報後的漲跌和營收、獲利
+   ↳ 為什麼：了解公司實際表現；不需要動作，除非之後觸發停損
+
+────────────
+台股：通過 11 檔
+美股：通過 1 檔
+ETF 前段班：通過 6 檔
+⚠️ 持股／追蹤清單的事件與負面新聞：
+  • BKE Buckle｜服飾零售：2026-08-31 8-K 5.02 董事或高階主管異動
+  • FIVE Five Below｜零售：2026-09-23 8-K 5.02 董事或高階主管異動
+  • FIVE Five Below｜零售：Arhaus, Inc. (ARHS) Q3 Earnings and Revenues Miss Estimates
+
+🔍 資料品質提醒（詳見網站「條件說明」頁最上面）：
+  • 美股最新一季沒有股數（算不出市值、無法篩選）：654 家（15%）
+  • 美股財報最後一筆申報日 2026-10-22（16 天前）
+  • 股價歷史不到 12 個月的代號：354 個（新上市或待補抓）
+
+網站：https://KalebChen0509.github.io/stock-screener/
