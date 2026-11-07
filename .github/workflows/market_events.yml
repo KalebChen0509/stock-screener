@@ -1,5 +1,5 @@
 name: 市場事件偵測
-# 每 30 分鐘、全天候（含晚上、週末）：政策新聞（國安基金、限空令、央行、聯準會、熔斷…）＋市場壓力數字＋總經指標轉折（台美中日歐）。
+# 備援（GitHub 排程常延遲好幾小時；主力是 Mac 的 scripts/mac_events.py，每 10 分鐘）。全天候：政策新聞（國安基金、限空令、央行、聯準會、熔斷…）＋市場壓力數字＋總經指標轉折（台美中日歐）。
 # 「重大」立刻 Email＋LINE；「注意」每天早上彙整一封。紀錄存在 events 分支（網站直接讀，不用重新部署）。
 on:
   schedule:
@@ -32,17 +32,8 @@ jobs:
         with: { python-version: "3.12", cache: pip }
       - run: pip install -r requirements.txt
       - name: 取得 events 分支（沒有就建立空的）
-        run: |
-          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git ls-remote --exit-code --heads "$REMOTE" events >/dev/null 2>&1; then
-            git clone -q --depth 1 --branch events "$REMOTE" evbr && rm -rf evbr/.git
-          else
-            mkdir -p evbr
-          fi
+        run: python scripts/events_sync.py pull --dir evbr --remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
       - run: python scripts/market_events.py --store evbr
-      - name: 存回 events 分支（單一 commit，不會越來越大）
+      - name: 存回 events 分支（單一 commit；Mac 同時推送時合併「已通知」紀錄）
         if: always()
-        run: |
-          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          cd evbr && git init -q -b events && git config user.name gha && git config user.email gha@users.noreply.github.com
-          git add -A && git commit -qm "events $(date -u +%Y-%m-%dT%H:%MZ)" && git push -q -f "$REMOTE" events
+        run: python scripts/events_sync.py push --dir evbr --remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"

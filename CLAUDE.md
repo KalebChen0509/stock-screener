@@ -173,11 +173,22 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   NFCI、信用利差、CFNAI、薩姆規則、CPI…）；中日歐＝OECD 官方 API（CLI；歐洲用 G4E 四大國＋德國）＋FRED 少數；各國 PMI＝新聞標題讀數字（同月多數決）。
   轉折規則：CLI 位置×方向（連 2 個月）、殖利率倒掛／解除、初領 ≥ 一年低點×1.2、薩姆 0.5、CFNAI 3 個月 < −0.7、NFCI 0、利差 3 個月 +0.5、PMI 50、燈號換色、年增率翻負（連 2 月）。
   「重大」立刻 Email＋LINE；「注意」與指標公布進每日彙整。資料存 events 分支 `macro_series.csv.gz`、`macro.json`（有版權的 BAA10Y、UMCSENT 不存、網站只顯示狀態）。
-  網站新分頁「總經指標」（#macro，手機在「更多」）。Mac 快速偵測：`scripts/macro_fast.py`＋`scripts/install_macro_fast.sh`（launchd 每 2 分鐘，只在週一～五 08:55-10:35、15:55-17:35、20:25-23:05 連網），
-  寄信用鑰匙圈 stock-mail，LINE（stock-line：token／user_id）、FRED（stock-fred：api_key）選用，由使用者自己輸入。
+  網站新分頁「總經指標」（#macro，手機在「更多」）。
+  ✔ **Mac 當主力（11/07 使用者決定）**：GitHub 的排程實際上 4～7 小時才跑一次（免費方案頻繁排程常被跳過），只當備援。
+  `scripts/mac_events.py`＋`scripts/install_mac_events.sh`（launchd `com.stock-screener.mac-events`，每 2 分鐘叫一次）：每 10 分鐘完整檢查（新聞＋壓力數字＋總經），
+  週一～五 08:55-10:35、15:55-17:35、20:25-23:05 每 2 分鐘只查總經（market_events.run(light=True)），其他時間不連網。
+  每次先下載 events 分支、跑完傳回（`scripts/events_sync.py`，GitHub workflow 也改用它）：--force-with-lease，被搶先就合併對方的 titles／keys／pending／macro 再推 → 兩邊共用「已通知」紀錄，不重複寄。
+  保護：沒成功下載或沒有 state.json 就不上傳。寄信用鑰匙圈 stock-mail；LINE（stock-line：token／user_id）、FRED（stock-fred：api_key）選用，由使用者自己輸入。
+  有版權序列（BAA10Y、UMCSENT）不存數值，狀態記在 state.macro.private 沿用。
   坑：(1) FRED 網頁 CSV 從 Mac 會被切斷（HTTP/2 錯誤），官方 API 可以 → Mac 要用 FRED 金鑰；(2) 國發會 PMI 網站有 Cloudflare 機器人防護（不繞過）→ PMI 用新聞；
-  (3) FRED 的 OECD 歐元區 CLI、日本 CPI、歐元區失業率已停更 → 改 OECD API；HY 利差（ICE）FRED 只給 3 年。
-  待辦：使用者安裝 Mac 快速偵測；等 FRED 歷史進 events 分支後回測領先指標的提前量（`research/macro_signals.py`，還沒寫）。
+  (3) FRED 的 OECD 歐元區 CLI、日本 CPI、歐元區失業率已停更 → 改 OECD API；HY 利差（ICE）FRED 只給 3 年；(4) Mac 沒有 gh 指令。
+  ✔ 回測（11/07，`research/macro_signals.py`；月底判斷、下個月生效、指數不含息、現金 0%；空頭＝跌 20% 起、反彈 20% 止）：
+  台股 1997～2026：永遠持有 5.2%／−64%、只看趨勢 6.4%／−32%、只看國發會領先指標 8.3%／−40%、趨勢且領先 7.6%／−23%（國發會有回溯修正 → 偏樂觀）；
+  領先指標轉差 18 次有 14 次是假警報；8 次空頭約一半在高點之後才轉差（股價本身是構成項目）。OECD CLI（美中日歐）單獨用都不比永遠持有或趨勢好。
+  美股 1990～2026（S&P 500 永遠持有 8.9%／−52.6%、只看趨勢 7.2%／−24.2%）：「趨勢或指標任一好就持有」＝只有趨勢跌破**而且**衰退指標觸發才放現金：
+  薩姆規則 10.4%／−25.6%（前後半都贏）、CFNAI 10.2%／−40.5%、初領失業金 9.5%／−36.4%、NFCI 9.3%／−46.3%。薩姆用即時版（沒有修正問題）最可信；
+  但只有 4 次空頭、測了約 40 組 → 可能是運氣；外部文獻有同樣做法（趨勢＋失業率趨勢）。殖利率曲線、建照、OECD CLI 沒幫助。**尚未改任何設定**，由使用者決定。
+  待辦：使用者安裝 Mac 主力（scripts/install_mac_events.sh）；薩姆＋趨勢是否用在入場／避險（台股要另外驗證）。
 - 11/06 市場事件：加權指數 −4.5% 收 39,701.64（一個月 −20%），國安基金決議第 10 次進場；金管會限空令 11/9 起（借券賣出上限 3%、融券保證金 130%）。
   使用者問怎麼做空：提醒他自己的規則（放空／槓桿先回測＋模擬 3 個月），一般證券帳戶只能買反向 ETF（00632R），可提議在模擬環境練習。
 - 待辦：使用者決定下一步（見對話）；決定真錢怎麼開始投入；階段三（真單、半自動、每筆使用者確認、有勾交易的 Key 要設 IP 限制）。

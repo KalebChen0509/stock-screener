@@ -107,7 +107,7 @@ CATALOG = [
     I("us_loans", "us", "lag", "企業放款", "fred", "BUSLOANS", "yoy", None, "", True, "年增率"),
     I("us_dur", "us", "lag", "平均失業週數", "fred", "UEMPMEAN", "level", None, "", True, "週"),
     I("us_invr", "us", "lag", "存貨銷售比", "fred", "ISRATIO", "level", None, "", True, "倍"),
-    I("us_cclaims", "us", "lag", "續領失業救濟金", "fred", "CCSA", "level", None, "", True, "千人"),
+    I("us_cclaims", "us", "lag", "續領失業救濟金", "fred", "CCSA", "k", None, "", True, "千人"),
     # ---- 中國
     I("cn_cli", "cn", "lead", "OECD 綜合領先指標", "oecd_cli", "CHN", "level", "cli", "重大", True, "100＝長期趨勢"),
     I("cn_pmi", "cn", "lead", "官方製造業 PMI（統計局）", "news", "cn", "level", "level50", "重大", True, "50＝榮枯線"),
@@ -321,6 +321,8 @@ def transform(s: pd.Series, tf: str) -> pd.Series:
         return (s / s.shift(step) - 1).mul(100).dropna()
     if tf == "chg":
         return s.diff().dropna()
+    if tf == "k":
+        return s / 1000
     if tf == "ma4":
         return (s.rolling(4).mean() / 1000).dropna()
     return s
@@ -563,6 +565,7 @@ def evaluate(raw: dict[str, pd.Series], extra: dict, updated: set, state: dict, 
         row = {k2: c[k2] for k2 in ("key", "country", "kind", "name", "unit", "level", "public", "rule", "tf")}
         row.update({"country_name": COUNTRIES[c["country"]], "kind_name": KINDS[c["kind"]], "src": c["src"]})
         if s is None or s.empty:
+            row.update(state.get("private", {}).get(k, {}))      # 有版權、這次沒抓：沿用上次的狀態
             rows.append(row)
             continue
         x = transform(s, c["tf"])
@@ -585,6 +588,8 @@ def evaluate(raw: dict[str, pd.Series], extra: dict, updated: set, state: dict, 
             row["turns"] = [{"date": d.strftime("%Y-%m-%d"), "to": v} for d, v in ch.iloc[-6:].items()]
             if c["rule"] == "light":
                 row["state"] = f"{st.iloc[-1]}燈"
+        if not c["public"]:                                      # 有版權的不存數值，只記狀態（給下次沒抓到時用）
+            state.setdefault("private", {})[k] = {x: row[x] for x in ("date", "state", "turns", "up") if x in row}
         rows.append(row)
 
         prev_last = last.get(k)

@@ -117,6 +117,12 @@ def test_evaluate_baseline_then_turn_then_no_repeat():
     _, rows2 = M.evaluate(raw2, {}, set(), {}, NOW)
     r = next(x for x in rows2 if x["key"] == "us_credit")
     assert r["value"] is None and "spark" not in r
+    st2 = {}
+    M.evaluate({"us_credit": pd.Series(np.r_[np.full(120, 1.5), np.full(30, 2.2)], index=pd.bdate_range("2026-05-01", periods=150))},
+               {}, set(), st2, NOW)
+    _, rows3 = M.evaluate({}, {}, set(), st2, NOW)                         # 下次沒抓到：沿用狀態
+    r3 = next(x for x in rows3 if x["key"] == "us_credit")
+    assert r3["state"] == "擴大" and r3.get("value") is None
 
 
 def test_light_change():
@@ -169,15 +175,19 @@ def test_check_writes_site_and_respects_refresh():
     assert len(http.calls) > n
 
 
-def test_mac_fast_windows():
+def test_mac_windows_and_plan():
     sys.path.insert(0, str(ROOT / "scripts"))
-    import macro_fast as F
+    import mac_events as F
     T = lambda s: pd.Timestamp(s, tz="Asia/Taipei")  # noqa: E731
     assert F.window(T("2026-11-06 21:30")) == ("news", "fred")       # 週五晚上：美國數據
     assert F.window(T("2026-11-02 09:10")) == ("news",)              # 週一早上：台灣／中國 PMI
     assert F.window(T("2026-11-27 16:05")) == ("news", "ndc")        # 月底下午：國發會燈號
     assert F.window(T("2026-11-06 12:00")) is None
     assert F.window(T("2026-11-07 21:30")) is None                   # 週六不檢查
+    assert F.plan(T("2026-11-06 21:30"), None) == ("full", None)                         # 第一次：完整
+    assert F.plan(T("2026-11-06 21:30"), "2026-11-06 21:28:00") == ("light", ("news", "fred"))
+    assert F.plan(T("2026-11-06 21:39"), "2026-11-06 21:28:00") == ("full", None)        # 滿 10 分鐘
+    assert F.plan(T("2026-11-06 12:04"), "2026-11-06 12:00:00") == (None, None)          # 非公布時段：等下一次完整
 
 
 if __name__ == "__main__":

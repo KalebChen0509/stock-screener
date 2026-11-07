@@ -322,41 +322,47 @@ def notify(majors: list[dict], digest: list[dict], pages_url: str = "", send=Non
     return sent
 
 
-def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, pages_url: str = "", macro=True) -> dict:
+def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, pages_url: str = "", macro=True,
+        light: bool = False) -> dict:
     """完整流程（workflow 每 30 分鐘跑一次）。store＝events 分支的資料夾。
-    macro：True＝也檢查總經指標；False＝不檢查（測試用）；dict＝傳給 macro_ind.check 的參數（例如假的 http）。"""
+    macro：True＝也檢查總經指標；False＝不檢查（測試用）；dict＝傳給 macro_ind.check 的參數（例如假的 http）。
+    light：只檢查總經指標（Mac 在指標公布時段每 2 分鐘用；新聞主題與市場壓力數字照常每 10 分鐘）。"""
     store = Path(store)
     store.mkdir(parents=True, exist_ok=True)
     now = pd.Timestamp(now).tz_localize(TZ) if now is not None and pd.Timestamp(now).tz is None else (pd.Timestamp(now) if now is not None else pd.Timestamp.now(tz=TZ))
     sp = store / "state.json"
     state = json.loads(sp.read_text()) if sp.exists() else {}
     first_run = not sp.exists()
-    evs = news_events(now, fetch=fetch_news)
+    evs = [] if light else news_events(now, fetch=fetch_news)
     reading = {}
-    try:
-        if px is None:
-            px = price_history(["^TWII", "^GSPC", "^VIX", "TWD=X"])
-            try:                                        # 台股指數以證交所官方收盤為準，Yahoo 只補今天盤中
-                off = twse_taiex(state, now)
-                if len(off):
-                    px = px.reindex(px.index.union(off.index))
-                    px["^TWII"] = off.reindex(px.index).combine_first(px["^TWII"])
-            except Exception as e:  # noqa
-                log.warning("twse taiex failed: %s", e)
-        if flows is None:
-            flows = {}
-            for back in range(0, 6):                    # 最近一個有資料的交易日（收盤後約 15:00 才有）
-                d = (now - pd.Timedelta(days=back)).tz_localize(None).normalize()
-                if d.weekday() >= 5:
-                    continue
-                f = twse_flows(d)
-                if f.get("foreign_net") is not None:
-                    flows = {**f, "date": d.strftime("%Y-%m-%d")}
-                    break
-        sev, reading = stress_events(now, px, flows, state)
-        evs += sev
-    except Exception as e:  # noqa
-        log.warning("market stress failed: %s", e)
+    if light:                                           # 沿用上一次完整檢查的壓力讀數（網站要顯示）
+        mp = store / "market_events.json"
+        reading = json.loads(mp.read_text()).get("reading", {}) if mp.exists() else {}
+    else:
+        try:
+            if px is None:
+                px = price_history(["^TWII", "^GSPC", "^VIX", "TWD=X"])
+                try:                                        # 台股指數以證交所官方收盤為準，Yahoo 只補今天盤中
+                    off = twse_taiex(state, now)
+                    if len(off):
+                        px = px.reindex(px.index.union(off.index))
+                        px["^TWII"] = off.reindex(px.index).combine_first(px["^TWII"])
+                except Exception as e:  # noqa
+                    log.warning("twse taiex failed: %s", e)
+            if flows is None:
+                flows = {}
+                for back in range(0, 6):                    # 最近一個有資料的交易日（收盤後約 15:00 才有）
+                    d = (now - pd.Timedelta(days=back)).tz_localize(None).normalize()
+                    if d.weekday() >= 5:
+                        continue
+                    f = twse_flows(d)
+                    if f.get("foreign_net") is not None:
+                        flows = {**f, "date": d.strftime("%Y-%m-%d")}
+                        break
+            sev, reading = stress_events(now, px, flows, state)
+            evs += sev
+        except Exception as e:  # noqa
+            log.warning("market stress failed: %s", e)
     if macro:                                           # 總經指標（領先／同時／落後）轉折訊號
         try:
             from . import macro_ind
