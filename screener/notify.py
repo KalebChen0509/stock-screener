@@ -12,8 +12,9 @@ from .common import log
 
 
 def send_line(text: str) -> bool:
-    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
-    to = os.environ.get("LINE_USER_ID")
+    # 跟 Email 一樣清掉複製時夾帶的空白、換行、看不見的字元（2026/11/07 前沒清，貼上時多一個換行就會 401）
+    token = _clean(os.environ.get("LINE_CHANNEL_ACCESS_TOKEN"), drop_spaces=True)
+    to = _clean(os.environ.get("LINE_USER_ID"), drop_spaces=True)
     if not token or not to:
         log.info("LINE not configured; skip")
         return False
@@ -24,6 +25,13 @@ def send_line(text: str) -> bool:
                       timeout=30)
     if r.status_code != 200:
         log.warning("LINE push failed %s %s", r.status_code, r.text[:300])
+        # 只印長度與格式，不印內容
+        if r.status_code == 401:
+            log.warning("LINE 權杖長度 %d 字元%s。要用 Messaging API 分頁最下面「Channel access token (long-lived)」（約 170 多字元）；"
+                        "32 字元的是 Basic settings 的 Channel secret，貼錯了。", len(token), "（含非英數字元）" if _non_ascii(token) else "")
+        if r.status_code == 400:
+            log.warning("LINE 使用者 ID 長度 %d、%s U 開頭（應該是 Basic settings 的 Your user ID：U 開頭、33 字元）",
+                        len(to), "是" if to.startswith("U") else "不是")
         return False
     return True
 
