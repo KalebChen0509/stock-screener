@@ -332,3 +332,8 @@ a.chip { text-decoration: none; display: inline-block; }
 .mc-sp .thr { stroke: var(--text-2); stroke-dasharray: 3 3; stroke-width: 1; opacity: .6; vector-effect: non-scaling-stroke; }
 .pill.okp { color: var(--good-ink); border-color: currentColor; }
 .mc-seg { border-radius: 16px; }
+
+/* ---- AI 研究提示詞 */
+.ai-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }
+.ai-row .hint { font-size: 12px; }
+.ai-text { width: 100%; box-sizing: border-box; min-height: 220px; font: 12px/1.5 ui-monospace, monospace; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }

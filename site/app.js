@@ -742,6 +742,99 @@ function renderEtf() {
   $$("#etfTable tr.clickable").forEach((tr) => (tr.onclick = () => openDetail("etf", tr.dataset.id)));
 }
 
+// ---------------------------------------------------------------- AI 研究提示詞（複製後貼到 Claude App）
+// 只做三件事：排雷、反推估值、失效條件與追蹤。數字全部來自系統（附資料日期），沒有的寫「系統沒有」，
+// 不讓 AI 憑記憶補數字、不給買賣結論。2026-11-08 使用者決定（刪掉角色扮演、DCF 合理價、護城河打分、長期預測、買賣建議）。
+function aiPrompt(mkt, id, row, d) {
+  const NA = "系統沒有";
+  const tw = mkt === "tw";
+  const pct = (v, dd = 1) => (v == null || !isFinite(v) ? NA : (v * 100).toFixed(dd) + "%");
+  const num = (v, dd = 2, unit = "") => (v == null || !isFinite(v) ? NA : (+v).toFixed(dd) + unit);
+  // 隱含成長率的計算範圍是 −10%～+40%（screener/valuation.implied_growth），碰到邊界要講清楚
+  const ig = (g) => (g == null || !isFinite(g) ? NA : g <= -0.0999 ? "−10% 以下（已到計算範圍下限：目前價格隱含的期待非常低）"
+    : g >= 0.3999 ? "40% 以上（已到計算範圍上限：目前價格隱含的期待非常高）" : pct(g));
+  const money = (v) => (v == null || !isFinite(v) ? NA : tw ? `${(v / 1e8).toLocaleString(undefined, { maximumFractionDigits: 1 })} 億元` : `${(v / 1e8).toLocaleString(undefined, { maximumFractionDigits: 1 })} 億美元`);
+  const r = row || {}, v = (d && d.valuation) || r;
+  const z = zhInfo(mkt, id, r.name || (d && d.name) || "");
+  const asof = (S.meta && S.meta.updated) || NA, pe = r.period_end || NA;
+  const L = [];
+  L.push(`請幫我研究這檔股票：${id} ${z.n || ""}（${tw ? "台股" : "美股"}${r.industry ? "，產業：" + r.industry : ""}）`);
+  L.push("", "以下數字來自我的選股系統（免費公開資料整理），請以這些數字為準：");
+  L.push(`【股價與估值】資料日期 ${asof}`);
+  L.push(`- 收盤價 ${num(r.close, 2, tw ? " 元" : " 美元")}；市值 ${money(r.market_cap)}`);
+  L.push(`- 本益比 ${num(r.pe, 1)}；股價淨值比 ${num(r.pb, 2)}；自由現金流殖利率 ${pct(r.fcf_yield)}；EV/EBITDA ${num(r.ev_ebitda, 1)}`);
+  L.push(`【財務】近四季合計，財報期別截至 ${pe}`);
+  L.push(`- 營收 ${money(r.revenue)}；稅後淨利 ${money(r.net_income)}；營業現金流 ${money(r.cfo)}；自由現金流 ${money(r.fcf)}`);
+  L.push(`- 毛利率 ${pct(r.gross_margin)}（近 3 年平均 ${pct(r.gross_margin_avg3y)}）；營益率 ${pct(r.op_margin)}（近 3 年平均 ${pct(r.op_margin_avg3y)}）`);
+  L.push(`- 業外收益占稅前淨利 ${pct(r.nonop_share)}；營業現金流÷淨利 ${num(r.cfo_to_ni, 2, " 倍")}；自由現金流÷淨利 ${num(r.fcf_to_ni, 2, " 倍")}`);
+  L.push(`- ROE ${pct(r.roe)}（近 5 年平均 ${pct(r.roe_avg5y)}）；權益比 ${pct(r.equity_ratio)}；流動比 ${num(r.current_ratio, 2, " 倍")}；利息保障倍數 ${num(r.int_cover, 1, " 倍")}`);
+  L.push(`- 存貨÷資產 ${pct(r.inventory_ratio)}；股本一年變化 ${pct(r.share_growth)}${tw ? `；大股東質押比 ${pct(r.pledge_ratio)}` : `；股票酬勞 ${money(r.sbc)}`}`);
+  L.push(`- 近 3 年營收年成長 ${pct(r.revenue_cagr_3y)}${tw ? `；近 3 個月營收年增 ${pct(r.rev_yoy_3m)}` : ""}`);
+  const qs = d && d.quarters ? d.quarters.slice(-8) : [];
+  if (qs.length) {
+    L.push(`【單季趨勢】（營收、淨利、營業現金流單位同上；毛利率／營益率為近四季）`);
+    qs.forEach((q) => L.push(`- ${q.q}：營收 ${money(q.revenue)}、淨利 ${money(q.net_income)}、營業現金流 ${money(q.cfo)}、毛利率 ${pct(q.gm)}、營益率 ${pct(q.om)}`));
+  } else L.push(`【單季趨勢】${NA}`);
+  L.push(`【市場隱含成長率】`);
+  if (v.implied_g == null || !isFinite(v.implied_g))
+    L.push(`- 以目前市值反推的成長率：${NA}（自由現金流為負或資料不足，沒辦法反推）`);
+  else L.push(`- 以目前市值反推：未來 5 年自由現金流每年要成長 ${ig(v.implied_g)}，現金流折現值才會等於現在的市值`);
+  L.push(`- 對照：過去 3 年營收年成長 ${pct(v.hist_g)}；計算用的要求報酬率 ${pct(v.r_e)}（β ${v.beta == null ? NA : num(v.beta)}）`);
+  if (!tw) {
+    const E = S.est && S.est.rows ? S.est.rows[id] : null;
+    if (E) {
+      const la = E.last || {};
+      L.push(`【分析師預估】Yahoo Finance，資料日期 ${E.asof || NA}`);
+      L.push(`- 今年 EPS 預估 ${num(E.eps_y)}、明年 ${num(E.eps_ny)}（明年成長 ${pct(E.eps_ny_growth, 0)}），${E.n || "?"} 位分析師`);
+      if (la.actual != null) L.push(`- 上次財報 ${la.date}：EPS 實際 ${num(la.actual)} vs 預估 ${num(la.est)}（差 ${pct(la.surprise)}）`);
+    } else L.push(`【分析師預估】${NA}`);
+  }
+  const flags = ((S.meta || {}).quality_flags || {})[`${mkt}:${id}`];
+  if (flags && flags.length) L.push(`【系統的資料品質提醒】${flags.join("、")}（這些數字可能不準）`);
+  if (r.event_flags) L.push(`【系統偵測到的事件】${r.event_flags}`);
+  L.push("", "請只做下面三件事：");
+  L.push("一、排雷：逐項檢查，每項標「有疑慮／沒看到疑慮／資料不足」，並寫出是根據哪個數字或哪個來源判斷：");
+  L.push("  1. 一次性收益：獲利是不是靠業外、處分資產或單次事件撐起來（看業外占比、淨利和營業現金流的落差）");
+  L.push("  2. 客戶或產品集中：營收是否高度依賴少數客戶或單一產品");
+  L.push("  3. 會計疑點：營業現金流長期低於淨利、存貨或應收帳款增加得比營收快、費用資本化等");
+  L.push(`  4. ${tw ? "大股東質押、" : ""}股本稀釋${tw ? "" : "、股票酬勞過高"}`);
+  L.push("  5. 產業逆風：景氣循環位置、價格戰、法規或技術替代");
+  L.push("二、反推估值：上面「市場隱含成長率」是以目前市值反推的。請判斷這個成長率對這家公司、這個產業合不合理，");
+  L.push("  要達成需要哪些條件，跟過去表現比是偏樂觀還是偏保守。如果系統沒有這個數字，改看本益比相對過去成長與 EPS 預估是否合理。");
+  L.push("  不要自己另外算合理價或目標價。");
+  L.push("三、失效條件與追蹤：列出 3 個「一旦發生就代表持有理由失效」的具體情況（要能用數字檢查），");
+  L.push("  以及下一季財報最該看的 2～3 個數字、大概什麼程度算轉壞。");
+  L.push("", "規則：");
+  L.push("- 只用上面提供的數字；沒有提供的寫「資料不足」，不要估計、不要憑記憶補數字。");
+  L.push("- 如果你可以上網查（例如客戶集中度、法說會內容），每一項都附來源網址與日期；查不到就說查不到。");
+  L.push("- 不要給買進、賣出、持有建議，也不要給目標價或評分。");
+  L.push("- 用繁體中文、簡單易懂（我是投資初學者），重點用條列。");
+  L.push("- 最後一句寫：「以上是研究整理，不是投資建議。」");
+  return L.join("\n");
+}
+function aiPromptBtn() {
+  return `<p class="ai-row"><button type="button" class="ai-btn" id="aiBtn">📋 複製 AI 研究提示詞</button><span class="hint" id="aiMsg">貼到 Claude App：排雷、反推估值、失效條件（數字來自系統）</span></p><div id="aiBox" hidden></div>`;
+}
+function bindAiPrompt(mkt, id, row, d) {
+  const b = $("#aiBtn");
+  if (!b) return;
+  b.onclick = async () => {
+    const text = aiPrompt(mkt, id, row, d), msg = $("#aiMsg");
+    try {
+      await navigator.clipboard.writeText(text);
+      msg.textContent = "✔ 已複製，打開 Claude App 貼上就可以";
+      msg.classList.add("ok");
+    } catch (e) {        // 有些瀏覽器不允許直接複製：改顯示文字框讓使用者自己全選複製
+      const box = $("#aiBox");
+      box.hidden = false;
+      box.innerHTML = `<p class="hint">這個瀏覽器不允許自動複製，請長按下面的文字 →「全選」→「拷貝」：</p><textarea class="ai-text" readonly>${esc(text)}</textarea>`;
+      const ta = $("textarea", box);
+      ta.focus(); ta.select();
+      msg.textContent = "";
+    }
+  };
+}
+
 // ---------------------------------------------------------------- 詳情
 async function openDetail(mkt, id) {
   if (mkt !== "etf") S.curMkt = mkt;
@@ -751,7 +844,7 @@ async function openDetail(mkt, id) {
   $("#dBody").innerHTML = `<p class="hint">載入中…</p>`;
   dlg.showModal();
   const d = await getJSON(`data/detail/${mkt}/${encodeURIComponent(id)}.json`, true);
-  let html = extLinks(mkt, id);
+  let html = extLinks(mkt, id) + (mkt !== "etf" ? aiPromptBtn() : "");
   if (row && mkt !== "etf") {
     html += `<div class="tiles">${[["綜合分數", row.score != null ? row.score.toFixed(1) : "未通過"], ["本益比", fmt.x(row.pe)], ["P/B", fmt.x(row.pb, 2)], ["FCF 殖利率", fmt.pct(row.fcf_yield)], ["市值", fmt.money(row.market_cap, mkt)], ["產業", esc(row.industry)]].map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:18px">${v}</div></div>`).join("")}</div>`;
     html += qualityNote(mkt, id);
@@ -789,6 +882,7 @@ async function openDetail(mkt, id) {
     }
   }
   $("#dBody").innerHTML = html;
+  if (mkt !== "etf") bindAiPrompt(mkt, id, row, d);
   destroyChart("dPrice"); destroyChart("dCf"); destroyChart("dMg");
   const kdoc = await KC.load(mkt, id);
   if (S.dkc) { S.dkc.destroy(); S.dkc = null; }
