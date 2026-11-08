@@ -31,6 +31,7 @@ SCREENER_CACHE=/tmp/databr/cache .venv/bin/python research/factor_data.py
 | `tw_survivorship.py` | 台股含／不含下市公司 | 偏差 ≤1.3%／年、方向不一（11/05） |
 | `us_surv.py` → `us_surv2.py` | 美股抽樣下市股（Tiingo）加權 | 全部可選股沒有偏差；動能越極端偏差越大（前 5% 約 +7%／年，集中在 2016～2021）（11/06，350/450 檔） |
 | `chips_factors.py` | 籌碼（法人、融資券）選股與大盤入場條件 | 籌碼不適合選股；入場加外資條件反而更差（11/07） |
+| `sahm_tw.py` | 「趨勢＋衰退指標（薩姆、CFNAI、初領）」用在台股 | 沒有用：台股空頭跟科技循環、比美國就業早崩（11/08） |
 | `macro_signals.py` | 總經轉折訊號：月底進出場＋大跌前有沒有預警（國發會、OECD、FRED） | 見 CLAUDE.md「總經指標」（11/07）；國發會／OECD 有回溯修正 → 偏樂觀 |
 
 ## 已知的坑
