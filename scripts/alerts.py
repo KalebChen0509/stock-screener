@@ -1,4 +1,4 @@
-"""盤中提醒（GitHub Actions 每 30 分鐘執行）：讀網站上的持股與合理價、data 分支的買進價，抓 Yahoo 報價後檢查。"""
+"""盤中提醒（主力：Mac 的 scripts/mac_events.py 盤中每 5 分鐘；備援：GitHub Actions）：讀網站上的持股與合理價、data 分支的買進價，抓 Yahoo 報價後檢查。"""
 import json
 import os
 import sys
@@ -49,11 +49,11 @@ def session(mkt: str, sid: str) -> str:
     return "tw" if str(sid).endswith((".TW", ".TWO")) else "us"
 
 
-def load_levels(cfg: dict) -> dict:
+def load_levels(cfg: dict, local: bool = True) -> dict:
     """自己設的價位：config/alert_levels.yaml（網站「🔔 提醒」產生）＋ alerts.yaml 的 levels。"""
     out = {m: dict(((cfg.get("levels") or {}).get(m) or {})) for m in ("tw", "us", "etf")}
     p = ROOT / "config" / "alert_levels.yaml"
-    if p.exists():
+    if local and p.exists():
         try:
             extra = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
             for m in ("tw", "us", "etf"):
@@ -96,35 +96,83 @@ def build_watch(cfg, port, state, stocks, positions, watch) -> list[dict]:
     return list(items.values())
 
 
-def main():
-    cfg = yaml.safe_load((ROOT / "config" / "alerts.yaml").read_text(encoding="utf-8")) or {}
+RAW_MAIN = "https://raw.githubusercontent.com/{repo}/main/{path}"
+
+
+def read_config(name: str, remote_repo: str | None):
+    """config/ 底下的 YAML。remote_repo 有值（Mac）→ 讀 GitHub 上最新版（網站「🔔 提醒」改的是 GitHub 上的檔案，Mac 本機可能是舊的）。"""
+    if remote_repo:
+        try:
+            r = requests.get(RAW_MAIN.format(repo=remote_repo, path=f"config/{name}"), timeout=30,
+                             headers={"Cache-Control": "no-cache"})
+            if r.status_code == 200:
+                return yaml.safe_load(r.text) or {}
+            if r.status_code == 404:
+                return {}
+        except Exception as e:  # noqa
+            log.warning("讀 GitHub 上的 %s 失敗，改用本機：%s", name, e)
+    p = ROOT / "config" / name
+    return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) if p.exists() else {}
+
+
+def run(state_path: Path = STATE, site: str = "", repo: str = "", force: bool = False, now=None,
+        remote_config: bool = False, send=None, download=None) -> dict:
+    """檢查一次。state_path＝「今天已提醒」紀錄（Mac 與 GitHub 共用 events 分支的 alerts_state.json）。
+    remote_config：設定檔讀 GitHub 上最新版（Mac 用）。send(subject, text)：預設 Email＋LINE（scope=alerts）。"""
+    state_path = Path(state_path)
+    cfg = read_config("alerts.yaml", repo if remote_config else None)
     if not cfg.get("enabled", True):
-        return
-    now = pd.Timestamp.now(tz="UTC")
-    force = os.environ.get("ALERTS_FORCE") == "1"
+        return {"skipped": "disabled"}
+    now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now).tz_convert("UTC")
     open_mkts = {m for m in ("tw", "us") if force or A.market_open(m, now)}
     if not open_mkts:
         log.info("no market open at %s", now)
-        return
-    site = os.environ.get("PAGES_URL", "").rstrip("/")
-    repo = os.environ.get("GITHUB_REPOSITORY", "")
+        return {"skipped": "closed"}
+    site = site.rstrip("/")
     port = get_json(f"{site}/data/portfolio.json") if site else None
     stocks = {m: rows(get_json(f"{site}/data/stocks_{m}.json")) for m in ("tw", "us")} if site else {}
     state = get_json(f"https://raw.githubusercontent.com/{repo}/data/cache/notify_state.json") if repo else None
-    pos_p = ROOT / "config" / "positions.yaml"
-    positions = yaml.safe_load(pos_p.read_text(encoding="utf-8")) if pos_p.exists() else {}
+    positions = read_config("positions.yaml", repo if remote_config else None)
     positions = {m: {str(k): v for k, v in ((positions or {}).get(m) or {}).items()} for m in ("tw", "us")}
-    cfg = {**cfg, "levels": load_levels(cfg)}
+    levels = load_levels(cfg, local=not remote_config)
+    if remote_config:                                   # 網站「🔔 提醒」的價位：用 GitHub 上最新版
+        extra = read_config("alert_levels.yaml", repo)
+        for m in ("tw", "us", "etf"):
+            levels[m].update({str(k): v for k, v in (extra.get(m) or {}).items()})
+    cfg = {**cfg, "levels": levels}
     watch = [w for w in build_watch(cfg, port, state, stocks, positions, load_watchlist()) if w["sess"] in open_mkts]
     if not watch:
         log.info("nothing to watch")
-        return
-    import yfinance as yf
+        return {"checked": 0, "hits": 0, "new": 0}
     # 台股不知道是上市（.TW）還是上櫃（.TWO）時兩個都抓，哪個有資料用哪個
     for w in watch:
         if w["mkt"] == "tw" and w["yahoo"].endswith(".TW") and not w.get("known"):
             w["alt"] = w["yahoo"][:-3] + ".TWO"
     tick = sorted({w["yahoo"] for w in watch} | {w["alt"] for w in watch if w.get("alt")})
+    bars = (download or yahoo_bars)(tick)
+    for w in watch:
+        if w.get("alt") and (w["yahoo"] not in bars or len(bars[w["yahoo"]]) < 2) and w["alt"] in bars:
+            w["yahoo"] = w["alt"]
+    hits = A.check(watch, bars, cfg)
+    today = now.tz_convert("Asia/Taipei").strftime("%Y-%m-%d")
+    st = json.loads(state_path.read_text()) if state_path.exists() else {}
+    fresh, st = A.new_only(hits, st, today)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(st))
+    log.info("alerts: %d checked, %d hits, %d new", len(watch), len(hits), len(fresh))
+    sent = None
+    if fresh:
+        body = "\n".join(a["text"] for a in fresh)
+        body += "\n\n報價來自 Yahoo，約延遲 15～20 分鐘；只是提醒，不會下單。" + (f"\n網站：{site}/" if site else "")
+        t_local = now.tz_convert("Asia/Taipei").strftime("%H:%M")
+        subj = f"盤中提醒 {t_local}（台北）：{len(fresh)} 則"
+        sent = send(subj, body) if send else notify(subj, body, scope="alerts")
+        log.info("notify %s", sent)
+    return {"checked": len(watch), "hits": len(hits), "new": len(fresh), "sent": sent}
+
+
+def yahoo_bars(tick: list[str]) -> dict:
+    import yfinance as yf
     raw = yf.download(tick, period="6mo", interval="1d", group_by="ticker", auto_adjust=False, progress=False, threads=True)
     bars = {}
     for t in tick:
@@ -133,23 +181,12 @@ def main():
             bars[t] = sub.rename(columns=str.lower)[["open", "high", "low", "close"]].dropna()
         except Exception:  # noqa
             continue
-    for w in watch:
-        if w.get("alt") and (w["yahoo"] not in bars or len(bars[w["yahoo"]]) < 2) and w["alt"] in bars:
-            w["yahoo"] = w["alt"]
-    hits = A.check(watch, bars, cfg)
-    today = now.tz_convert("Asia/Taipei").strftime("%Y-%m-%d")
-    st = json.loads(STATE.read_text()) if STATE.exists() else {}
-    fresh, st = A.new_only(hits, st, today)
-    STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps(st))
-    log.info("alerts: %d checked, %d hits, %d new", len(watch), len(hits), len(fresh))
-    if fresh:
-        body = "\n".join(a["text"] for a in fresh)
-        body += "\n\n報價來自 Yahoo，約延遲 15～20 分鐘；只是提醒，不會下單。" + (f"\n網站：{site}/" if site else "")
-        t_local = now.tz_convert("Asia/Taipei").strftime("%H:%M")
-        print(body)
-        r = notify(f"盤中提醒 {t_local}（台北）：{len(fresh)} 則", body, scope="alerts")
-        log.info("notify %s", r)
+    return bars
+
+
+def main():
+    print(run(STATE, site=os.environ.get("PAGES_URL", ""), repo=os.environ.get("GITHUB_REPOSITORY", ""),
+              force=os.environ.get("ALERTS_FORCE") == "1"))
 
 
 if __name__ == "__main__":

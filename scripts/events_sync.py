@@ -1,4 +1,4 @@
-"""events 分支（市場事件、總經指標的紀錄）的下載與上傳：Mac 常駐程式和 GitHub workflow 共用。
+"""events 分支（市場事件、總經指標、盤中提醒的紀錄）的下載與上傳：Mac 常駐程式和 GitHub workflow 共用。
 
     python scripts/events_sync.py pull --dir evbr [--remote URL]
     python scripts/events_sync.py push --dir evbr [--remote URL]
@@ -112,6 +112,15 @@ def merge_state(ours: dict, theirs: dict) -> dict:
     return m
 
 
+def merge_alerts(ours: dict, theirs: dict) -> dict:
+    """盤中提醒「今天已提醒」：{日期: [key…]}，只留最新的一天；同一天取聯集（兩邊寄過的都不再寄）。"""
+    days = sorted(set(ours) | set(theirs))
+    if not days:
+        return {}
+    d = days[-1]
+    return {d: sorted(set(ours.get(d, [])) | set(theirs.get(d, [])))}
+
+
 def merge_dir(d: Path, sha: str) -> None:
     """把遠端 sha 版本的 state.json、events.csv 合併進本機資料夾 d。"""
     tmp = Path(tempfile.mkdtemp(prefix="evsync_"))
@@ -121,6 +130,10 @@ def merge_dir(d: Path, sha: str) -> None:
         if tp.exists():
             ours = json.loads(sp.read_text()) if sp.exists() else {}
             sp.write_text(json.dumps(merge_state(ours, json.loads(tp.read_text())), ensure_ascii=False))
+        ap, ta = d / "alerts_state.json", tmp / "alerts_state.json"
+        if ta.exists():
+            ours = json.loads(ap.read_text()) if ap.exists() else {}
+            ap.write_text(json.dumps(merge_alerts(ours, json.loads(ta.read_text()))))
         ep, te = d / "events.csv", tmp / "events.csv"
         if te.exists():
             frames = [pd.read_csv(te)] + ([pd.read_csv(ep)] if ep.exists() else [])

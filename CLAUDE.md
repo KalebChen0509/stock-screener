@@ -27,7 +27,7 @@
 | `tests/` | `python -m tests.test_xxx` 執行，不需 pytest、不需網路 |
 | `data` 分支 | Actions 產生的快取，不要手動改 |
 
-GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回填（每 6 小時）、盤中提醒（每 30 分鐘）、**市場事件偵測＋總經指標（每 30 分鐘、全天候）**、回測與除錯（手動）。
+GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回填（每 6 小時）、盤中提醒、市場事件偵測＋總經指標（GitHub 只當備援：免費排程常被跳過；**主力在 Mac 的 scripts/mac_events.py**）、回測與除錯（手動）。
 
 ## 怎麼改、怎麼推
 
@@ -210,6 +210,12 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   ✔ 加碼用法（11/09，`research/margin_dca.py`，規則事先寫死）：(1) 每月 1 萬：留一半當預備金、<150 才買 XIRR 18.2% vs 每月全買 18.6%（前後半都輸）→ 留錢等恐慌不划算；
   (2) 100 萬分 6 個月、期間 <150 就把剩下的一次買：有觸發的起點 65% 贏、平均 +1.1%（第 24 個月），最好 +15%（2022-11）、最差 −8.1%（2018-10）；全部起點平均只 +0.3%。
   結論：沒有實質優勢，不建議加進投入規則（維持第 5 條等額分 6 個月）。
+- ✔ 盤中提醒搬到 Mac（11/09）：GitHub「盤中提醒」設定每 30 分鐘，實際 11/6～11/7 只跑 4 次、11/9 盤中 0 次。
+  `scripts/alerts.py` 改成 `run(state_path, site, repo, remote_config, send, download)`；`scripts/mac_events.py` 在台股（09:00～13:40）或美股開盤時每 5 分鐘呼叫（`alerts_due`），
+  設定檔（alerts.yaml、alert_levels.yaml、positions.yaml）從 GitHub 上最新版讀（網站🔔改的是 GitHub 上的檔案；remote 模式不讀本機舊檔）。
+  「今天已提醒」存在 events 分支 `alerts_state.json`：Mac 與 GitHub alerts.yml（改用 events_sync，不再用 actions/cache）共用；`events_sync.merge_alerts` 同一天取聯集。
+  有新提醒才上傳。LINE：scope=alerts，Mac 沒設 LINE_FOR → 預設只有 events 發 LINE，提醒只寄 Email。手動測試：`.venv/bin/python scripts/mac_events.py --alerts`（會真的寄）。
+  11/09 11:35 第一次在 Mac 實際執行：檢查 10 檔、寄出 6 則、上傳 ✔。報價仍是 Yahoo（台股約延遲 15～20 分鐘）；永豐即時報價是選項，使用者還沒決定。`tests/test_mac_alerts.py`。
 - 11/06 市場事件：加權指數 −4.5% 收 39,701.64（一個月 −20%），國安基金決議第 10 次進場；金管會限空令 11/9 起（借券賣出上限 3%、融券保證金 130%）。
   使用者問怎麼做空：提醒他自己的規則（放空／槓桿先回測＋模擬 3 個月），一般證券帳戶只能買反向 ETF（00632R），可提議在模擬環境練習。
 - 待辦：使用者決定下一步（見對話）；決定真錢怎麼開始投入；階段三（真單、半自動、每筆使用者確認、有勾交易的 Key 要設 IP 限制）。

@@ -2,6 +2,7 @@
 
 由 launchd 每 2 分鐘叫一次（安裝：bash scripts/install_mac_events.sh）：
     每 10 分鐘   完整檢查（15 個新聞主題、市場壓力數字、總經指標）
+    盤中         每 5 分鐘檢查盤中提醒（停損線、🔔 自訂價位、合理價、均線／KD；台股 09:00～13:40、美股開盤時段）
     公布時段     每 2 分鐘只檢查總經指標（台北時間，週一～五）
                  08:55～10:35  台灣 PMI（中經院）、中國官方 PMI
                  15:55～17:35  國發會景氣燈號（月底前後）、日本／歐元區 PMI
@@ -34,7 +35,9 @@ HOME = Path.home() / ".stock-screener"
 EVBR = HOME / "evbr"
 RUN_STATE = HOME / "mac_events.json"
 PAGES = "https://kalebchen0509.github.io/stock-screener"
+REPO = "KalebChen0509/stock-screener"
 FULL_EVERY_MIN = 10
+ALERTS_EVERY_MIN = 5            # 盤中提醒（台股 09:00～13:40、美股開盤時段）
 WINDOWS = [((8, 55), (10, 35), ("news",)), ((15, 55), (17, 35), ("news", "ndc")), ((20, 25), (23, 5), ("news", "fred"))]
 FAST_FRED = {"us_claims", "us_cfnai", "us_sahm", "us_nfci"}     # 公布時段只抓這幾個「重大」等級的美國數據
 
@@ -75,9 +78,18 @@ def plan(now: pd.Timestamp, last_full: str | None, force_full: bool = False):
     return ("light", w) if w else (None, None)
 
 
+def alerts_due(now: pd.Timestamp, last: str | None) -> bool:
+    """台股或美股開盤中，而且距離上次盤中提醒檢查 ≥ 5 分鐘。"""
+    from screener.alerts import market_open
+    if not any(market_open(m, now.tz_convert("UTC")) for m in ("tw", "us")):
+        return False
+    return last is None or (now.tz_localize(None) - pd.Timestamp(last)) >= pd.Timedelta(minutes=ALERTS_EVERY_MIN - 0.5)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--full", action="store_true", help="立刻做一次完整檢查")
+    ap.add_argument("--alerts", action="store_true", help="不管有沒有開盤，立刻檢查一次盤中提醒（測試用，會真的寄出）")
     args = ap.parse_args(argv)
     HOME.mkdir(parents=True, exist_ok=True)
     lock = open(HOME / "mac_events.lock", "w")
@@ -88,7 +100,8 @@ def main(argv=None):
     now = pd.Timestamp.now(tz="Asia/Taipei")
     rs = json.loads(RUN_STATE.read_text()) if RUN_STATE.exists() else {}
     mode, win = plan(now, rs.get("last_full"), args.full)
-    if mode is None:
+    check_alerts = args.alerts or alerts_due(now, rs.get("last_alerts"))
+    if mode is None and not check_alerts:
         return 0
 
     import events_sync
@@ -106,15 +119,28 @@ def main(argv=None):
     except Exception as e:  # noqa  （網路斷線、剛從睡眠醒來）
         print(f"{now:%m-%d %H:%M} 下載 events 失敗：{str(e)[:120]}", flush=True)
         return 0
-    res = market_events.run(EVBR, pages_url=PAGES, macro=macro, light=(mode == "light"))
+    msg = [f"{now:%m-%d %H:%M}"]
+    res = {}
+    if mode:
+        res = market_events.run(EVBR, pages_url=PAGES, macro=macro, light=(mode == "light"))
+        msg.append(f"{mode} {','.join(macro['sources'])}：新事件 {res.get('new_events')}、重大 {res.get('majors')}、寄出 {res.get('sent')}")
+    ares = {}
+    if check_alerts:
+        import alerts                                   # scripts/alerts.py；「今天已提醒」跟 GitHub 共用 events 分支
+        try:
+            ares = alerts.run(EVBR / "alerts_state.json", site=PAGES, repo=REPO, force=args.alerts, remote_config=True)
+        except Exception as e:  # noqa
+            ares = {"error": str(e)[:120]}
+        rs["last_alerts"] = now.tz_localize(None).strftime("%Y-%m-%d %H:%M:%S")
+        msg.append(f"盤中提醒：{ares}")
     pushed = None
-    if mode == "full" or res.get("new_events"):
+    if mode == "full" or res.get("new_events") or ares.get("new"):
         pushed = events_sync.push(EVBR)
+        msg.append(f"上傳 {'✔' if pushed else '✘'}")
     if mode == "full":
         rs["last_full"] = now.tz_localize(None).strftime("%Y-%m-%d %H:%M:%S")
-        RUN_STATE.write_text(json.dumps(rs))
-    print(f"{now:%m-%d %H:%M} {mode} {','.join(macro['sources'])}：新事件 {res.get('new_events')}、重大 {res.get('majors')}、"
-          f"寄出 {res.get('sent')}" + ("" if pushed is None else f"、上傳 {'✔' if pushed else '✘'}"), flush=True)
+    RUN_STATE.write_text(json.dumps(rs))
+    print("｜".join(msg), flush=True)
     return 0
 
 

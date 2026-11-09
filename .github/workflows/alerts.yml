@@ -1,4 +1,6 @@
 name: 盤中提醒
+# 備援：GitHub 排程常被跳過（11/6～11/9 盤中幾乎沒跑）。主力是 Mac 的 scripts/mac_events.py（盤中每 5 分鐘）。
+# 「今天已提醒」存在 events 分支的 alerts_state.json，跟 Mac 共用，同一則不會兩邊各寄一次。
 on:
   schedule:
     - cron: "*/30 1-5 * * 1-5"     # 台股盤中（台北 09:00～13:30）
@@ -10,7 +12,7 @@ concurrency:
   group: alerts
   cancel-in-progress: true
 permissions:
-  contents: read
+  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -26,15 +28,16 @@ jobs:
       LINE_FOR: ${{ vars.LINE_FOR }}
       PAGES_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
       ALERTS_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '0' }}
-      ALERTS_STATE: alerts_state/state.json
+      ALERTS_STATE: evbr/alerts_state.json
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - run: pip install -r requirements.txt
-      - uses: actions/cache/restore@v4
-        with: { path: alerts_state, key: "alerts-${{ github.run_id }}", restore-keys: "alerts-" }
+      - name: 取得 events 分支（已提醒紀錄）
+        run: python scripts/events_sync.py pull --dir evbr --remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
       - run: python scripts/alerts.py
-      - uses: actions/cache/save@v4
+      - name: 存回 events 分支（跟 Mac 同時推送時會合併）
         if: always()
-        with: { path: alerts_state, key: "alerts-${{ github.run_id }}" }
+        run: python scripts/events_sync.py push --dir evbr --remote "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
