@@ -32,6 +32,7 @@ SCREENER_CACHE=/tmp/databr/cache .venv/bin/python research/factor_data.py
 | `us_surv.py` → `us_surv2.py` | 美股抽樣下市股（Tiingo）加權 | 全部可選股沒有偏差；動能越極端偏差越大（前 5% 約 +7%／年，集中在 2016～2021）（11/06，350/450 檔） |
 | `chips_factors.py` | 籌碼（法人、融資券）選股與大盤入場條件 | 籌碼不適合選股；入場加外資條件反而更差（11/07） |
 | `margin_ratio.py` → `etf_prices.py` → `margin_timing.py` | 上櫃融資維持率擇時（<150 買、>210 賣）買 0050／正二；維持率用官方數據推估（跟 MacroMicro 一致） | 2009～2026 只有 2 趟、每趟 ≥20% 不成立；81 組門檻全輸 0050 買進持有；跌破 150 後 12 個月報酬較好但只有 12 個獨立波段（11/09）；報告在 research/out/margin_timing/ |
+| `margin_dca.py` | 分批投入時「維持率 <150 加速」：每月留一半等恐慌、6 個月分批遇恐慌加速 | 留一半 XIRR 18.2% < 全買 18.6%；加速平均 +0.3%，沒有實質優勢（11/09） |
 | `sahm_tw.py` | 「趨勢＋衰退指標（薩姆、CFNAI、初領）」用在台股 | 沒有用：台股空頭跟科技循環、比美國就業早崩（11/08） |
 | `macro_signals.py` | 總經轉折訊號：月底進出場＋大跌前有沒有預警（國發會、OECD、FRED） | 見 CLAUDE.md「總經指標」（11/07）；國發會／OECD 有回溯修正 → 偏樂觀 |
 
