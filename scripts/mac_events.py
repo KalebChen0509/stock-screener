@@ -3,6 +3,7 @@
 由 launchd 每 2 分鐘叫一次（安裝：bash scripts/install_mac_events.sh）：
     每 10 分鐘   完整檢查（15 個新聞主題、市場壓力數字、總經指標）
     盤中         每 5 分鐘檢查盤中提醒（停損線、🔔 自訂價位、合理價、均線／KD；台股 09:00～13:40、美股開盤時段）
+                 台股報價用永豐即時快照（trader/quotes.py，sinopac-sync 唯讀；一次登入抓完就登出），失敗退回 Yahoo
     公布時段     每 2 分鐘只檢查總經指標（台北時間，週一～五）
                  08:55～10:35  台灣 PMI（中經院）、中國官方 PMI
                  15:55～17:35  國發會景氣燈號（月底前後）、日本／歐元區 PMI
@@ -128,7 +129,8 @@ def main(argv=None):
     if check_alerts:
         import alerts                                   # scripts/alerts.py；「今天已提醒」跟 GitHub 共用 events 分支
         try:
-            ares = alerts.run(EVBR / "alerts_state.json", site=PAGES, repo=REPO, force=args.alerts, remote_config=True)
+            ares = alerts.run(EVBR / "alerts_state.json", site=PAGES, repo=REPO, force=args.alerts, remote_config=True,
+                              live=alerts.sinopac_quotes)     # 台股用永豐即時快照（失敗退回 Yahoo）
         except Exception as e:  # noqa
             ares = {"error": str(e)[:120]}
         rs["last_alerts"] = now.tz_localize(None).strftime("%Y-%m-%d %H:%M:%S")

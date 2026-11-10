@@ -215,7 +215,12 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   設定檔（alerts.yaml、alert_levels.yaml、positions.yaml）從 GitHub 上最新版讀（網站🔔改的是 GitHub 上的檔案；remote 模式不讀本機舊檔）。
   「今天已提醒」存在 events 分支 `alerts_state.json`：Mac 與 GitHub alerts.yml（改用 events_sync，不再用 actions/cache）共用；`events_sync.merge_alerts` 同一天取聯集。
   有新提醒才上傳。LINE：scope=alerts，Mac 沒設 LINE_FOR → 預設只有 events 發 LINE，提醒只寄 Email。手動測試：`.venv/bin/python scripts/mac_events.py --alerts`（會真的寄）。
-  11/09 11:35 第一次在 Mac 實際執行：檢查 10 檔、寄出 6 則、上傳 ✔。報價仍是 Yahoo（台股約延遲 15～20 分鐘）；永豐即時報價是選項，使用者還沒決定。`tests/test_mac_alerts.py`。
+  11/09 11:35 第一次在 Mac 實際執行：檢查 10 檔、寄出 6 則、上傳 ✔。`tests/test_mac_alerts.py`。
+  ✔ 台股改用永豐即時報價（11/10，使用者決定）：`trader/quotes.py`（~/.sinopac-venv、sinopac-sync 唯讀、先 silence()、stdout 只輸出一行 JSON、一次登入抓完 snapshots 就登出）；
+  `scripts/alerts.py: sinopac_quotes`（子程序，不轉印子程序輸出、錯誤只記類型＋遮身分證）、`overlay`（快照日期＝Yahoo 最後一天→取代，較新→加一列，較舊→不用）。
+  日線歷史（均線／KD）仍是 Yahoo；每則提醒標［永豐即時］或［Yahoo 延遲］；永豐失敗或某檔拿不到 → 那檔退回 Yahoo。美股、GitHub 備援只用 Yahoo。
+  shioaji 限制：登入一天 1000 次（盤中每 5 分鐘約 56 次）、同一人最多 5 條連線（用完就登出）、行情查詢 10 秒 50 次、流量每天 500MB（實測一次 <0.1MB）。
+  坑：~/.sinopac-venv 沒有 pandas → quotes.py 只用標準函式庫。11/10 10:00 實測 10 檔全部拿到即時報價、約 1 秒。
 - ✔ 隔夜拆款／政策利率（11/10；使用者：課堂學到、台美都要、顯示＋轉折通知＋回測＋當閒置資金報酬）：
   `screener/macro_ind.py` 新增 tw_policy（央行重貼現率，開放資料 webF1.csv，2000-12 起調整紀錄）、tw_onrate（金融業隔夜拆款，EG37D01.csv 1991-10 起每日、每月更新；「yyyymm00」列是月平均要排除）、
   us_fedtarget（聯準會目標利率區間上限）、us_effr、us_sofr（紐約聯準銀行 API，免金鑰，Mac 也抓得到）。央行資料跟著 "ndc" 來源抓、紐約聯準銀行在完整檢查（oecd 或 fred）時抓。

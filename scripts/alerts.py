@@ -1,6 +1,12 @@
-"""盤中提醒（主力：Mac 的 scripts/mac_events.py 盤中每 5 分鐘；備援：GitHub Actions）：讀網站上的持股與合理價、data 分支的買進價，抓 Yahoo 報價後檢查。"""
+"""盤中提醒（主力：Mac 的 scripts/mac_events.py 盤中每 5 分鐘；備援：GitHub Actions）：讀網站上的持股與合理價、data 分支的買進價，抓報價後檢查。
+
+報價：日線歷史（均線／KD 用）一律 Yahoo；Mac 上台股的「今天」改用永豐即時快照（trader/quotes.py，子程序、唯讀 Key），
+永豐登入失敗／拿不到就退回 Yahoo（約延遲 15～20 分鐘），每則提醒註明來源。美股只有 Yahoo。
+"""
 import json
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -115,10 +121,54 @@ def read_config(name: str, remote_repo: str | None):
     return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) if p.exists() else {}
 
 
+SINOPAC_PY = Path.home() / ".sinopac-venv" / "bin" / "python"
+_ID_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z])[1289][0-9]{8}(?![0-9])")
+
+
+def sinopac_quotes(codes: list[str], timeout: int = 120) -> dict:
+    """永豐即時快照 → {代號: {date, open, high, low, close}}；任何問題回傳 {}（呼叫端退回 Yahoo）。
+    子程序的輸出只取最後一行 JSON；錯誤訊息不轉印（可能含身分證字號），只記錯誤類型。"""
+    if not codes or not SINOPAC_PY.exists():
+        return {}
+    try:
+        r = subprocess.run([str(SINOPAC_PY), str(ROOT / "trader" / "quotes.py"), *codes], capture_output=True,
+                           text=True, timeout=timeout, cwd=str(ROOT))
+        line = (r.stdout.strip().splitlines() or [""])[-1]
+        res = json.loads(line) if line.startswith("{") else {"ok": False, "error": f"exit {r.returncode}"}
+    except Exception as e:  # noqa
+        res = {"ok": False, "error": e.__class__.__name__}
+    if not res.get("ok"):
+        log.warning("永豐報價失敗，改用 Yahoo：%s", _ID_RE.sub(r"\1*********", str(res.get("error")))[:80])
+        return {}
+    if res.get("usage_mb") is not None:
+        log.info("永豐今日流量 %s／%s MB", res.get("usage_mb"), res.get("limit_mb"))
+    return res.get("quotes") or {}
+
+
+def overlay(df, q: dict | None):
+    """把即時快照放進日線最後一天：快照日期＝Yahoo 最後一天 → 取代；比較新 → 加一列；比較舊或沒有 → None（不用）。"""
+    if df is None or len(df) == 0 or not q:
+        return None
+    d = pd.Timestamp(q["date"])
+    last = pd.Timestamp(df.index[-1])
+    last = last.tz_localize(None) if last.tzinfo else last
+    if d.normalize() < last.normalize():
+        return None
+    row = {k: float(q[k]) for k in ("open", "high", "low", "close")}
+    out = df[["open", "high", "low", "close"]].astype(float)
+    if d.normalize() == last.normalize():
+        for k, v in row.items():
+            out.iloc[-1, out.columns.get_loc(k)] = v
+        return out
+    add = pd.DataFrame([row], index=[d.normalize() if not getattr(df.index, "tz", None) else d.normalize().tz_localize(df.index.tz)])
+    return pd.concat([out, add[out.columns]])
+
+
 def run(state_path: Path = STATE, site: str = "", repo: str = "", force: bool = False, now=None,
-        remote_config: bool = False, send=None, download=None) -> dict:
+        remote_config: bool = False, send=None, download=None, live=None) -> dict:
     """檢查一次。state_path＝「今天已提醒」紀錄（Mac 與 GitHub 共用 events 分支的 alerts_state.json）。
-    remote_config：設定檔讀 GitHub 上最新版（Mac 用）。send(subject, text)：預設 Email＋LINE（scope=alerts）。"""
+    remote_config：設定檔讀 GitHub 上最新版（Mac 用）。send(subject, text)：預設 Email＋LINE（scope=alerts）。
+    live(codes) → {代號: 快照}：台股即時報價（Mac 傳 sinopac_quotes；None＝只用 Yahoo）。"""
     state_path = Path(state_path)
     cfg = read_config("alerts.yaml", repo if remote_config else None)
     if not cfg.get("enabled", True):
@@ -153,7 +203,20 @@ def run(state_path: Path = STATE, site: str = "", repo: str = "", force: bool = 
     for w in watch:
         if w.get("alt") and (w["yahoo"] not in bars or len(bars[w["yahoo"]]) < 2) and w["alt"] in bars:
             w["yahoo"] = w["alt"]
+    src = {}                                            # (mkt, id) → 報價來源
+    tw = [w for w in watch if w["sess"] == "tw"]
+    quotes = (live([w["yahoo"].split(".")[0] for w in tw]) or {}) if (live and tw) else {}
+    for w in watch:
+        nb = overlay(bars.get(w["yahoo"]), quotes.get(w["yahoo"].split(".")[0])) if w["sess"] == "tw" else None
+        if nb is not None:
+            bars[w["yahoo"]] = nb
+            src[(w["mkt"], w["id"])] = "永豐即時"
+        else:
+            src[(w["mkt"], w["id"])] = "Yahoo 延遲"
     hits = A.check(watch, bars, cfg)
+    for h in hits:                                      # 每則註明報價來源（key＝mkt:id:規則）
+        m, i = h["key"].split(":")[:2]
+        h["text"] += f"［{src.get((m, i), 'Yahoo 延遲')}］"
     today = now.tz_convert("Asia/Taipei").strftime("%Y-%m-%d")
     st = json.loads(state_path.read_text()) if state_path.exists() else {}
     fresh, st = A.new_only(hits, st, today)
@@ -163,12 +226,14 @@ def run(state_path: Path = STATE, site: str = "", repo: str = "", force: bool = 
     sent = None
     if fresh:
         body = "\n".join(a["text"] for a in fresh)
-        body += "\n\n報價來自 Yahoo，約延遲 15～20 分鐘；只是提醒，不會下單。" + (f"\n網站：{site}/" if site else "")
+        body += ("\n\n［永豐即時］＝永豐 API 即時快照；［Yahoo 延遲］＝Yahoo，約延遲 15～20 分鐘。只是提醒，不會下單。"
+                 + (f"\n網站：{site}/" if site else ""))
         t_local = now.tz_convert("Asia/Taipei").strftime("%H:%M")
         subj = f"盤中提醒 {t_local}（台北）：{len(fresh)} 則"
         sent = send(subj, body) if send else notify(subj, body, scope="alerts")
         log.info("notify %s", sent)
-    return {"checked": len(watch), "hits": len(hits), "new": len(fresh), "sent": sent}
+    n_live = sum(v == "永豐即時" for v in src.values())
+    return {"checked": len(watch), "hits": len(hits), "new": len(fresh), "sent": sent, "live": n_live}
 
 
 def yahoo_bars(tick: list[str]) -> dict:

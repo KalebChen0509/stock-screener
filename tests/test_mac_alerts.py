@@ -84,6 +84,72 @@ def test_events_sync_merges_alerts_state():
     assert json.loads((c / "alerts_state.json").read_text()) == {"2026-11-09": ["from_github", "from_mac", "x"]}
 
 
+def test_overlay():
+    b = _bars([100, 101, 102])                                          # 最後一天 2026-10-03
+    q = {"date": str(b.index[-1].date()), "open": 1, "high": 2, "low": 0.5, "close": 1.5}
+    r = AL.overlay(b, q)
+    assert len(r) == 3 and r["close"].iloc[-1] == 1.5 and b["close"].iloc[-1] == 102   # 同一天 → 取代（不改原本的）
+    r = AL.overlay(b, {**q, "date": "2026-10-06"})
+    assert len(r) == 4 and r["close"].iloc[-1] == 1.5 and r["close"].iloc[-2] == 102    # Yahoo 還沒有今天 → 加一列
+    assert AL.overlay(b, {**q, "date": "2026-10-01"}) is None                           # 快照比較舊 → 不用
+    assert AL.overlay(b, None) is None and AL.overlay(None, q) is None
+
+
+def test_run_live_source_and_fallback():
+    st = Path(tempfile.mkdtemp()) / "alerts_state.json"
+    cfg = {"enabled": True, "rules": {"stop": False, "levels": True, "fair_value": False, "technical": False},
+           "levels": {"tw": {"2330": {"below": 2200}, "2317": {"below": 300}}}}
+    orig_read, orig_watch = AL.read_config, AL.load_watchlist
+    AL.read_config = lambda name, repo: cfg if name == "alerts.yaml" else {}
+    AL.load_watchlist = lambda: {}
+    sent, asked = [], []
+    try:
+        dl = lambda tick: {t: _bars([2300, 2300] if t.startswith("2330") else [290, 290]) for t in tick}  # noqa: E731
+        last = str(_bars([1, 1]).index[-1].date())
+
+        def live(codes):
+            asked.append(sorted(codes))
+            return {"2330": {"date": last, "open": 2300, "high": 2300, "low": 2100, "close": 2150}}   # 2317 拿不到
+        r = AL.run(st, site="", repo="", now=T("2026-11-09 10:00"), download=dl, live=live,
+                   send=lambda s, b: sent.append(b) or {"email": True})
+        assert asked == [["2317", "2330"]] and r["new"] == 2 and r["live"] == 1
+        body = sent[0]
+        assert "2330" in body and "2,150" in body and "［永豐即時］" in body     # Yahoo 是 2300、沒跌破；永豐 2150 才觸發
+        assert "2317" in body and "［Yahoo 延遲］" in body                       # 永豐沒有 → 退回 Yahoo
+        # 永豐整個失敗（回傳空的）→ 全部用 Yahoo，照樣檢查
+        st2 = Path(tempfile.mkdtemp()) / "s.json"
+        sent.clear()
+        r = AL.run(st2, site="", repo="", now=T("2026-11-09 10:00"), download=dl, live=lambda c: {},
+                   send=lambda s, b: sent.append(b) or {"email": True})
+        assert r["new"] == 1 and r["live"] == 0 and "2317" in sent[0] and "2330" not in sent[0]
+    finally:
+        AL.read_config, AL.load_watchlist = orig_read, orig_watch
+
+
+def test_sinopac_quotes_never_leaks():
+    """子程序失敗時：不轉印任何輸出（可能含身分證字號），只回傳空的。"""
+    import subprocess
+    orig_run, orig_py = subprocess.run, AL.SINOPAC_PY
+    logs = []
+    fake1, fake2 = "A" + "1" + "23456789", "B" + "2" + "23456789"     # 假的身分證格式（拆開寫，免得被推送前的掃描擋下）
+    orig_warn = AL.log.warning
+    try:
+        AL.SINOPAC_PY = Path(sys.executable)
+        AL.log.warning = lambda *a: logs.append(a[0] % a[1:])
+        subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout=fake1 + " 連線中\n",
+                                                                      stderr="Traceback… person_id=" + fake1)
+        assert AL.sinopac_quotes(["2330"]) == {}
+        subprocess.run = lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout='{"ok": false, "error": "%s"}' % fake2, stderr="")
+        assert AL.sinopac_quotes(["2330"]) == {}
+        assert logs and not any(fake1[1:] in x or fake2[1:] in x for x in logs)
+        subprocess.run = lambda *a, **k: subprocess.CompletedProcess(
+            a, 0, stdout='{"ok": true, "quotes": {"2330": {"date": "2026-11-09", "open": 1, "high": 1, "low": 1, "close": 1}}}', stderr="")
+        assert AL.sinopac_quotes(["2330"])["2330"]["close"] == 1
+        assert AL.sinopac_quotes([]) == {}
+    finally:
+        subprocess.run, AL.SINOPAC_PY, AL.log.warning = orig_run, orig_py, orig_warn
+
+
 if __name__ == "__main__":
     ok = 0
     for name, fn in list(globals().items()):
