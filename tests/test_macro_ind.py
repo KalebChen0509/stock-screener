@@ -146,6 +146,10 @@ class FakeHTTP:
     def get(self, url, **kw):
         self.calls.append(url)
         z = _zip()
+        if "EG37D01" in url:                       # 央行拆款利率
+            z = '"日","隔夜-加權平均-原始值(%)"\n"20260930","0.812"\n'.encode("utf-8")
+        elif "webF1" in url:                       # 央行貼放利率
+            z = "調整日期,重貼現率,擔保放款融通利率,短期融通利率\n2024/3/22,2.000,2.375,4.250\n".encode("cp950")
 
         class R:
             status_code = 200
@@ -188,6 +192,22 @@ def test_mac_windows_and_plan():
     assert F.plan(T("2026-11-06 21:30"), "2026-11-06 21:28:00") == ("light", ("news", "fred"))
     assert F.plan(T("2026-11-06 21:39"), "2026-11-06 21:28:00") == ("full", None)        # 滿 10 分鐘
     assert F.plan(T("2026-11-06 12:04"), "2026-11-06 12:00:00") == (None, None)          # 非公布時段：等下一次完整
+
+
+def test_rates_parsers_and_policy_rule():
+    txt = '\ufeff"日","隔夜-加權平均-原始值(%)","隔夜-最高-原始值(%)"\n"20260900","0.810","-"\n"20260929","0.812","0.83"\n"20260930","0.815","0.83"\n'
+    s = M.parse_cbc_overnight(txt.lstrip("\ufeff"))
+    assert list(s.index.strftime("%Y-%m-%d")) == ["2026-09-29", "2026-09-30"] and s.iloc[-1] == 0.815    # 月平均（日＝00）不要
+    pol = M.parse_cbc_policy("調整日期,重貼現率,擔保放款融通利率,短期融通利率\n2024/3/22,2.000,2.375,4.250\n2023/3/24,1.875,2.250,4.125\n",
+                             today="2024-04-05")
+    assert pol.loc["2024-03-21"] == 1.875 and pol.loc["2024-04-05"] == 2.0
+    # 規則：6 個月內升 ≥0.10 → 升息循環；之後 6 個月沒動 → 持平
+    idx = pd.bdate_range("2023-01-02", periods=400)
+    x = pd.Series(1.0, index=idx)
+    x.iloc[150:] = 1.125
+    st = M.states("policy", x)
+    assert st.iloc[149] == "持平" and st.iloc[165] == "升息循環" and st.iloc[-1] == "持平"
+    assert "升息" in M.turn_text("policy", "持平", "升息循環")
 
 
 if __name__ == "__main__":

@@ -391,7 +391,7 @@ function evItem(e) {
 }
 // ---------------------------------------------------------------- 總經指標（領先／同時／落後）
 function macroURL() { return eventsURL().replace("market_events.json", "macro.json"); }
-const MC_BAD = new Set(["趨緩", "衰退", "倒掛", "上升警訊", "觸發", "衰退警訊", "偏緊", "擴大", "收縮", "負成長", "藍燈", "黃藍燈"]);
+const MC_BAD = new Set(["趨緩", "衰退", "倒掛", "上升警訊", "觸發", "衰退警訊", "偏緊", "擴大", "收縮", "負成長", "藍燈", "黃藍燈", "升息循環"]);
 const MC_THR = { cli: 100, level50: 50, level0: 0, curve: 0, nfci: 0, sahm: 0.5, cfnai: -0.7 };
 function mcVal(r) {
   if (r.value == null) return r.public === false ? "有版權，只顯示狀態" : "–";
@@ -413,7 +413,7 @@ function mcSpark(r) {
 }
 function mcDate(r) {
   if (!r.date) return "";
-  return ["curve", "credit", "nfci", "claims"].includes(r.rule) ? r.date.replaceAll("-", "/") : r.date.slice(0, 7).replace("-", "/");
+  return ["curve", "credit", "nfci", "claims", "policy"].includes(r.rule) ? r.date.replaceAll("-", "/") : r.date.slice(0, 7).replace("-", "/");
 }
 async function renderMacro() {
   if (S.macro === undefined) { $("#mcMeta").textContent = "讀取中…"; S.macro = await getJSON(macroURL(), true); }

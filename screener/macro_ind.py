@@ -76,6 +76,8 @@ CATALOG = [
     I("tw_unemp", "tw", "lag", "失業率", "ndc", "失業率", "level", None, "", True, "%"),
     I("tw_ulc", "tw", "lag", "製造業單位產出勞動成本", "ndc", "製造業單位產出勞動成本指數", "yoy", None, "", True, "年增率"),
     I("tw_rate", "tw", "lag", "五大銀行新承做放款利率", "ndc", "五大銀行新承做放款平均利率", "level", None, "", True, "%"),
+    I("tw_policy", "tw", "lag", "央行重貼現率（政策利率）", "cbc", "policy", "level", "policy", "重大", True, "%"),
+    I("tw_onrate", "tw", "lag", "金融業隔夜拆款利率", "cbc", "overnight", "level", None, "", True, "%（資金鬆緊；利率低時只跟政策利率小幅連動）"),
     I("tw_loans", "tw", "lag", "金融機構放款與投資", "ndc", "全體金融機構放款與投資", "yoy", None, "", True, "年增率"),
     I("tw_inv", "tw", "lag", "製造業存貨價值", "ndc", "製造業存貨價值", "yoy", None, "", True, "年增率"),
     # ---- 美國
@@ -104,6 +106,9 @@ CATALOG = [
     I("us_core", "us", "lag", "核心 CPI", "fred", "CPILFESL", "yoy", None, "", True, "年增率"),
     I("us_ulc", "us", "lag", "單位勞動成本", "fred", "ULCNFB", "yoy", None, "", True, "年增率（季）"),
     I("us_prime", "us", "lag", "基本放款利率", "fred", "DPRIME", "level", None, "", True, "%"),
+    I("us_fedtarget", "us", "lag", "聯準會目標利率（區間上限）", "nyfed", "unsecured/effr#target", "level", "policy", "重大", True, "%"),
+    I("us_effr", "us", "lag", "聯邦資金有效利率（EFFR，隔夜）", "nyfed", "unsecured/effr", "level", None, "", True, "%（實際隔夜拆款利率）"),
+    I("us_sofr", "us", "lag", "擔保隔夜融資利率（SOFR）", "nyfed", "secured/sofr", "level", None, "", True, "%"),
     I("us_loans", "us", "lag", "企業放款", "fred", "BUSLOANS", "yoy", None, "", True, "年增率"),
     I("us_dur", "us", "lag", "平均失業週數", "fred", "UEMPMEAN", "level", None, "", True, "週"),
     I("us_invr", "us", "lag", "存貨銷售比", "fred", "ISRATIO", "level", None, "", True, "倍"),
@@ -134,7 +139,10 @@ BY_KEY = {c["key"]: c for c in CATALOG}
 # 公布時段（台北時間）：這段時間每次都重抓；其他時間隔 REFRESH_H 小時
 US_WINDOW = (20, 24)          # 美國 8:30／10:00（美東）＝台北 20:30～23:00（夏令／冬令）
 TW_WINDOW = (15, 19)          # 國發會景氣燈號約 16:00，月底前後
-REFRESH_H = {"fred": 6, "ndc": 12, "oecd": 12, "news": 0}
+REFRESH_H = {"fred": 6, "ndc": 12, "oecd": 12, "news": 0, "cbc": 12, "nyfed": 6}
+NYFED = "https://markets.newyorkfed.org/api/rates/{path}/search.json?startDate={start}&endDate={end}"   # 紐約聯準銀行（免金鑰；EFFR 2000-07 起、SOFR 2018-04 起）
+CBC_RATES = "https://www.cbc.gov.tw/public/data/OpenData/經研處/EG37D01.csv"    # 央行「金融業拆款利率」（1991-10 起每日，每月更新）
+CBC_POLICY = "https://www.cbc.gov.tw/Public/Data/opendata/webF1.csv"             # 央行「貼放利率」調整紀錄（2000-12 起）
 
 
 # ---------------------------------------------------------------- 下載
@@ -192,6 +200,55 @@ def fetch_ndc(http=None) -> pd.DataFrame:
     r = http.get(url, timeout=60, headers=UA)
     r.raise_for_status()
     return parse_ndc_zip(r.content)
+
+
+def fetch_cbc_overnight(http=None) -> pd.Series:
+    """央行金融業拆款利率 CSV → 每日隔夜拆款加權平均利率（%）。日期是 yyyymmdd；「yyyymm00」是月平均，不要。"""
+    r = (http or requests).get(CBC_RATES, timeout=60, headers=UA)
+    r.raise_for_status()
+    return parse_cbc_overnight(r.content.decode("utf-8-sig", errors="replace"))
+
+
+def fetch_cbc_policy(http=None, today=None) -> pd.Series:
+    r = (http or requests).get(CBC_POLICY, timeout=60, headers=UA)
+    r.raise_for_status()
+    return parse_cbc_policy(r.content.decode("cp950", errors="replace"), today)
+
+
+def parse_cbc_policy(txt: str, today=None) -> pd.Series:
+    """調整紀錄（調整日期、重貼現率…）→ 每個營業日的重貼現率（沿用到今天）。"""
+    d = pd.read_csv(io.StringIO(txt))
+    d.columns = [c.strip() for c in d.columns]
+    s = pd.Series(pd.to_numeric(d["重貼現率"], errors="coerce").values, index=pd.to_datetime(d["調整日期"])).dropna().sort_index()
+    idx = pd.bdate_range(s.index.min(), pd.Timestamp(today or pd.Timestamp.today()).normalize())
+    return s.reindex(idx.union(s.index)).ffill().reindex(idx)
+
+
+def fetch_nyfed(path: str, start: str = "2000-01-01", http=None) -> pd.Series:
+    """紐約聯準銀行參考利率（EFFR、SOFR）每日 %。path 加「#target」＝聯準會目標利率
+    （2008-12 起是區間上限 targetRateTo，之前是單一目標 targetRateFrom）。"""
+    path, _, want = path.partition("#")
+    url = NYFED.format(path=path, start=start, end=pd.Timestamp.today().strftime("%Y-%m-%d"))
+    r = (http or requests).get(url, timeout=(10, 90), headers=UA)
+    r.raise_for_status()
+    rows = r.json().get("refRates", [])
+    if want == "target":
+        s = pd.Series({x["effectiveDate"]: x.get("targetRateTo", x.get("targetRateFrom")) for x in rows}, dtype=float)
+    else:
+        s = pd.Series({x["effectiveDate"]: x.get("percentRate") for x in rows}, dtype=float)
+    s.index = pd.to_datetime(s.index)
+    return s.dropna().sort_index()
+
+
+def parse_cbc_overnight(txt: str) -> pd.Series:
+    d = pd.read_csv(io.StringIO(txt), dtype=str)
+    d.columns = [c.strip().strip('"') for c in d.columns]
+    day = d.columns[0]
+    col = next(c for c in d.columns if c.startswith("隔夜-加權平均"))
+    d = d[d[day].str.fullmatch(r"\d{6}(?!00)\d{2}", na=False)]
+    s = pd.to_numeric(d[col], errors="coerce")
+    s.index = pd.to_datetime(d[day], format="%Y%m%d")
+    return s.dropna().sort_index()
 
 
 def _clean_col(c: str) -> str:
@@ -386,6 +443,23 @@ def states(rule: str, x: pd.Series, extra: pd.Series | None = None) -> pd.Series
         return _hyst(x, 0.5, 0.3, "觸發", "正常")
     if rule == "cfnai":
         return _hyst(-x.rolling(3).mean(), 0.7, 0.5, "衰退警訊", "正常").where(x.rolling(3).mean().notna())
+    if rule == "policy":
+        # 政策利率方向：10 日中位數跟 126 個交易日（約 6 個月）前比；中間地帶沿用前一個狀態
+        # 6 個月：台灣央行每季才調一次，用 3 個月會在兩次升息之間誤判成「持平」又跳回「升息」
+        # 用中位數：2008 年以前 EFFR 每天跳動大（例如雷曼倒閉當天暴衝），平均數會造成假轉折
+        m = x.rolling(10, min_periods=1).median()
+        chg = m - m.shift(126)
+        out, st = [], None
+        for v in chg.values:
+            if not np.isnan(v):
+                if v >= 0.10:
+                    st = "升息循環"
+                elif v <= -0.10:
+                    st = "降息循環"
+                elif abs(v) <= 0.03:
+                    st = "持平"
+            out.append(st)
+        return pd.Series(out, index=x.index)
     if rule == "nfci":
         return _hyst(x, 0.05, -0.05, "偏緊", "寬鬆")
     if rule == "credit":
@@ -413,6 +487,8 @@ TURN_TEXT = {
     "sahm": {"觸發": "薩姆規則觸發（歷史上表示衰退已開始）", "正常": "薩姆規則解除"},
     "cfnai": {"衰退警訊": "3 個月平均低於 −0.7（歷史上表示衰退可能已開始）", "正常": "回到 −0.5 以上"},
     "nfci": {"偏緊": "金融情勢轉為比平均緊", "寬鬆": "金融情勢轉為比平均寬鬆"},
+    "policy": {"升息循環": "政策利率 6 個月內上升 ≥0.10 個百分點（升息）", "降息循環": "政策利率 6 個月內下降 ≥0.10 個百分點（降息）",
+               "持平": "政策利率 6 個月內變動在 0.03 以內（政策暫停）"},
     "credit": {"擴大": "3 個月擴大 0.5 個百分點以上（信用市場轉差）", "正常": "利差擴大警訊解除"},
     "level50": {"擴張": "站上 50（擴張）", "收縮": "跌破 50（收縮）"},
     "level0": {"擴張": "連 2 個月轉正", "收縮": "連 2 個月轉負"},
@@ -478,6 +554,26 @@ def refresh(store: Path, state: dict, now: pd.Timestamp, http=None, fetch_news=N
             updated |= {c["key"] for c in CATALOG if c["src"] == "ndc"}
         except Exception as e:  # noqa
             log.warning("NDC indicators failed: %s", e)
+    # 央行隔夜拆款利率：跟國發會一樣是台灣官方月更新資料 → 跟著 "ndc" 來源一起抓（不另外加來源名稱）
+    if "ndc" in sources and _due("cbc", "cbc", now, state):
+        try:
+            raw["tw_onrate"] = fetch_cbc_overnight(http)
+            raw["tw_policy"] = fetch_cbc_policy(http, now.tz_localize(None) if now.tz else now)
+            fetched["cbc"] = stamp
+            updated |= {"tw_onrate", "tw_policy"}
+        except Exception as e:  # noqa
+            log.warning("CBC overnight rate failed: %s", e)
+    # 紐約聯準銀行（EFFR、SOFR）：免金鑰，完整檢查時抓（Mac 沒有 FRED 金鑰也抓得到）
+    if "oecd" in sources or "fred" in sources:
+        for c in CATALOG:
+            if c["src"] != "nyfed" or not _due("nyfed", c["key"], now, state):
+                continue
+            try:
+                raw[c["key"]] = fetch_nyfed(c["sid"], http=http)
+                fetched[c["key"]] = stamp
+                updated.add(c["key"])
+            except Exception as e:  # noqa
+                log.warning("NY Fed %s failed: %s", c["sid"], e)
     if "tw_light" not in extra and state.get("tw_light_colors"):
         lc = state["tw_light_colors"]
         extra["tw_light"] = pd.Series(list(lc.values()), index=pd.to_datetime(list(lc.keys())))
@@ -612,7 +708,7 @@ def evaluate(raw: dict[str, pd.Series], extra: dict, updated: set, state: dict, 
             continue
         msg = turn_text(c["rule"], st.iloc[-2], st.iloc[-1])
         val = f"（{_fmt(x.iloc[-1])} {c['unit'].split('，')[0]}）" if c["public"] else ""
-        daily = c["rule"] in ("curve", "credit", "nfci", "claims")
+        daily = c["rule"] in ("curve", "credit", "nfci", "claims", "policy")
         when = d_last.strftime("%Y/%m/%d" if daily else "%Y/%m")
         title = f"{COUNTRIES[c['country']]}{KINDS[c['kind']]}指標轉折：{c['name']} {msg}{val}，資料月份 {when}"
         src = state.get("pmi_src", {}).get(c["sid"]) if c["src"] == "news" else None

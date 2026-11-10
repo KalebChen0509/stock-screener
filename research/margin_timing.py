@@ -399,7 +399,11 @@ def main():
     del adj_real
 
     assets = {"0050": e50, "正二（2014-10 前為模擬）": lev, "正二（只用上市後真實資料）": lev_only}
-    idles = {"定存": rate, "貨幣ETF": IDLE_MMF}
+    # 閒置資金 c：台灣金融業隔夜拆款利率（央行；一般人拿不到這個利率，接近銀行間資金成本，當「現金最低報酬」參考）
+    from screener.macro_ind import fetch_cbc_overnight
+    on = fetch_cbc_overnight() / 100
+    on = on.reindex(pd.date_range(on.index.min(), pd.Timestamp.today().normalize(), freq="D")).ffill()
+    idles = {"定存": rate, "貨幣ETF": IDLE_MMF, "隔夜拆款": on}
     rows, all_trips, results = [], [], {}
     for an, px in assets.items():
         start = max(px.index.min(), tpex.index.min())
