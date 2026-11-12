@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 安裝「市場事件＋總經指標偵測（Mac 主力）」：launchd 每 2 分鐘叫一次 mac_events.py
-#   每 10 分鐘完整檢查；指標公布時段每 2 分鐘檢查總經指標；其他時間不連網、馬上結束。
+#   每 5 分鐘完整檢查；指標公布時段每 2 分鐘檢查總經指標；其他時間不連網、馬上結束。
 # 移除：bash scripts/install_mac_events.sh --remove
 set -e
 LABEL="com.stock-screener.mac-events"
@@ -31,5 +31,5 @@ cat > "$PLIST" <<PL
 </dict></plist>
 PL
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "✔ 已安裝：每 10 分鐘完整檢查；週一～五 08:55-10:35、15:55-17:35、20:25-23:05 每 2 分鐘檢查總經指標。"
+echo "✔ 已安裝：每 5 分鐘完整檢查；週一～五 08:55-10:35、15:55-17:35、20:25-23:05 每 2 分鐘檢查總經指標。"
 echo "  紀錄：$LOGDIR/mac_events.log"

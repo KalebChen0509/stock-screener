@@ -106,7 +106,8 @@ def line_wanted(scope: str) -> bool:
     return "all" in allowed or scope in allowed
 
 
-def notify(subject: str, text: str, scope: str = "daily") -> dict:
-    """Email 一律寄；LINE 只在 line_wanted(scope) 時發。scope：daily（日報）、alerts、earnings、events、test。"""
-    line = send_line(f"{subject}\n\n{text}") if line_wanted(scope) else False
+def notify(subject: str, text: str, scope: str = "daily", line_text: str | None = None) -> dict:
+    """Email 一律寄；LINE 只在 line_wanted(scope) 時發。scope：daily（日報）、alerts、earnings、events、test。
+    line_text：LINE 用的短版（沒給就跟 Email 一樣）。"""
+    line = send_line(line_text if line_text is not None else f"{subject}\n\n{text}") if line_wanted(scope) else False
     return {"line": line, "email": send_email(subject, text)}

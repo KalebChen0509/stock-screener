@@ -6,6 +6,8 @@ import json
 import os
 import sys
 import tempfile
+
+os.environ["NEWS_AI_MAX"] = "0"     # 測試不呼叫真的 Claude 命令列
 from pathlib import Path
 
 os.environ.setdefault("SCREENER_CACHE", tempfile.mkdtemp())

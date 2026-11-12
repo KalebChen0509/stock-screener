@@ -1,7 +1,7 @@
 """Mac 常駐（主力）：市場重大事件＋總經指標轉折偵測。GitHub 的排程常常好幾個小時才跑一次，只當備援。
 
 由 launchd 每 2 分鐘叫一次（安裝：bash scripts/install_mac_events.sh）：
-    每 10 分鐘   完整檢查（15 個新聞主題、市場壓力數字、總經指標）
+    每 5 分鐘    完整檢查（15 個新聞主題、市場壓力數字、總經指標）
     盤中         每 5 分鐘檢查盤中提醒（停損線、🔔 自訂價位、合理價、均線／KD；台股 09:00～13:40、美股開盤時段）
                  台股報價用永豐即時快照（trader/quotes.py，sinopac-sync 唯讀；一次登入抓完就登出），失敗退回 Yahoo
     公布時段     每 2 分鐘只檢查總經指標（台北時間，週一～五）
@@ -37,7 +37,7 @@ EVBR = HOME / "evbr"
 RUN_STATE = HOME / "mac_events.json"
 PAGES = "https://kalebchen0509.github.io/stock-screener"
 REPO = "KalebChen0509/stock-screener"
-FULL_EVERY_MIN = 10
+FULL_EVERY_MIN = 5          # 11/12 使用者：新聞要 5 分鐘內
 ALERTS_EVERY_MIN = 5            # 盤中提醒（台股 09:00～13:40、美股開盤時段）
 WINDOWS = [((8, 55), (10, 35), ("news",)), ((15, 55), (17, 35), ("news", "ndc")), ((20, 25), (23, 5), ("news", "fred"))]
 FAST_FRED = {"us_claims", "us_cfnai", "us_sahm", "us_nfci"}     # 公布時段只抓這幾個「重大」等級的美國數據
@@ -73,7 +73,7 @@ def load_secrets() -> str:
 
 def plan(now: pd.Timestamp, last_full: str | None, force_full: bool = False):
     """→ ("full", None)、("light", 來源) 或 (None, None)。"""
-    if force_full or last_full is None or (now.tz_localize(None) - pd.Timestamp(last_full)) >= pd.Timedelta(minutes=FULL_EVERY_MIN - 0.5):
+    if force_full or last_full is None or (now.tz_localize(None) - pd.Timestamp(last_full)) >= pd.Timedelta(minutes=FULL_EVERY_MIN - 1.5):   # launchd 每 2 分鐘一次 → 實際每 4 分鐘
         return "full", None
     w = window(now)
     return ("light", w) if w else (None, None)

@@ -190,8 +190,9 @@ def test_mac_windows_and_plan():
     assert F.window(T("2026-11-07 21:30")) is None                   # 週六不檢查
     assert F.plan(T("2026-11-06 21:30"), None) == ("full", None)                         # 第一次：完整
     assert F.plan(T("2026-11-06 21:30"), "2026-11-06 21:28:00") == ("light", ("news", "fred"))
-    assert F.plan(T("2026-11-06 21:39"), "2026-11-06 21:28:00") == ("full", None)        # 滿 10 分鐘
-    assert F.plan(T("2026-11-06 12:04"), "2026-11-06 12:00:00") == (None, None)          # 非公布時段：等下一次完整
+    assert F.plan(T("2026-11-06 21:39"), "2026-11-06 21:28:00") == ("full", None)        # 滿 5 分鐘
+    assert F.plan(T("2026-11-06 12:02"), "2026-11-06 12:00:00") == (None, None)          # 非公布時段：等下一次完整
+    assert F.plan(T("2026-11-06 12:04"), "2026-11-06 12:00:00") == ("full", None)        # launchd 每 2 分鐘 → 4 分鐘一次完整
 
 
 def test_rates_parsers_and_policy_rule():

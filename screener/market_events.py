@@ -191,7 +191,9 @@ def stress_events(now: pd.Timestamp, px: pd.DataFrame, flows: dict, state: dict)
             continue
         chg = s.iloc[-1] / s.iloc[-2] - 1
         dd = s.iloc[-1] / s.iloc[-252:].max() - 1
-        read[tk] = {"price": float(s.iloc[-1]), "day_chg": float(chg), "from_1y_high": float(dd), "date": s.index[-1].strftime("%Y-%m-%d")}
+        wk = s.iloc[-6] if len(s) >= 6 else s.iloc[0]          # 一週＝5 個交易日前
+        read[tk] = {"price": float(s.iloc[-1]), "day_chg": float(chg), "from_1y_high": float(dd), "date": s.index[-1].strftime("%Y-%m-%d"),
+                    "day_pts": float(s.iloc[-1] - s.iloc[-2]), "week_chg": float(s.iloc[-1] / wk - 1), "week_pts": float(s.iloc[-1] - wk)}
         if chg <= -0.03:
             add(f"{tk}_drop_{s.index[-1]:%Y%m%d}", f"{name}單日重挫", "重大" if chg <= -0.05 else "注意",
                 f"{name}{s.index[-1]:%m/%d} 單日 {chg:+.1%}（{s.iloc[-1]:,.0f}）", cat)
@@ -287,43 +289,38 @@ def merge(new: list[dict], state: dict) -> tuple[list[dict], list[dict]]:
     return list(fresh.values()), hist
 
 
-def render(evs: list[dict], header: str, pages_url: str = "") -> str:
-    lines = [header, ""]
-    for e in evs:
-        lines.append(f"【{e['level']}】{e['label']}｜{e['time']}")
-        lines.append(f"  {e['title']}" + (f"（{e['source']}）" if e.get("source") else ""))
-        if e.get("url"):
-            lines.append(f"  {e['url']}")
-        for m in (e.get("more") or [])[:3]:
-            lines.append(f"  ・{m['title']}（{m['source']}）")
-        lines.append("")
-    if pages_url:
-        lines.append(f"網站「市場訊號」：{pages_url}/#signals")
-    lines.append("這是系統自動整理的資訊，不是買賣建議。新聞分級靠標題用字判斷，可能有誤。")
-    return "\n".join(lines)
-
-
-def notify(majors: list[dict], digest: list[dict], pages_url: str = "", send=None) -> dict:
-    """重大＝立刻寄；digest＝每日彙整。send(subject, text) 預設用 Email＋LINE。"""
+def notify(majors: list[dict], digest: list[dict], pages_url: str = "", send=None, reading: dict | None = None,
+           state: dict | None = None, today: str = "", ai_runner=None) -> dict:
+    """重大＝立刻寄；digest＝每日彙整。內容由 news_brief 整理（市場數字＋AI 摘要；不能用 AI 時退回標題合併）。
+    send(subject, email_text) 是測試用的假寄信；預設用 Email＋LINE（LINE 用短版、不放網址）。"""
+    from . import news_brief
     if send is None:
         from .notify import notify as _notify
 
-        def send(subject, text):
-            r = _notify(subject, text, scope="events")
+        def send(subject, text, line_text=None):
+            r = _notify(subject, text, scope="events", line_text=line_text)
             return bool(r.get("email") or r.get("line"))
+    st = state if state is not None else {}
     sent = {"major": 0, "digest": 0}
+
+    def go(subject, evs, header):
+        mail, line = news_brief.build(evs, header, reading, st, today, pages_url, runner=ai_runner)
+        try:
+            return send(subject, mail, line_text=f"{subject}\n{line}")
+        except TypeError:                               # 測試用的 send(subject, text)
+            return send(subject, mail)
     if majors:
         subj = "【重大】" + "、".join(dict.fromkeys(e["label"] for e in majors))
-        if send(subj[:80], render(majors, "市場重大事件（立即通知）", pages_url)):
+        if go(subj[:80], majors, "市場重大事件（立即通知）"):
             sent["major"] = len(majors)
     if digest:
-        if send(f"【注意】市場事件彙整 {len(digest)} 則", render(digest, "過去一天的「注意」等級事件", pages_url)):
+        if go(f"【注意】市場事件彙整 {len(digest)} 則", digest, "過去一天的「注意」等級事件"):
             sent["digest"] = len(digest)
     return sent
 
 
 def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, pages_url: str = "", macro=True,
-        light: bool = False) -> dict:
+        light: bool = False, ai_runner=None) -> dict:
     """完整流程（workflow 每 30 分鐘跑一次）。store＝events 分支的資料夾。
     macro：True＝也檢查總經指標；False＝不檢查（測試用）；dict＝傳給 macro_ind.check 的參數（例如假的 http）。
     light：只檢查總經指標（Mac 在指標公布時段每 2 分鐘用；新聞主題與市場壓力數字照常每 10 分鐘）。"""
@@ -383,7 +380,7 @@ def run(store: Path, now=None, fetch_news=None, px=None, flows=None, send=None, 
     late = oldest is not None and (now.tz_localize(None) - oldest) > pd.Timedelta(hours=20)
     if not first_run and pend and state.get("digest_day") != today and (7 <= now.hour < 12 or (now.hour >= 12 and late)):
         digest, state["pending"], state["digest_day"] = pend[-40:], [], today
-    sent = {"major": 0, "digest": 0} if first_run else notify(majors, digest, pages_url, send)
+    sent = {"major": 0, "digest": 0} if first_run else notify(majors, digest, pages_url, send, reading=reading, state=state, today=today, ai_runner=ai_runner)
     if first_run:
         state["pending"] = []
     # 歷史與網站
