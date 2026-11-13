@@ -237,7 +237,9 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   --strict-mcp-config --no-session-persistence`，空暫存資料夾、每日上限 NEWS_AI_MAX＝40、逾時 240 秒；失敗→挑數字最多的標題）；
   `notify(…, line_text=)` LINE／Email 分開；market_events 讀數加 day_pts／week_chg／week_pts；Mac 完整檢查改每 4 分鐘（FULL_EVERY_MIN 5，launchd 每 2 分鐘）。
   `scripts/news_preview.py`（預覽、不寄出；--no-ai）。`tests/test_news_brief.py`。GitHub 備援沒有 Claude 命令列 → 自動用無 AI 版。
-  待辦：使用者安裝 Claude 命令列並登入（`curl -fsSL https://claude.ai/install.sh | bash`，裝在 ~/.local/bin/claude）；
+  ✔ 11/13 使用者已安裝並登入（Pro 方案，claude.ai 登入）；AI 預覽成功：會查到具體數字（限空令細節、外資賣超金額），查不到的明確寫「未公布」、還會指出標題與內文不符。
+  坑：沒登入時命令列 exit 0、stderr 空白，錯誤在 stdout JSON 的 is_error/result → 已改成讀這個並提示 `claude auth login`。
+  待辦：
   第二階段：公開資訊觀測站重訊＋SEC 8-K、個股清單整合（模擬／真實庫存只用代號、追蹤清單、下單清單＋並行模擬）、
   「影響持股」只放在寄給使用者的通知，**不能進公開的 events 分支或網站**。
 - 11/06 市場事件：加權指數 −4.5% 收 39,701.64（一個月 −20%），國安基金決議第 10 次進場；金管會限空令 11/9 起（借券賣出上限 3%、融券保證金 130%）。
