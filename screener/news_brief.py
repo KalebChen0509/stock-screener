@@ -87,12 +87,31 @@ def _payload(events: list[dict]) -> str:
     return json.dumps(rows, ensure_ascii=False, indent=1)
 
 
-def _quota_ok(state: dict, today: str, limit: int) -> bool:
-    q = state.setdefault("news_ai", {})
+def _quota_path() -> Path:
+    """每日 AI 次數記在 Mac 本機（市場新聞、個股新聞共用同一個上限）。"""
+    return Path(os.environ.get("NEWS_AI_QUOTA") or Path.home() / ".stock-screener" / "ai_quota.json")
+
+
+def _quota_take(today: str) -> bool:
+    """還有額度就扣 1 次並回傳 True。"""
+    limit = int(os.environ.get("NEWS_AI_MAX") or DEFAULT_MAX)
+    p = _quota_path()
+    try:
+        q = json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        q = {}
     if q.get("day") != today:
-        q.clear()
-        q.update({"day": today, "calls": 0})
-    return q["calls"] < limit
+        q = {"day": today, "calls": 0}
+    if q["calls"] >= limit:
+        log.info("news AI: daily limit %d reached; plain format", limit)
+        return False
+    q["calls"] += 1
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(q))
+    except OSError:
+        pass
+    return True
 
 
 def _parse(out: str) -> dict:
@@ -112,49 +131,56 @@ def _parse(out: str) -> dict:
     return {str(it.get("id")): it for it in d.get("items", []) if isinstance(it, dict) and it.get("short")}
 
 
+def default_runner():
+    """Claude 命令列（使用者自己的訂閱）；找不到回傳 None。runner(prompt) -> stdout。"""
+    exe = find_claude()
+    if not exe:
+        return None
+
+    def runner(prompt):
+        with tempfile.TemporaryDirectory(prefix="newsbrief_") as d:   # 空資料夾：不讀任何專案檔
+            cmd = [exe, "-p", prompt, "--output-format", "json",
+                   "--tools", "WebSearch,WebFetch",            # 只有這兩個工具可用（唯讀）
+                   "--allowedTools", "WebSearch,WebFetch",     # 不跳出權限詢問
+                   "--strict-mcp-config",                      # 不載入任何 MCP 連接器（Gmail 等）
+                   "--no-session-persistence", "--max-turns", "15"]
+            if os.environ.get("NEWS_AI_MODEL"):
+                cmd += ["--model", os.environ["NEWS_AI_MODEL"]]
+            r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=AI_TIMEOUT)
+        err = ""
+        try:                                        # 錯誤（例如沒登入、額度用完）寫在 stdout 的 JSON 裡，stderr 是空的
+            o = json.loads(r.stdout)
+            if isinstance(o, dict) and o.get("is_error"):
+                err = str(o.get("result") or o.get("terminal_reason") or "")
+        except json.JSONDecodeError:
+            pass
+        if r.returncode != 0 or err:
+            raise RuntimeError(f"claude exit {r.returncode}: {(err or r.stderr or r.stdout)[:200]}"
+                               + ("（請在終端機執行 ~/.local/bin/claude auth login）" if "login" in err.lower() else ""))
+        return r.stdout
+    return runner
+
+
+def call_ai(prompt: str, today: str, runner=None, what: str = "news") -> dict:
+    """呼叫 AI 並解析 {"items":[{"id":...}]} → {id: item}；沒有命令列、沒額度、失敗 → {}。"""
+    runner = runner or default_runner()
+    if runner is None or not _quota_take(today):
+        return {}
+    try:
+        got = _parse(runner(prompt))
+    except Exception as e:  # noqa  （逾時、額度用完、沒登入）
+        log.warning("%s AI failed: %s", what, str(e)[:200])
+        return {}
+    log.info("%s AI: %d items", what, len(got))
+    return got
+
+
 def ai_brief(events: list[dict], state: dict, today: str, runner=None) -> dict:
     """回傳 {_bid: {"short", "detail"}}；不能用 AI 時回傳 {}。runner(prompt) -> stdout（測試用）。"""
     news = [e for e in events if e.get("kind") == "news"]
     if not news:
         return {}
-    limit = int(os.environ.get("NEWS_AI_MAX") or DEFAULT_MAX)
-    if not _quota_ok(state, today, limit):
-        log.info("news AI: daily limit %d reached; plain format", limit)
-        return {}
-    if runner is None:
-        exe = find_claude()
-        if not exe:
-            return {}
-
-        def runner(prompt):
-            with tempfile.TemporaryDirectory(prefix="newsbrief_") as d:   # 空資料夾：不讀任何專案檔
-                cmd = [exe, "-p", prompt, "--output-format", "json",
-                       "--tools", "WebSearch,WebFetch",            # 只有這兩個工具可用（唯讀）
-                       "--allowedTools", "WebSearch,WebFetch",     # 不跳出權限詢問
-                       "--strict-mcp-config",                      # 不載入任何 MCP 連接器（Gmail 等）
-                       "--no-session-persistence", "--max-turns", "15"]
-                if os.environ.get("NEWS_AI_MODEL"):
-                    cmd += ["--model", os.environ["NEWS_AI_MODEL"]]
-                r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=AI_TIMEOUT)
-            err = ""
-            try:                                        # 錯誤（例如沒登入、額度用完）寫在 stdout 的 JSON 裡，stderr 是空的
-                d = json.loads(r.stdout)
-                if isinstance(d, dict) and d.get("is_error"):
-                    err = str(d.get("result") or d.get("terminal_reason") or "")
-            except json.JSONDecodeError:
-                pass
-            if r.returncode != 0 or err:
-                raise RuntimeError(f"claude exit {r.returncode}: {(err or r.stderr or r.stdout)[:200]}"
-                                   + ("（請在終端機執行 ~/.local/bin/claude auth login）" if "login" in err.lower() else ""))
-            return r.stdout
-    state["news_ai"]["calls"] += 1
-    try:
-        got = _parse(runner(PROMPT + _payload(news)))
-    except Exception as e:  # noqa  （逾時、額度用完、沒登入）
-        log.warning("news AI failed: %s", str(e)[:200])
-        return {}
-    log.info("news AI: %d/%d events summarized", len(got), len(news))
-    return got
+    return call_ai(PROMPT + _payload(news), today, runner)
 
 
 def best_title(e: dict) -> str:

@@ -16,6 +16,7 @@
     stock-mail  smtp_user／smtp_pass／email_to（對帳信用的，已經有了）
     stock-line  token／user_id（選用：LINE）
     stock-fred  api_key（選用：沒有就不抓美國 FRED 數據，留給 GitHub）
+    stock-sec   email（選用：SEC 規定要聯絡 email 才能抓美股 8-K 公告；沒有就只抓台股重大訊息）
 紀錄：~/.stock-screener/logs/mac_events.log；工作資料夾 ~/.stock-screener/evbr
 手動跑一次：.venv/bin/python scripts/mac_events.py --full
 """
@@ -125,6 +126,15 @@ def main(argv=None):
     if mode:
         res = market_events.run(EVBR, pages_url=PAGES, macro=macro, light=(mode == "light"))
         msg.append(f"{mode} {','.join(macro['sources'])}：新事件 {res.get('new_events')}、重大 {res.get('majors')}、寄出 {res.get('sent')}")
+    if mode == "full":                                  # 持股／追蹤個股的公告與新聞（私人：紀錄只存在這台 Mac）
+        from screener import stock_news
+        try:
+            email = keychain("stock-sec", "email")
+            sres = stock_news.run(HOME / "stock_news_state.json", now, PAGES, REPO,
+                                  sec_ua=f"stock-screener personal-research {email}" if email else None)
+            msg.append(f"個股：新 {sres['new']}、重大寄出 {sres['major']}、彙整 {sres['digest']}")
+        except Exception as e:  # noqa
+            msg.append(f"個股失敗：{str(e)[:100]}")
     ares = {}
     if check_alerts:
         import alerts                                   # scripts/alerts.py；「今天已提醒」跟 GitHub 共用 events 分支

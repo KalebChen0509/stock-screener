@@ -81,7 +81,7 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 
 ## 目前進度（做完請更新這一段）
 
-最後更新：2026-11-10（Code 分頁）
+最後更新：2026-11-13（Code 分頁）
 
 - ✔ 網站：中文公司名、三種主題、K 線（含法人副圖）、籌碼、分析師預估、資料品質檢查、盤中提醒、🔔 自訂價位。
 - ✔ 永豐 API 測試通過（證券帳戶）。
@@ -240,8 +240,16 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   ✔ 11/13 使用者已安裝並登入（Pro 方案，claude.ai 登入）；AI 預覽成功：會查到具體數字（限空令細節、外資賣超金額），查不到的明確寫「未公布」、還會指出標題與內文不符。
   坑：沒登入時命令列 exit 0、stderr 空白，錯誤在 stdout JSON 的 is_error/result → 已改成讀這個並提示 `claude auth login`。
   待辦：
-  第二階段：公開資訊觀測站重訊＋SEC 8-K、個股清單整合（模擬／真實庫存只用代號、追蹤清單、下單清單＋並行模擬）、
-  「影響持股」只放在寄給使用者的通知，**不能進公開的 events 分支或網站**。
+  ✔ 第二階段（11/13，`screener/stock_news.py`、`tests/test_stock_news.py`；mac_events 完整檢查時呼叫，**狀態只存在 ~/.stock-screener/stock_news_state.json，不上傳**）：
+  個股清單 build_watchlist：hold＝模擬下單紀錄（~/.sinopac/sim，排除失敗）＋真實庫存（~/.sinopac/data 最新檔 account.tw/us，目前空）＋orders.json 個股；
+  watch＝paper.json 各版持股＋config/watchlist.yaml（GitHub 最新版）。11/13 實測台股 39 檔（持股 11）、美股 30 檔。
+  官方公告：公開資訊觀測站即時重訊 `POST mops.twse.com.tw/mops/api/home_page/t05sr01_1` body {"count":"0","marketKind":""}（今天全部），
+  全文 `POST …/mops/api/t05sr01_1_detail` body＝列表裡的 url.parameters（data[0][7]＝符合條款、[9]＝說明）；
+  證交所／櫃買 OpenAPI t187ap04 是隔天才更新，不能用。SEC：最新 8-K atom＋company_tickers.json，要聯絡 email（鑰匙圈 stock-sec／email，使用者還沒設）。
+  媒體：Google 新聞 6 家一組（持股優先、最多 36 家）＋產業 3 組，白天每 30 分鐘、半夜每 2 小時。
+  AI（共用 news_brief.call_ai，每日上限改記在 ~/.stock-screener/ai_quota.json，市場＋個股共用）：level 重大／一般／略過、dup_of 合併同一件事、short、detail、affects（代號）。
+  AI 不能用 → rule_level（重訊關鍵字、8-K 項目 1.01/2.02/5.02…＝重大）。重大立刻寄「【持股重大】」，一般進早上 7～12 點「持股與產業新聞彙整」；第一次只建基準。
+  11/13 實測：66 則→略過 36、重大 3（藥華藥新藥墨西哥核准、玉晶光財報、黃仁勳請辭→標出奇鋐等 AI 持股）、彙整 27。程式會清掉 AI 寫的網址與內部編號。
 - 11/06 市場事件：加權指數 −4.5% 收 39,701.64（一個月 −20%），國安基金決議第 10 次進場；金管會限空令 11/9 起（借券賣出上限 3%、融券保證金 130%）。
   使用者問怎麼做空：提醒他自己的規則（放空／槓桿先回測＋模擬 3 個月），一般證券帳戶只能買反向 ETF（00632R），可提議在模擬環境練習。
 - 待辦：使用者決定下一步（見對話）；決定真錢怎麼開始投入；階段三（真單、半自動、每筆使用者確認、有勾交易的 Key 要設 IP 限制）。

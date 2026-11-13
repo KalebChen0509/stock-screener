@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("SCREENER_CACHE", tempfile.mkdtemp())
+QUOTA = Path(tempfile.mkdtemp()) / "q.json"
+os.environ["NEWS_AI_QUOTA"] = str(QUOTA)
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -51,7 +53,7 @@ def test_ai_summary_used_and_no_urls():
     assert "台股加權指數11/10 單日 -4.5%" in line                                # 數字事件照原標題（本身有數字）
     assert "一週 -5,510 點" in line and "http" not in line                       # LINE：有台股數字、沒有網址
     assert "・可動用額度 5,000 億元" in mail and "【目前市場數字】" in mail and "http" not in mail.replace("https://kalebchen", "")
-    assert st["news_ai"]["calls"] == 1
+    assert json.loads(QUOTA.read_text())["calls"] == 1
 
 
 def test_fallback_when_ai_fails_or_quota():
@@ -62,7 +64,8 @@ def test_fallback_when_ai_fails_or_quota():
     assert "國安基金：國安基金第10次進場 護盤" in line and "國安基金第10次進場 護盤（經濟日報）" in mail
     assert "http" not in line and "系統依新聞標題整理" in mail
     os.environ["NEWS_AI_MAX"] = "1"
-    st = {"news_ai": {"day": "2026-11-11", "calls": 1}}
+    QUOTA.write_text(json.dumps({"day": "2026-11-11", "calls": 1}))
+    st = {}
     called = []
     B.build(evs(), "h", READ, st, "2026-11-11", runner=lambda p: called.append(1) or "{}")
     assert called == []                                                          # 今天額度用完：不呼叫
