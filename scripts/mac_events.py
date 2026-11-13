@@ -80,6 +80,17 @@ def plan(now: pd.Timestamp, last_full: str | None, force_full: bool = False):
     return ("light", w) if w else (None, None)
 
 
+def macro_args(mode, win, fred_key) -> dict:
+    """傳給 market_events.run 的總經參數。mode=None（只檢查盤中提醒）時 win 也是 None——11/13 曾因此當掉 21 次。"""
+    if mode == "full":
+        m = {"sources": ("ndc", "fred", "oecd", "news") if fred_key else ("ndc", "oecd", "news")}
+    else:
+        m = {"sources": tuple(s for s in (win or ()) if s != "fred" or fred_key), "only": FAST_FRED}
+    if fred_key:
+        m["fred_key"] = fred_key
+    return m
+
+
 def alerts_due(now: pd.Timestamp, last: str | None) -> bool:
     """台股或美股開盤中，而且距離上次盤中提醒檢查 ≥ 5 分鐘。"""
     from screener.alerts import market_open
@@ -109,13 +120,7 @@ def main(argv=None):
     import events_sync
     from screener import market_events
     fred_key = load_secrets()
-    if mode == "full":
-        macro = {"sources": ("ndc", "fred", "oecd", "news") if fred_key else ("ndc", "oecd", "news")}
-    else:
-        src = tuple(s for s in win if s != "fred" or fred_key)
-        macro = {"sources": src, "only": FAST_FRED}
-    if fred_key:
-        macro["fred_key"] = fred_key
+    macro = macro_args(mode, win, fred_key)
     try:
         events_sync.pull(EVBR)
     except Exception as e:  # noqa  （網路斷線、剛從睡眠醒來）

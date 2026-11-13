@@ -193,6 +193,11 @@ def test_mac_windows_and_plan():
     assert F.plan(T("2026-11-06 21:39"), "2026-11-06 21:28:00") == ("full", None)        # 滿 5 分鐘
     assert F.plan(T("2026-11-06 12:02"), "2026-11-06 12:00:00") == (None, None)          # 非公布時段：等下一次完整
     assert F.plan(T("2026-11-06 12:04"), "2026-11-06 12:00:00") == ("full", None)        # launchd 每 2 分鐘 → 4 分鐘一次完整
+    # 11/13 bug：盤中 11:03 只該檢查盤中提醒（mode=None、win=None），組總經參數時當掉
+    assert F.plan(T("2026-11-13 11:03"), "2026-11-13 11:02:00") == (None, None)
+    assert F.macro_args(None, None, "") == {"sources": (), "only": F.FAST_FRED}
+    assert F.macro_args("light", ("news", "fred"), "")["sources"] == ("news",)
+    assert F.macro_args("full", None, "k")["fred_key"] == "k"
 
 
 def test_rates_parsers_and_policy_rule():

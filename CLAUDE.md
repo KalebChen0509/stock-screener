@@ -175,7 +175,7 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   「重大」立刻 Email＋LINE；「注意」與指標公布進每日彙整。資料存 events 分支 `macro_series.csv.gz`、`macro.json`（有版權的 BAA10Y、UMCSENT 不存、網站只顯示狀態）。
   網站新分頁「總經指標」（#macro，手機在「更多」）。
   ✔ **Mac 當主力（11/07 使用者決定）**：GitHub 的排程實際上 4～7 小時才跑一次（免費方案頻繁排程常被跳過），只當備援。
-  `scripts/mac_events.py`＋`scripts/install_mac_events.sh`（launchd `com.stock-screener.mac-events`，每 2 分鐘叫一次）：每 10 分鐘完整檢查（新聞＋壓力數字＋總經），
+  `scripts/mac_events.py`＋`scripts/install_mac_events.sh`（launchd `com.stock-screener.mac-events`，每 2 分鐘叫一次）：每 4 分鐘完整檢查（新聞＋壓力數字＋總經＋個股；11/12 起），
   週一～五 08:55-10:35、15:55-17:35、20:25-23:05 每 2 分鐘只查總經（market_events.run(light=True)），其他時間不連網。
   每次先下載 events 分支、跑完傳回（`scripts/events_sync.py`，GitHub workflow 也改用它）：--force-with-lease，被搶先就合併對方的 titles／keys／pending／macro 再推 → 兩邊共用「已通知」紀錄，不重複寄。
   保護：沒成功下載或沒有 state.json 就不上傳。寄信用鑰匙圈 stock-mail；LINE（stock-line：token／user_id）、FRED（stock-fred：api_key）選用，由使用者自己輸入。
@@ -239,17 +239,21 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   `scripts/news_preview.py`（預覽、不寄出；--no-ai）。`tests/test_news_brief.py`。GitHub 備援沒有 Claude 命令列 → 自動用無 AI 版。
   ✔ 11/13 使用者已安裝並登入（Pro 方案，claude.ai 登入）；AI 預覽成功：會查到具體數字（限空令細節、外資賣超金額），查不到的明確寫「未公布」、還會指出標題與內文不符。
   坑：沒登入時命令列 exit 0、stderr 空白，錯誤在 stdout JSON 的 is_error/result → 已改成讀這個並提示 `claude auth login`。
-  待辦：
   ✔ 第二階段（11/13，`screener/stock_news.py`、`tests/test_stock_news.py`；mac_events 完整檢查時呼叫，**狀態只存在 ~/.stock-screener/stock_news_state.json，不上傳**）：
   個股清單 build_watchlist：hold＝模擬下單紀錄（~/.sinopac/sim，排除失敗）＋真實庫存（~/.sinopac/data 最新檔 account.tw/us，目前空）＋orders.json 個股；
   watch＝paper.json 各版持股＋config/watchlist.yaml（GitHub 最新版）。11/13 實測台股 39 檔（持股 11）、美股 30 檔。
   官方公告：公開資訊觀測站即時重訊 `POST mops.twse.com.tw/mops/api/home_page/t05sr01_1` body {"count":"0","marketKind":""}（今天全部），
   全文 `POST …/mops/api/t05sr01_1_detail` body＝列表裡的 url.parameters（data[0][7]＝符合條款、[9]＝說明）；
-  證交所／櫃買 OpenAPI t187ap04 是隔天才更新，不能用。SEC：最新 8-K atom＋company_tickers.json，要聯絡 email（鑰匙圈 stock-sec／email，使用者還沒設）。
+  證交所／櫃買 OpenAPI t187ap04 是隔天才更新，不能用。SEC：最新 8-K atom＋company_tickers.json，要聯絡 email（鑰匙圈 stock-sec／email，11/13 已設好；`scripts/check_sec.py` 檢查、不印 email）。
   媒體：Google 新聞 6 家一組（持股優先、最多 36 家）＋產業 3 組，白天每 30 分鐘、半夜每 2 小時。
   AI（共用 news_brief.call_ai，每日上限改記在 ~/.stock-screener/ai_quota.json，市場＋個股共用）：level 重大／一般／略過、dup_of 合併同一件事、short、detail、affects（代號）。
   AI 不能用 → rule_level（重訊關鍵字、8-K 項目 1.01/2.02/5.02…＝重大）。重大立刻寄「【持股重大】」，一般進早上 7～12 點「持股與產業新聞彙整」；第一次只建基準。
   11/13 實測：66 則→略過 36、重大 3（藥華藥新藥墨西哥核准、玉晶光財報、黃仁勳請辭→標出奇鋐等 AI 持股）、彙整 27。程式會清掉 AI 寫的網址與內部編號。
+- ✔ 盤點與修正（11/13）：
+  (1) `mac_events.py` 在「只檢查盤中提醒」時（mode=None、win=None）組總經參數會當掉 → 11/13 當了 21 次、那幾次盤中提醒沒跑；改成 `macro_args()`＋回歸測試。
+  (2) **美股財報 10/23 之後沒更新**：daily.yml 原本只在「UTC 週一」重抓，但每日更新實際常延遲 6～7 小時（排 06:30、11/13 13:37 才跑完）→ 跨午夜變週二就整週跳過。
+      改成看 `cache/us_fetched_at.txt`（上次成功日期）超過 6 天就重抓；波克夏 BRK-B 也要等這次重建才會出現。
+  (3) Mac 的鑰匙圈只有 stock-mail、stock-fred、stock-sec，**沒有 stock-line** → Mac 寄出的事件只有 Email、沒有 LINE（LINE 只在 GitHub 備援）。待使用者設定。
 - 11/06 市場事件：加權指數 −4.5% 收 39,701.64（一個月 −20%），國安基金決議第 10 次進場；金管會限空令 11/9 起（借券賣出上限 3%、融券保證金 130%）。
   使用者問怎麼做空：提醒他自己的規則（放空／槓桿先回測＋模擬 3 個月），一般證券帳戶只能買反向 ETF（00632R），可提議在模擬環境練習。
 - 待辦：使用者決定下一步（見對話）；決定真錢怎麼開始投入；階段三（真單、半自動、每筆使用者確認、有勾交易的 Key 要設 IP 限制）。
