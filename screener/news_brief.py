@@ -136,8 +136,16 @@ def ai_brief(events: list[dict], state: dict, today: str, runner=None) -> dict:
                 if os.environ.get("NEWS_AI_MODEL"):
                     cmd += ["--model", os.environ["NEWS_AI_MODEL"]]
                 r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=AI_TIMEOUT)
-            if r.returncode != 0:
-                raise RuntimeError(f"claude exit {r.returncode}: {r.stderr[:200]}")
+            err = ""
+            try:                                        # 錯誤（例如沒登入、額度用完）寫在 stdout 的 JSON 裡，stderr 是空的
+                d = json.loads(r.stdout)
+                if isinstance(d, dict) and d.get("is_error"):
+                    err = str(d.get("result") or d.get("terminal_reason") or "")
+            except json.JSONDecodeError:
+                pass
+            if r.returncode != 0 or err:
+                raise RuntimeError(f"claude exit {r.returncode}: {(err or r.stderr or r.stdout)[:200]}"
+                                   + ("（請在終端機執行 ~/.local/bin/claude auth login）" if "login" in err.lower() else ""))
             return r.stdout
     state["news_ai"]["calls"] += 1
     try:
