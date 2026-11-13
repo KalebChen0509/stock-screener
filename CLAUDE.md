@@ -61,6 +61,8 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 - `silence()` 只擋 stdout；shioaji 連線**出錯**時的訊息走 stderr、也含身分證字號 → 11/06 起 `silence()` 會把 stderr 經過 `redact()` 遮成「A*********」。
   `silence()` 之後 `input()` 的提示文字會消失 → 一律用 `sinopac.ask()`。`api_test.py` 原本沒呼叫 `silence()`（已補）。
 
+- `security add-generic-password … -w` 互動輸入**最多 128 字元**，LINE token（約 170）會被截斷 → 401。長金鑰用 `security -i` 寫入（`scripts/setup_line.py`、`trader/setup_mail.py` 的做法）。
+  11/14 Mac 的 LINE（stock-line）已用 setup_line.py 設好、測試成功。
 - Gmail 在帳號或應用程式密碼錯誤時會**直接斷線**（SMTPServerDisconnected），不會回「密碼錯誤」。先跑 `trader/mailtest.py`。
 - shioaji 1.7 的 `login()` 沒有 `contracts_timeout`；常數改放在 `sj.Action` 等（舊的 `shioaji.constant` 會出 DeprecationWarning）。
 - Cowork 連到 Mac 的環境不能刪檔案、不能上網；`tar` 解壓覆蓋既有檔案會失敗，要用 Python 讀寫檔案。
@@ -81,7 +83,7 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 
 ## 目前進度（做完請更新這一段）
 
-最後更新：2026-11-13（Code 分頁）
+最後更新：2026-11-14（Code 分頁）
 
 - ✔ 網站：中文公司名、三種主題、K 線（含法人副圖）、籌碼、分析師預估、資料品質檢查、盤中提醒、🔔 自訂價位。
 - ✔ 永豐 API 測試通過（證券帳戶）。
@@ -254,6 +256,9 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
   (2) **美股財報 10/23 之後沒更新**：daily.yml 原本只在「UTC 週一」重抓，但每日更新實際常延遲 6～7 小時（排 06:30、11/13 13:37 才跑完）→ 跨午夜變週二就整週跳過。
       改成看 `cache/us_fetched_at.txt`（上次成功日期）超過 6 天就重抓；波克夏 BRK-B 也要等這次重建才會出現。
   (3) Mac 的鑰匙圈只有 stock-mail、stock-fred、stock-sec，**沒有 stock-line** → Mac 寄出的事件只有 Email、沒有 LINE（LINE 只在 GitHub 備援）。待使用者設定。
+- ✔ 小額成本（11/14，使用者：以永豐為主；第三方整理、以官網為準）：台股電子下單 2 折（月退）、零股最低 1 元、豐存股定期定額 1 元；
+  美股複委託約 0.08%（5 萬美元內、無低消），豐存美股定期定額買進無低消，**賣出 0.18%、最低 3 美元** → 小額部位賣出成本高（100 美元賣出＝3%），動能版每月換股要注意。
+- 待辦（11/14 使用者決定）：第 4（成長版停損）、5（美股趨勢＋薩姆）、7（衍生性商品 D）用 Fable 5.2 重跑確認 → 任務說明在 `research/fable_briefs.md`，使用者自己開 Fable 工作階段。第 8（真錢）再議。
 - 11/06 市場事件：加權指數 −4.5% 收 39,701.64（一個月 −20%），國安基金決議第 10 次進場；金管會限空令 11/9 起（借券賣出上限 3%、融券保證金 130%）。
   使用者問怎麼做空：提醒他自己的規則（放空／槓桿先回測＋模擬 3 個月），一般證券帳戶只能買反向 ETF（00632R），可提議在模擬環境練習。
 - 待辦：使用者決定下一步（見對話）；決定真錢怎麼開始投入；階段三（真單、半自動、每筆使用者確認、有勾交易的 Key 要設 IP 限制）。
