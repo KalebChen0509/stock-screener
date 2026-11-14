@@ -1,0 +1,2 @@
+2026-11-14 03:33:59,634 INFO screener: chips: {'days_fetched': ['2026-11-13', '2026-08-17'], 'days_total': 60, 'stocks': 2018}
+2026-11-14 03:34:09,933 INFO screener: estimates: 4/4 updated (full=False)

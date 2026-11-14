@@ -1,0 +1,72 @@
+2026-11-14 03:35:34,321 INFO screener: kline tickers: 6631 (priority 6469)
+2026-11-14 03:35:48,678 INFO screener: kline 1d 150/6435
+2026-11-14 03:35:59,387 INFO screener: kline 1d 300/6435
+2026-11-14 03:36:09,382 INFO screener: kline 1d 450/6435
+2026-11-14 03:36:16,125 ERROR yfinance: $KVUE: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:36:19,584 ERROR yfinance: 
+1 Failed download:
+2026-11-14 03:36:19,585 ERROR yfinance: ['KVUE']: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:36:19,816 INFO screener: kline 1d 600/6435
+2026-11-14 03:36:30,003 INFO screener: kline 1d 750/6435
+2026-11-14 03:36:40,198 INFO screener: kline 1d 900/6435
+2026-11-14 03:36:48,318 INFO screener: kline 1d 1050/6435
+2026-11-14 03:36:56,126 INFO screener: kline 1d 1200/6435
+2026-11-14 03:37:03,569 INFO screener: kline 1d 1350/6435
+2026-11-14 03:37:11,304 INFO screener: kline 1d 1500/6435
+2026-11-14 03:37:16,152 ERROR yfinance: $CBZ: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:37:18,837 ERROR yfinance: 
+1 Failed download:
+2026-11-14 03:37:18,837 ERROR yfinance: ['CBZ']: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:37:19,068 INFO screener: kline 1d 1650/6435
+2026-11-14 03:37:26,629 INFO screener: kline 1d 1800/6435
+2026-11-14 03:37:28,111 ERROR yfinance: $RAMP: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:37:34,118 ERROR yfinance: 
+1 Failed download:
+2026-11-14 03:37:34,118 ERROR yfinance: ['RAMP']: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:37:34,347 INFO screener: kline 1d 1950/6435
+2026-11-14 03:37:37,200 ERROR yfinance: $LXP: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:37:41,691 ERROR yfinance: 
+1 Failed download:
+2026-11-14 03:37:41,691 ERROR yfinance: ['LXP']: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:37:41,922 INFO screener: kline 1d 2100/6435
+2026-11-14 03:37:49,400 INFO screener: kline 1d 2250/6435
+2026-11-14 03:37:56,748 INFO screener: kline 1d 2400/6435
+2026-11-14 03:38:04,433 INFO screener: kline 1d 2550/6435
+2026-11-14 03:38:12,004 INFO screener: kline 1d 2700/6435
+2026-11-14 03:38:19,237 INFO screener: kline 1d 2850/6435
+2026-11-14 03:38:26,919 INFO screener: kline 1d 3000/6435
+2026-11-14 03:38:34,756 INFO screener: kline 1d 3150/6435
+2026-11-14 03:38:41,799 INFO screener: kline 1d 3300/6435
+2026-11-14 03:38:49,402 INFO screener: kline 1d 3450/6435
+2026-11-14 03:38:56,927 INFO screener: kline 1d 3600/6435
+2026-11-14 03:39:00,893 ERROR yfinance: $8183.TWO: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-14)
+2026-11-14 03:39:04,443 ERROR yfinance: 
+1 Failed download:
+2026-11-14 03:39:04,443 ERROR yfinance: ['8183.TWO']: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-14)
+2026-11-14 03:39:04,675 INFO screener: kline 1d 3750/6435
+2026-11-14 03:39:11,766 INFO screener: kline 1d 3900/6435
+2026-11-14 03:39:19,280 INFO screener: kline 1d 4050/6435
+2026-11-14 03:39:26,902 INFO screener: kline 1d 4200/6435
+2026-11-14 03:39:33,743 INFO screener: kline 1d 4350/6435
+2026-11-14 03:39:41,231 INFO screener: kline 1d 4500/6435
+2026-11-14 03:39:48,482 INFO screener: kline 1d 4650/6435
+2026-11-14 03:39:58,147 INFO screener: kline 1d 4800/6435
+2026-11-14 03:40:07,668 INFO screener: kline 1d 4950/6435
+2026-11-14 03:40:17,078 INFO screener: kline 1d 5100/6435
+2026-11-14 03:40:26,788 INFO screener: kline 1d 5250/6435
+2026-11-14 03:40:36,646 INFO screener: kline 1d 5400/6435
+2026-11-14 03:40:46,153 INFO screener: kline 1d 5550/6435
+2026-11-14 03:40:55,810 INFO screener: kline 1d 5700/6435
+2026-11-14 03:41:02,854 INFO screener: kline 1d 5850/6435
+2026-11-14 03:41:10,034 INFO screener: kline 1d 6000/6435
+2026-11-14 03:41:17,375 INFO screener: kline 1d 6150/6435
+2026-11-14 03:41:22,961 ERROR yfinance: $SWKHL: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:41:24,048 ERROR yfinance: 
+1 Failed download:
+2026-11-14 03:41:24,048 ERROR yfinance: ['SWKHL']: possibly delisted; no price data found  (1d 2026-11-04 -> 2026-11-13)
+2026-11-14 03:41:24,284 INFO screener: kline 1d 6300/6435
+2026-11-14 03:41:30,526 INFO screener: kline 1d 6435/6435
+2026-11-14 03:41:34,463 INFO screener: kline 1d 33/33
+2026-11-14 03:41:38,772 INFO screener: kline 1mo 33/33
+2026-11-14 06:54:51,028 INFO screener: kline: {'tickers': 6631, 'with_daily': 6491, 'backfilled': 33, 'remaining': 164, 'refetched_splits': ['PMCB']}
+2026-11-14 06:56:07,838 INFO screener: kline site files: {'tw': 1987, 'us': 4437, 'etf': 43}

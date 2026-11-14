@@ -1,0 +1,236 @@
+2026-11-14 03:26:04,864 INFO screener: price tickers: 6639 (+ TW alternate suffix: 0 known, 0 to try)
+2026-11-14 03:26:05,559 INFO yfinance: Failed to create TzCache, reason: Error creating TzCache folder: '/home/runner/.cache/py-yfinance' reason: [Errno 17] File exists: '/home/runner/.cache/py-yfinance'. TzCache will not be used. Tip: You can direct cache to use a different location with 'set_tz_cache_location(mylocation)'
+2026-11-14 03:26:08,318 ERROR yfinance: $1262.TW: possibly delisted; no timezone found
+2026-11-14 03:26:08,426 ERROR yfinance: HTTP Error 404: {"quoteSummary":{"result":null,"error":{"code":"Not Found","description":"Quote not found for symbol: 1523.TW"}}}
+2026-11-14 03:26:08,692 ERROR yfinance: $1523.TW: possibly delisted; no timezone found
+2026-11-14 03:26:09,587 ERROR yfinance: $1507.TW: possibly delisted; no timezone found
+2026-11-14 03:26:09,795 ERROR yfinance: $1520.TW: possibly delisted; no timezone found
+2026-11-14 03:26:11,264 ERROR yfinance: $1107.TW: possibly delisted; no timezone found
+2026-11-14 03:26:11,360 ERROR yfinance: $1230.TW: possibly delisted; no timezone found
+2026-11-14 03:26:13,389 ERROR yfinance: $1469.TW: possibly delisted; no timezone found
+2026-11-14 03:26:14,268 ERROR yfinance: $1311.TW: possibly delisted; no timezone found
+2026-11-14 03:26:14,592 ERROR yfinance: $1258.TWO: possibly delisted; no timezone found
+2026-11-14 03:26:15,616 ERROR yfinance: 
+9 Failed downloads:
+2026-11-14 03:26:15,616 ERROR yfinance: ['1262.TW', '1523.TW', '1507.TW', '1520.TW', '1107.TW', '1230.TW', '1469.TW', '1311.TW', '1258.TWO']: possibly delisted; no timezone found
+2026-11-14 03:26:15,845 INFO screener: monthly prices 150/6639
+2026-11-14 03:26:17,415 ERROR yfinance: $1592.TW: possibly delisted; no timezone found
+2026-11-14 03:26:18,525 ERROR yfinance: $1613.TW: possibly delisted; no timezone found
+2026-11-14 03:26:18,758 ERROR yfinance: $1715.TW: possibly delisted; no timezone found
+2026-11-14 03:26:20,898 ERROR yfinance: $1704.TW: possibly delisted; no timezone found
+2026-11-14 03:26:21,888 ERROR yfinance: $1729.TW: possibly delisted; no timezone found
+2026-11-14 03:26:22,063 ERROR yfinance: $1606.TW: possibly delisted; no timezone found
+2026-11-14 03:26:23,303 ERROR yfinance: $1902.TW: possibly delisted; no timezone found
+2026-11-14 03:26:23,860 ERROR yfinance: $1724.TW: possibly delisted; no timezone found
+2026-11-14 03:26:23,992 ERROR yfinance: $1701.TW: possibly delisted; no timezone found
+2026-11-14 03:26:25,337 ERROR yfinance: $1716.TW: possibly delisted; no timezone found
+2026-11-14 03:26:26,371 ERROR yfinance: $1601.TW: possibly delisted; no timezone found
+2026-11-14 03:26:26,847 ERROR yfinance: 
+11 Failed downloads:
+2026-11-14 03:26:26,848 ERROR yfinance: ['1592.TW', '1613.TW', '1715.TW', '1704.TW', '1729.TW', '1606.TW', '1902.TW', '1724.TW', '1701.TW', '1716.TW', '1601.TW']: possibly delisted; no timezone found
+2026-11-14 03:26:27,077 INFO screener: monthly prices 300/6639
+2026-11-14 03:26:28,612 ERROR yfinance: $2411.TW: possibly delisted; no timezone found
+2026-11-14 03:26:28,627 ERROR yfinance: $2443.TW: possibly delisted; no timezone found
+2026-11-14 03:26:30,198 ERROR yfinance: $2391.TW: possibly delisted; no timezone found
+2026-11-14 03:26:30,479 ERROR yfinance: $2350.TW: possibly delisted; no timezone found
+2026-11-14 03:26:31,069 ERROR yfinance: $2396.TW: possibly delisted; no timezone found
+2026-11-14 03:26:31,604 ERROR yfinance: $2437.TW: possibly delisted; no timezone found
+2026-11-14 03:26:32,039 ERROR yfinance: $2315.TW: possibly delisted; no timezone found
+2026-11-14 03:26:32,838 ERROR yfinance: $2403.TW: possibly delisted; no timezone found
+2026-11-14 03:26:34,268 ERROR yfinance: $2358.TW: possibly delisted; no timezone found
+2026-11-14 03:26:34,270 ERROR yfinance: $2384.TW: possibly delisted; no timezone found
+2026-11-14 03:26:34,519 ERROR yfinance: $2381.TW: possibly delisted; no timezone found
+2026-11-14 03:26:35,035 ERROR yfinance: $2341.TW: possibly delisted; no timezone found
+2026-11-14 03:26:35,204 ERROR yfinance: $2361.TW: possibly delisted; no timezone found
+2026-11-14 03:26:35,771 ERROR yfinance: $2311.TW: possibly delisted; no timezone found
+2026-11-14 03:26:35,915 ERROR yfinance: $2418.TW: possibly delisted; no timezone found
+2026-11-14 03:26:36,766 ERROR yfinance: $2336.TW: possibly delisted; no timezone found
+2026-11-14 03:26:37,021 ERROR yfinance: $2325.TW: possibly delisted; no timezone found
+2026-11-14 03:26:37,883 ERROR yfinance: 
+17 Failed downloads:
+2026-11-14 03:26:37,883 ERROR yfinance: ['2411.TW', '2443.TW', '2391.TW', '2350.TW', '2396.TW', '2437.TW', '2315.TW', '2403.TW', '2358.TW', '2384.TW', '2381.TW', '2341.TW', '2361.TW', '2311.TW', '2418.TW', '2336.TW', '2325.TW']: possibly delisted; no timezone found
+2026-11-14 03:26:38,108 INFO screener: monthly prices 450/6639
+2026-11-14 03:26:40,348 ERROR yfinance: $2827.TW: possibly delisted; no timezone found
+2026-11-14 03:26:40,689 ERROR yfinance: $2452.TW: possibly delisted; no timezone found
+2026-11-14 03:26:40,930 ERROR yfinance: $2809.TW: possibly delisted; no timezone found
+2026-11-14 03:26:40,933 ERROR yfinance: $2494.TW: possibly delisted; no timezone found
+2026-11-14 03:26:41,102 ERROR yfinance: $2447.TW: possibly delisted; no timezone found
+2026-11-14 03:26:41,697 ERROR yfinance: $2446.TW: possibly delisted; no timezone found
+2026-11-14 03:26:43,552 ERROR yfinance: $2469.TW: possibly delisted; no timezone found
+2026-11-14 03:26:44,159 ERROR yfinance: $2463.TW: possibly delisted; no timezone found
+2026-11-14 03:26:45,079 ERROR yfinance: $2473.TW: possibly delisted; no timezone found
+2026-11-14 03:26:45,454 ERROR yfinance: $2831.TW: possibly delisted; no timezone found
+2026-11-14 03:26:45,461 ERROR yfinance: $2448.TW: possibly delisted; no timezone found
+2026-11-14 03:26:46,141 ERROR yfinance: $2807.TW: possibly delisted; no timezone found
+2026-11-14 03:26:46,658 ERROR yfinance: $2823.TW: possibly delisted; no timezone found
+2026-11-14 03:26:46,662 ERROR yfinance: $2456.TW: possibly delisted; no timezone found
+2026-11-14 03:26:47,428 ERROR yfinance: $2526.TW: possibly delisted; no timezone found
+2026-11-14 03:26:47,433 ERROR yfinance: $2499.TW: possibly delisted; no timezone found
+2026-11-14 03:26:47,826 ERROR yfinance: $2475.TW: possibly delisted; no timezone found
+2026-11-14 03:26:48,159 ERROR yfinance: $2479.TW: possibly delisted; no timezone found
+2026-11-14 03:26:48,898 ERROR yfinance: 
+18 Failed downloads:
+2026-11-14 03:26:48,898 ERROR yfinance: ['2827.TW', '2452.TW', '2809.TW', '2494.TW', '2447.TW', '2446.TW', '2469.TW', '2463.TW', '2473.TW', '2831.TW', '2448.TW', '2807.TW', '2823.TW', '2456.TW', '2526.TW', '2499.TW', '2475.TW', '2479.TW']: possibly delisted; no timezone found
+2026-11-14 03:26:49,155 INFO screener: monthly prices 600/6639
+2026-11-14 03:26:50,548 ERROR yfinance: $2856.TW: possibly delisted; no timezone found
+2026-11-14 03:26:51,051 ERROR yfinance: $3142.TW: possibly delisted; no timezone found
+2026-11-14 03:26:52,382 ERROR yfinance: $2847.TW: possibly delisted; no timezone found
+2026-11-14 03:26:53,077 ERROR yfinance: $3063.TW: possibly delisted; no timezone found
+2026-11-14 03:26:53,363 ERROR yfinance: $2833.TW: possibly delisted; no timezone found
+2026-11-14 03:26:53,544 ERROR yfinance: $3144.TWO: possibly delisted; no timezone found
+2026-11-14 03:26:54,991 ERROR yfinance: $2928.TWO: possibly delisted; no timezone found
+2026-11-14 03:26:55,005 ERROR yfinance: $3061.TW: possibly delisted; no timezone found
+2026-11-14 03:26:55,291 ERROR yfinance: $3020.TW: possibly delisted; no timezone found
+2026-11-14 03:26:56,413 ERROR yfinance: $3007.TW: possibly delisted; no timezone found
+2026-11-14 03:26:56,842 ERROR yfinance: $2867.TW: possibly delisted; no timezone found
+2026-11-14 03:26:57,268 ERROR yfinance: $2837.TW: possibly delisted; no timezone found
+2026-11-14 03:26:57,293 ERROR yfinance: $2888.TW: possibly delisted; no timezone found
+2026-11-14 03:26:57,451 ERROR yfinance: $3009.TW: possibly delisted; no timezone found
+2026-11-14 03:26:58,473 ERROR yfinance: $2841.TW: possibly delisted; no timezone found
+2026-11-14 03:26:58,936 ERROR yfinance: $3089.TWO: possibly delisted; no timezone found
+2026-11-14 03:26:59,057 ERROR yfinance: $2854.TW: possibly delisted; no timezone found
+2026-11-14 03:26:59,221 ERROR yfinance: $2936.TW: possibly delisted; no timezone found
+2026-11-14 03:26:59,223 ERROR yfinance: $3080.TW: possibly delisted; no timezone found
+2026-11-14 03:26:59,428 ERROR yfinance: $3053.TW: possibly delisted; no timezone found
+2026-11-14 03:27:00,183 ERROR yfinance: 
+20 Failed downloads:
+2026-11-14 03:27:00,183 ERROR yfinance: ['2856.TW', '3142.TW', '2847.TW', '3063.TW', '2833.TW', '3144.TWO', '2928.TWO', '3061.TW', '3020.TW', '3007.TW', '2867.TW', '2837.TW', '2888.TW', '3009.TW', '2841.TW', '3089.TWO', '2854.TW', '2936.TW', '3080.TW', '3053.TW']: possibly delisted; no timezone found
+2026-11-14 03:27:00,406 INFO screener: monthly prices 750/6639
+2026-11-14 03:27:02,478 ERROR yfinance: $3367.TW: possibly delisted; no timezone found
+2026-11-14 03:27:03,817 ERROR yfinance: $3519.TW: possibly delisted; no timezone found
+2026-11-14 03:27:04,463 ERROR yfinance: $3534.TW: possibly delisted; no timezone found
+2026-11-14 03:27:04,893 ERROR yfinance: $3426.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:06,393 ERROR yfinance: $3474.TW: possibly delisted; no timezone found
+2026-11-14 03:27:06,799 ERROR yfinance: $3202.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:08,205 ERROR yfinance: $3315.TW: possibly delisted; no timezone found
+2026-11-14 03:27:08,231 ERROR yfinance: $3214.TW: possibly delisted; no timezone found
+2026-11-14 03:27:08,775 ERROR yfinance: $3454.TW: possibly delisted; no timezone found
+2026-11-14 03:27:09,079 ERROR yfinance: $3383.TW: possibly delisted; no timezone found
+2026-11-14 03:27:09,605 ERROR yfinance: $3514.TW: possibly delisted; no timezone found
+2026-11-14 03:27:09,879 ERROR yfinance: $3271.TW: possibly delisted; no timezone found
+2026-11-14 03:27:11,322 ERROR yfinance: 
+12 Failed downloads:
+2026-11-14 03:27:11,322 ERROR yfinance: ['3367.TW', '3519.TW', '3534.TW', '3426.TWO', '3474.TW', '3202.TWO', '3315.TW', '3214.TW', '3454.TW', '3383.TW', '3514.TW', '3271.TW']: possibly delisted; no timezone found
+2026-11-14 03:27:11,582 INFO screener: monthly prices 900/6639
+2026-11-14 03:27:13,801 ERROR yfinance: $3559.TW: possibly delisted; no timezone found
+2026-11-14 03:27:13,879 ERROR yfinance: $3579.TW: possibly delisted; no timezone found
+2026-11-14 03:27:13,952 ERROR yfinance: $3682.TW: possibly delisted; no timezone found
+2026-11-14 03:27:14,601 ERROR yfinance: $3697.TW: possibly delisted; no timezone found
+2026-11-14 03:27:14,615 ERROR yfinance: $3614.TW: possibly delisted; no timezone found
+2026-11-14 03:27:14,983 ERROR yfinance: $3584.TW: possibly delisted; no timezone found
+2026-11-14 03:27:15,634 ERROR yfinance: $3698.TW: possibly delisted; no timezone found
+2026-11-14 03:27:15,804 ERROR yfinance: $4141.TW: possibly delisted; no timezone found
+2026-11-14 03:27:16,108 ERROR yfinance: $4152.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:17,406 ERROR yfinance: $3599.TW: possibly delisted; no timezone found
+2026-11-14 03:27:18,099 ERROR yfinance: $3638.TW: possibly delisted; no timezone found
+2026-11-14 03:27:18,424 ERROR yfinance: $3536.TW: possibly delisted; no timezone found
+2026-11-14 03:27:19,534 ERROR yfinance: $3642.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:20,073 ERROR yfinance: $4144.TW: possibly delisted; no timezone found
+2026-11-14 03:27:20,401 ERROR yfinance: $3573.TW: possibly delisted; no timezone found
+2026-11-14 03:27:20,537 ERROR yfinance: $3598.TW: possibly delisted; no timezone found
+2026-11-14 03:27:21,356 ERROR yfinance: $3561.TW: possibly delisted; no timezone found
+2026-11-14 03:27:21,855 ERROR yfinance: $4130.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:22,358 ERROR yfinance: 
+18 Failed downloads:
+2026-11-14 03:27:22,358 ERROR yfinance: ['3559.TW', '3579.TW', '3682.TW', '3697.TW', '3614.TW', '3584.TW', '3698.TW', '4141.TW', '4152.TWO', '3599.TW', '3638.TW', '3536.TW', '3642.TWO', '4144.TW', '3573.TW', '3598.TW', '3561.TW', '4130.TWO']: possibly delisted; no timezone found
+2026-11-14 03:27:22,581 INFO screener: monthly prices 1050/6639
+2026-11-14 03:27:25,517 ERROR yfinance: $4803.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:26,142 ERROR yfinance: $4429.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:29,807 ERROR yfinance: $4944.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:30,145 ERROR yfinance: $4725.TW: possibly delisted; no timezone found
+2026-11-14 03:27:30,538 ERROR yfinance: $4712.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:31,947 ERROR yfinance: $4733.TW: possibly delisted; no timezone found
+2026-11-14 03:27:32,615 ERROR yfinance: 
+6 Failed downloads:
+2026-11-14 03:27:32,615 ERROR yfinance: ['4803.TWO', '4429.TWO', '4944.TWO', '4725.TW', '4712.TWO', '4733.TW']: possibly delisted; no timezone found
+2026-11-14 03:27:32,848 INFO screener: monthly prices 1200/6639
+2026-11-14 03:27:35,579 ERROR yfinance: $5281.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:36,399 ERROR yfinance: $5102.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:36,406 ERROR yfinance: $5259.TW: possibly delisted; no timezone found
+2026-11-14 03:27:36,852 ERROR yfinance: $5305.TW: possibly delisted; no timezone found
+2026-11-14 03:27:37,192 ERROR yfinance: $5264.TW: possibly delisted; no timezone found
+2026-11-14 03:27:37,630 ERROR yfinance: $5383.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:37,632 ERROR yfinance: $5371.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:37,800 ERROR yfinance: $5304.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:39,530 ERROR yfinance: $4945.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:40,275 ERROR yfinance: $4984.TW: possibly delisted; no timezone found
+2026-11-14 03:27:40,951 ERROR yfinance: $5280.TW: possibly delisted; no timezone found
+2026-11-14 03:27:41,335 ERROR yfinance: $5349.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:41,730 ERROR yfinance: $4987.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:43,369 ERROR yfinance: 
+13 Failed downloads:
+2026-11-14 03:27:43,370 ERROR yfinance: ['5281.TWO', '5102.TWO', '5259.TW', '5305.TW', '5264.TW', '5383.TWO', '5371.TWO', '5304.TWO', '4945.TWO', '4984.TW', '5280.TW', '5349.TWO', '4987.TWO']: possibly delisted; no timezone found
+2026-11-14 03:27:43,598 INFO screener: monthly prices 1350/6639
+2026-11-14 03:27:44,896 ERROR yfinance: $6012.TW: possibly delisted; no timezone found
+2026-11-14 03:27:46,411 ERROR yfinance: $5854.TW: possibly delisted; no timezone found
+2026-11-14 03:27:48,611 ERROR yfinance: $5820.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:49,635 ERROR yfinance: $6004.TW: possibly delisted; no timezone found
+2026-11-14 03:27:49,939 ERROR yfinance: $6145.TW: possibly delisted; no timezone found
+2026-11-14 03:27:50,863 ERROR yfinance: $6172.TW: possibly delisted; no timezone found
+2026-11-14 03:27:51,145 ERROR yfinance: $6131.TW: possibly delisted; no timezone found
+2026-11-14 03:27:53,518 ERROR yfinance: $6119.TW: possibly delisted; no timezone found
+2026-11-14 03:27:54,055 ERROR yfinance: 
+8 Failed downloads:
+2026-11-14 03:27:54,055 ERROR yfinance: ['6012.TW', '5854.TW', '5820.TWO', '6004.TW', '6145.TW', '6172.TW', '6131.TW', '6119.TW']: possibly delisted; no timezone found
+2026-11-14 03:27:54,288 INFO screener: monthly prices 1500/6639
+2026-11-14 03:27:55,965 ERROR yfinance: $6289.TW: possibly delisted; no timezone found
+2026-11-14 03:27:56,316 ERROR yfinance: $6280.TW: possibly delisted; no timezone found
+2026-11-14 03:27:56,839 ERROR yfinance: $6247.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:57,360 ERROR yfinance: $6288.TW: possibly delisted; no timezone found
+2026-11-14 03:27:57,544 ERROR yfinance: $6514.TWO: possibly delisted; no timezone found
+2026-11-14 03:27:57,548 ERROR yfinance: $6286.TW: possibly delisted; no timezone found
+2026-11-14 03:27:58,520 ERROR yfinance: $6255.TW: possibly delisted; no timezone found
+2026-11-14 03:28:01,350 ERROR yfinance: 
+87 Failed downloads:
+2026-11-14 03:28:01,350 ERROR yfinance: ['6289.TW', '6280.TW', '6247.TWO', '6288.TW', '6514.TWO', '6286.TW', '6255.TW']: possibly delisted; no timezone found
+2026-11-14 03:28:01,351 ERROR yfinance: ['6271.TW', '6244.TWO', '6504.TW', '6261.TWO', '6234.TWO', '6508.TWO', '6251.TW', '6425.TWO', '6224.TW', '6246.TWO', '6449.TW', '6264.TWO', '6499.TWO', '6574.TWO', '6457.TWO', '6275.TWO', '6485.TWO', '6527.TWO', '6222.TWO', '6235.TW', '6269.TW', '6263.TWO', '6542.TWO', '6470.TWO', '6242.TWO', '6560.TWO', '6219.TWO', '6274.TWO', '6541.TW', '6546.TWO', '6238.TWO', '6248.TWO', '6525.TW', '6497.TWO', '6547.TWO', '6558.TW', '6284.TWO', '6412.TW', '6419.TWO', '6465.TWO', '6416.TW', '6223.TWO', '6534.TW', '6426.TW', '6291.TWO', '6446.TW', '6506.TWO', '6486.TWO', '6229.TWO', '6241.TWO', '6279.TWO', '6561.TWO', '6245.TWO', '6221.TWO', '6227.TWO', '6404.TWO', '6452.TW', '6259.TWO', '6414.TW', '6451.TW', '6432.TWO', '6422.TW', '6492.TWO', '6510.TWO', '6531.TW', '6573.TW', '6423.TWO', '6287.TWO', '6550.TW', '6292.TWO', '6282.TW', '6237.TWO', '6556.TWO', '6526.TW', '6477.TW', '6283.TW', '6568.TWO', '6441.TWO', '6225.TW', '6272.TW']: YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')
+2026-11-14 03:28:01,511 INFO screener: monthly prices 1650/6639
+2026-11-14 03:28:06,072 ERROR yfinance: 
+145 Failed downloads:
+2026-11-14 03:28:06,072 ERROR yfinance: ['6702.TW', '6825.TWO', '6641.TW', '6794.TW', '6596.TWO', '6870.TWO', '6776.TW', '6835.TW', '6771.TW', '6706.TW', '6606.TW', '6697.TWO', '6708.TWO', '6855.TWO', '6614.TW', '6642.TWO', '6661.TWO', '6756.TW', '6803.TWO', '6875.TWO', '6581.TW', '6821.TWO', '6667.TWO', '6662.TWO', '6658.TW', '6593.TWO', '6624.TWO', '6715.TW', '6732.TWO', '6730.TWO', '6863.TW', '6668.TW', '6770.TW', '6785.TWO', '6753.TW', '6843.TWO', '6846.TWO', '6838.TW', '6747.TWO', '6873.TW', '6664.TWO', '6712.TWO', '6609.TWO', '6830.TW', '6617.TWO', '6582.TW', '6640.TWO', '6829.TWO', '6869.TW', '6625.TW', '6735.TWO', '6722.TW', '6796.TW', '6742.TW', '6585.TW', '6670.TW', '6721.TWO', '6589.TW', '6657.TW', '6637.TWO', '6762.TWO', '6649.TWO', '6597.TWO', '6577.TWO', '6669.TW', '6689.TW', '6788.TWO', '6716.TWO', '6877.TWO', '6874.TWO', '6862.TW', '6590.TWO', '6592.TW', '6792.TW', '6654.TWO', '6841.TWO', '6604.TWO', '6584.TWO', '6579.TW', '6684.TWO', '6719.TW', '6741.TWO', '6727.TWO', '6655.TW', '6603.TWO', '6594.TWO', '6767.TWO', '6804.TWO', '6692.TWO', '6844.TWO', '6693.TWO', '6872.TWO', '6591.TW', '6865.TWO', '6725.TWO', '6823.TWO', '6757.TW', '6834.TW', '6683.TWO', '6629.TWO', '6739.TWO', '6761.TWO', '6752.TWO', '6840.TWO', '6807.TW', '6651.TWO', '6720.TWO', '6782.TW', '6615.TWO', '6743.TW', '6859.TWO', '6666.TW', '6805.TW', '6831.TW', '6616.TWO', '6671.TW', '6588.TWO', '6690.TWO', '6763.TWO', '6578.TWO', '6854.TW', '6789.TW', '6768.TW', '6806.TW', '6672.TW', '6643.TWO', '6861.TW', '6605.TW', '6703.TWO', '6613.TWO', '6679.TWO', '6674.TW', '6790.TW', '6799.TW', '6751.TWO', '6698.TW', '6781.TW', '6620.TWO', '6856.TWO', '6695.TW', '6733.TWO', '6645.TW', '6728.TWO', '6791.TWO', '6680.TWO']: YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')
+2026-11-14 03:28:06,176 INFO screener: monthly prices 1800/6639
+2026-11-14 03:28:12,902 ERROR yfinance: 
+77 Failed downloads:
+2026-11-14 03:28:12,903 ERROR yfinance: ['8008.TW', '6994.TW', '7772.TWO', '6894.TWO', '6907.TWO', '7723.TWO', '6982.TWO', '7713.TWO', '6906.TW', '6924.TW', '6925.TWO', '7709.TWO', '8032.TWO', '6951.TW', '8028.TW', '7788.TW', '7721.TW', '7828.TWO', '7765.TW', '6949.TW', '6898.TWO', '6988.TW', '6909.TW', '7751.TWO', '7760.TW', '7794.TWO', '7722.TW', '7777.TWO', '6914.TW', '7856.TWO', '6885.TW', '7740.TW', '7689.TW', '7818.TW', '7753.TWO', '6913.TWO', '7821.TW', '6957.TW', '6962.TW', '7842.TWO', '7855.TW', '6969.TW', '6901.TW', '7743.TWO', '7734.TWO', '6952.TW', '7757.TWO', '8038.TWO', '7770.TWO', '8011.TW', '7792.TWO', '6895.TWO', '7819.TWO', '6955.TW', '6904.TWO', '6921.TW', '7805.TWO', '7823.TW', '6936.TW', '6910.TWO', '7812.TW', '7782.TWO', '6986.TWO', '7718.TWO', '7730.TW', '7402.TWO', '7738.TWO', '7827.TW', '7732.TW', '6928.TW', '7744.TWO', '7814.TWO', '7708.TWO', '8033.TW', '7610.TW', '6961.TWO', '7810.TWO']: YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')
+2026-11-14 03:28:13,075 INFO screener: monthly prices 1950/6639
+2026-11-14 03:28:17,844 ERROR yfinance: 
+143 Failed downloads:
+2026-11-14 03:28:17,844 ERROR yfinance: ['8497.TW', '8070.TW', '8215.TW', '8147.TWO', '8291.TWO', '8410.TWO', '8284.TWO', '8401.TWO', '8432.TWO', '8083.TWO', '8440.TWO', '8444.TWO', '8446.TWO', '8924.TWO', '8429.TW', '8110.TW', '8096.TWO', '8418.TWO', '8092.TWO', '8404.TW', '8047.TWO', '8089.TWO', '8482.TW', '8042.TWO', '8462.TW', '8050.TWO', '8499.TW', '8111.TWO', '8341.TW', '8046.TW', '8277.TWO', '8049.TWO', '8261.TW', '8182.TWO', '8421.TWO', '8213.TW', '8080.TWO', '8358.TWO', '8438.TW', '8916.TWO', '8084.TWO', '8299.TWO', '8367.TW', '8150.TW', '8349.TWO', '8227.TWO', '8426.TWO', '8415.TWO', '8099.TWO', '8427.TW', '8048.TWO', '8077.TWO', '8403.TWO', '8466.TW', '8411.TW', '8112.TW', '8131.TW', '8201.TW', '8066.TWO', '8433.TWO', '8240.TWO', '8383.TWO', '8436.TWO', '8249.TW', '8097.TWO', '8155.TWO', '8109.TWO', '8354.TWO', '8478.TW', '8442.TW', '8102.TWO', '8473.TW', '8059.TWO', '8086.TWO', '8406.TWO', '8255.TWO', '8905.TWO', '8443.TW', '8409.TWO', '8342.TWO', '8162.TW', '8105.TW', '8074.TWO', '8087.TWO', '8467.TW', '8374.TW', '8416.TWO', '8107.TWO', '8908.TW', '8163.TW', '8101.TW', '8455.TWO', '8121.TWO', '8171.TWO', '8437.TWO', '8044.TWO', '8472.TWO', '8279.TWO', '8078.TW', '8923.TWO', '8054.TWO', '8289.TWO', '8091.TWO', '8464.TW', '8488.TW', '8045.TW', '8067.TWO', '8477.TWO', '8040.TWO', '8917.TWO', '8072.TW', '8068.TWO', '8234.TWO', '8424.TWO', '8114.TW', '8489.TWO', '8480.TW', '8390.TWO', '8210.TW', '8093.TWO', '8921.TWO', '8176.TWO', '8103.TW', '8222.TW', '8454.TW', '8081.TW', '8435.TWO', '8085.TWO', '8088.TWO', '8039.TW', '8272.TWO', '8481.TW', '8422.TW', '8043.TWO', '8906.TWO', '8064.TWO', '8487.TW', '8071.TWO', '8104.TW', '8069.TWO', '8420.TWO', '8199.TW', '8463.TW']: YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')
+2026-11-14 03:28:17,954 INFO screener: monthly prices 2100/6639
+2026-11-14 03:28:23,833 ERROR yfinance: 
+107 Failed downloads:
+2026-11-14 03:28:23,833 ERROR yfinance: ['9801.TW', '9935.TW', 'ADPT', 'ADSK', 'ACHV', 'AAOI', 'ADEA', 'ACRV', '8937.TWO', '9922.TW', 'ABCL', '8936.TWO', 'ADBE', '9933.TW', 'ABT', '9917.TW', 'ADMA', 'ACN', 'ACH', '9931.TW', '8996.TW', 'ADT', 'ABR', 'ADM', '9928.TW', '8929.TWO', 'ADAC', 'ABSI', 'AACI', '9925.TW', 'ACCS', 'ACGL', 'ACTG', '9934.TW', '8933.TWO', '9962.TWO', '9943.TW', '8930.TWO', 'ACU', '9908.TW', '9912.TW', '9919.TW', '9942.TW', '9910.TW', '9902.TW', '9906.TW', 'ABX', '9949.TWO', '8938.TWO', '8940.TW', '9905.TW', 'AADX', 'AACP', 'AAON', '9915.TW', 'ACEL', 'ACT', 'AB', 'ABNB', 'ADAM', '8934.TWO', '9927.TW', 'AAT', '9946.TW', 'ACI', 'ACAA', '9802.TW', 'ACR', 'ABBV', 'ABEO', '9939.TW', '9904.TW', 'ACFN', 'ABAT', 'ACM', '9945.TW', '8941.TWO', 'ABUS', 'ABVC', 'AAMI', 'ACOG', 'ADRX', 'ABM', 'ABCB', 'ACMR', 'ACRE', '9960.TWO', 'ADC', 'AAC', 'ACET', '9907.TW', '9918.TW', 'ADBT', '8935.TWO', 'ACCO', 'ADIG', '9924.TW', '9944.TW', '9941.TW', 'ACRS', '9951.TWO', 'ABG', 'ACAD', 'AAL', '9929.TW', 'ADTN', 'ADP']: YFRateLimitError('Too Many Requests. Rate limited. Try after a while.')
+2026-11-14 03:28:23,974 INFO screener: monthly prices 2250/6639
+2026-11-14 03:28:33,901 INFO screener: monthly prices 2400/6639
+2026-11-14 03:28:43,588 INFO screener: monthly prices 2550/6639
+2026-11-14 03:28:53,153 INFO screener: monthly prices 2700/6639
+2026-11-14 03:29:03,038 INFO screener: monthly prices 2850/6639
+2026-11-14 03:29:12,803 INFO screener: monthly prices 3000/6639
+2026-11-14 03:29:22,936 INFO screener: monthly prices 3150/6639
+2026-11-14 03:29:32,551 INFO screener: monthly prices 3300/6639
+2026-11-14 03:29:42,304 INFO screener: monthly prices 3450/6639
+2026-11-14 03:29:52,093 INFO screener: monthly prices 3600/6639
+2026-11-14 03:30:01,957 INFO screener: monthly prices 3750/6639
+2026-11-14 03:30:11,881 INFO screener: monthly prices 3900/6639
+2026-11-14 03:30:21,676 INFO screener: monthly prices 4050/6639
+2026-11-14 03:30:31,435 INFO screener: monthly prices 4200/6639
+2026-11-14 03:30:41,306 INFO screener: monthly prices 4350/6639
+2026-11-14 03:30:49,158 INFO screener: monthly prices 4500/6639
+2026-11-14 03:30:56,860 INFO screener: monthly prices 4650/6639
+2026-11-14 03:31:04,866 INFO screener: monthly prices 4800/6639
+2026-11-14 03:31:14,532 INFO screener: monthly prices 4950/6639
+2026-11-14 03:31:24,521 INFO screener: monthly prices 5100/6639
+2026-11-14 03:31:34,013 INFO screener: monthly prices 5250/6639
+2026-11-14 03:31:41,825 INFO screener: monthly prices 5400/6639
+2026-11-14 03:31:48,973 INFO screener: monthly prices 5550/6639
+2026-11-14 03:31:56,621 INFO screener: monthly prices 5700/6639
+2026-11-14 03:32:04,294 INFO screener: monthly prices 5850/6639
+2026-11-14 03:32:11,858 INFO screener: monthly prices 6000/6639
+2026-11-14 03:32:19,504 INFO screener: monthly prices 6150/6639
+2026-11-14 03:32:27,306 INFO screener: monthly prices 6300/6639
+2026-11-14 03:32:34,994 INFO screener: monthly prices 6450/6639
+2026-11-14 03:32:42,864 INFO screener: monthly prices 6600/6639
+2026-11-14 03:32:45,580 INFO screener: monthly prices 6639/6639
+2026-11-14 03:32:58,630 INFO screener: new tickers, fetching full history: ['ADRX', 'AGLT', 'ALUR', 'AMRO', 'ANEB', 'AZR', 'BF-B', 'BRK-B', 'CASK', 'CHSCL', 'CRD-B', 'DGICB', 'ETRA', 'FDXF', 'HYPG', 'JMKE', 'LYNX', 'MIAC', 'MOG-B', 'MSGK']
+2026-11-14 03:33:00,122 INFO screener: monthly prices 32/32
+2026-11-14 03:33:11,489 INFO screener: monthly prices updated: 896624 rows, 6519 tickers
