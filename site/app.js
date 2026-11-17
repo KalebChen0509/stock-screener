@@ -182,11 +182,11 @@ function defaultSettings() {
 function route() {
   const [v0, ...args] = (location.hash || "#overview").slice(1).split("/");
   const views = { overview: renderOverview, screener: renderScreener, chart: () => renderChartView(args), etf: renderEtf, backtest: renderBacktest,
-                  paper: renderPaper, signals: renderSignals, macro: renderMacro, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
+                  paper: renderPaper, mysim: renderMySim, signals: renderSignals, macro: renderMacro, earnings: renderEarnings, watchlist: renderWatchlist, rules: renderRules };
   const v = views[v0] ? v0 : "overview";
   $$(".view").forEach((el) => el.classList.toggle("on", el.id === "view-" + v));
   $$("#tabs a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
-  const inMore = ["etf", "backtest", "paper", "signals", "macro", "watchlist", "rules"].includes(v);
+  const inMore = ["etf", "backtest", "paper", "mysim", "signals", "macro", "watchlist", "rules"].includes(v);
   $$("#bnav a").forEach((a) => a.classList.toggle("on", a.getAttribute("href") === "#" + v));
   $("#moreBtn") && $("#moreBtn").classList.toggle("on", inMore);
   $("#moreSheet") && ($("#moreSheet").hidden = true);
@@ -1577,6 +1577,201 @@ async function renderAlertPanel(mkt, id) {
     $("#alvCopy").textContent = "✔ 已複製";
   };
   if ($("#alvReset")) $("#alvReset").onclick = () => { store.set("vs_alert_draft", null); renderAlertPanel(mkt, id); };
+}
+
+// ---------------------------------------------------------------- 我的模擬（私人倉庫 stock-screener-private 的 sim/；權杖只存在這台裝置）
+const MS_REPO = () => store.get("vs_sim_repo", `${GH.owner}/stock-screener-private`);
+const MS_TOKEN = () => store.get("vs_sim_token", "");
+const MS_LINES = [["我的模擬", "我（自己買賣）", "--s1"], ["系統線", "系統（自動照策略）", "--s2"], ["全買 0050（每月 1 萬）", "對照：全買 0050", "--s3"], ["只買 ETF（每月 1 萬）", "對照：只買 ETF", "--s4"]];
+const b64dec = (s) => new TextDecoder().decode(Uint8Array.from(atob(String(s).replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+const b64enc = (s) => { const b = new TextEncoder().encode(s); let o = ""; for (let i = 0; i < b.length; i += 0x8000) o += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(o); };
+async function msApi(path, { raw = false, method = "GET", body } = {}) {
+  const r = await fetch(`https://api.github.com/repos/${MS_REPO()}/contents/${path}`, {
+    method, body, cache: "no-store",
+    headers: { Authorization: `Bearer ${MS_TOKEN()}`, Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  let data = null;
+  try { data = raw && r.ok ? JSON.parse(await r.text()) : await r.json(); } catch (e) { /* 空的或不是 JSON */ }
+  return { ok: r.ok, status: r.status, data };
+}
+const msErr = (st) => (st === 401 ? "權杖無效或已到期（請重新建立，見最下面的設定）"
+  : st === 404 ? "找不到私人倉庫，或權杖沒有勾選這個倉庫（Repository access 要選 stock-screener-private）"
+  : st === 403 ? "權杖沒有寫入權限（Contents 要選 Read and write），或 GitHub 暫時限制次數"
+  : st === 409 ? "檔案剛被別處改過，請再按一次" : `GitHub 回應 ${st}`);
+async function msLoad() {
+  const [res, tr] = await Promise.all([msApi("sim/results.json", { raw: true }), msApi("sim/trades.json")]);
+  if (!res.ok && res.status !== 404) throw new Error(msErr(res.status));
+  if (!tr.ok && tr.status !== 404) throw new Error(msErr(tr.status));
+  let trades = [];
+  if (tr.ok) { try { trades = JSON.parse(b64dec(tr.data.content) || "[]"); } catch (e) { trades = []; } }
+  return { res: res.ok ? res.data : null, trades, loaded: Date.now() };
+}
+async function msSaveTrades(mutate, msg) {
+  const cur = await msApi("sim/trades.json");              // 每次寫入前重讀，拿最新的版本號（sha）
+  if (!cur.ok && cur.status !== 404) throw new Error(msErr(cur.status));
+  const list = cur.ok ? JSON.parse(b64dec(cur.data.content) || "[]") : [];
+  const nl = mutate(list);
+  const put = await msApi("sim/trades.json", { method: "PUT", body: JSON.stringify({ message: msg, content: b64enc(JSON.stringify(nl, null, 1) + "\n"), ...(cur.ok ? { sha: cur.data.sha } : {}) }) });
+  if (!put.ok) throw new Error(msErr(put.status));
+  S.ms.trades = nl;
+}
+function msSetup() {
+  const has = !!MS_TOKEN();
+  $("#msSetup").innerHTML = `<details ${has ? "" : "open"}><summary><b>設定（這台裝置）</b>${has ? `　<span class="pill okp">已設定</span>` : ""}</summary>
+    <p class="hint">模擬紀錄存在你的<b>私人</b> GitHub 倉庫 <code>${esc(MS_REPO())}</code>，公開網站上看不到。這頁用「只給這個倉庫、只給這台手機」的權杖去讀寫；權杖只存在這台裝置的瀏覽器裡，不會上傳到任何地方。</p>
+    <ol class="hint ms-steps">
+      <li>GitHub → 右上頭像 → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token</li>
+      <li>名稱：手機模擬；Expiration：1 年；Repository access：<b>Only select repositories → stock-screener-private</b></li>
+      <li>Permissions → Repository permissions → <b>Contents：Read and write</b>（其他都不用）→ Generate</li>
+      <li>複製 github_pat_ 開頭那一串，貼到下面</li>
+    </ol>
+    <div class="alv-form"><input id="msTok" type="password" autocomplete="off" placeholder="github_pat_…" style="width:15em">
+      <button class="chip on" id="msTokSave">儲存並連線</button>${has ? `<button class="chip" id="msTokDel">從這台裝置移除</button>` : ""}</div>
+    <p class="hint" id="msTokMsg"></p></details>`;
+  $("#msTokSave").onclick = () => {
+    const v = $("#msTok").value.replace(/\s/g, "");
+    if (!/^(github_pat_|ghp_)/.test(v)) { $("#msTokMsg").textContent = v ? "這不像 GitHub 權杖（要 github_pat_ 開頭）。" : "還沒貼上權杖。"; return; }
+    store.set("vs_sim_token", v); S.ms = undefined; renderMySim();
+  };
+  if ($("#msTokDel")) $("#msTokDel").onclick = () => { store.set("vs_sim_token", ""); S.ms = undefined; renderMySim(); };
+}
+async function renderMySim(refresh = false) {
+  msSetup();
+  const hideAll = () => { $("#msChartCard").hidden = true; $("#msTradeCard").hidden = true; $("#msLineCard").hidden = true; };
+  if (!MS_TOKEN()) {
+    hideAll(); $("#msMeta").textContent = "";
+    $("#msBody").innerHTML = `<p>還沒在這台裝置設定權杖。照最下面「設定」的步驟做一次就好。</p>
+      <p class="hint">兩條線分開算：<b>我</b>＝你在這頁記錄的買賣；<b>系統</b>＝照「${esc(((S.cfg || {}).paper || {}).versions ? "成長動能（上限 10%）＋月底檢查停損" : "系統策略")}」每月自動調整。每月 1 日入金 1 萬，都用記錄之後的第一個收盤價成交、扣真實手續費。</p>`;
+    return;
+  }
+  if (S.ms === undefined || refresh) {
+    $("#msMeta").textContent = "讀取私人倉庫中…";
+    try { S.ms = await msLoad(); S.msErr = null; } catch (e) { S.ms = null; S.msErr = e.message; }
+  }
+  if (!S.ms) { hideAll(); $("#msMeta").textContent = ""; $("#msBody").innerHTML = `<p class="neg">讀不到：${esc(S.msErr || "")}</p><button class="chip" id="msRetry">再試一次</button>`; $("#msRetry").onclick = () => renderMySim(true); return; }
+  const R = S.ms.res, L = (R && R.lines) || {};
+  const refreshBtn = `<button class="chip" id="msRefresh">重新讀取</button>`;
+  if (!R || R.status !== "ok") {
+    $("#msMeta").textContent = "";
+    $("#msBody").innerHTML = `<p>${R && R.msg ? esc(R.msg) : "Mac 還沒算出第一次結果（每小時算一次）。"}</p>${refreshBtn}`;
+    $("#msChartCard").hidden = true; $("#msLineCard").hidden = true;
+  } else {
+    $("#msMeta").innerHTML = `Mac 計算：${esc(R.updated)}（每小時）｜股價到 台股 ${esc((R.price_date || {}).tw || "–")}、美股 ${esc((R.price_date || {}).us || "–")}｜開始 ${esc(R.config.start)}、每月入金 ${fmt.ntd(R.config.monthly)}`;
+    const pc = (x, d = 1) => (x == null ? "–" : fmt.pct(x, d)), cls = (x) => (x == null ? "" : x >= 0 ? "pos" : "neg");
+    $("#msBody").innerHTML = `<div class="ms-grid">${MS_LINES.filter(([k]) => L[k] && !L[k].empty).map(([k, lab, c]) => {
+      const x = L[k];
+      return `<div class="tile ms-tile" style="border-top:3px solid ${cssVar(c)}"><div class="k">${esc(lab)}</div>
+        <div class="v">${fmt.int(x.value)}</div>
+        <div class="d">報酬 <b class="${cls(x.twr)}">${pc(x.twr)}</b>（${x.pnl >= 0 ? "+" : ""}${fmt.int(x.pnl)}）</div>
+        <div class="d">年化 ${x.xirr == null ? "–" : `<b class="${cls(x.xirr)}">${pc(x.xirr)}</b>`}｜最大跌 ${pc(x.mdd)}</div></div>`;
+    }).join("")}</div>
+      ${L["系統線"] && L["系統線"].note ? `<p class="hint">系統線：${esc(L["系統線"].note)}</p>` : ""}
+      <p class="hint">金額單位：台幣；目前每條線都投入 ${fmt.ntd((L["我的模擬"] || {}).invested)}。報酬＝時間加權（扣掉每月入金的影響，可以跟基金比）；年化＝考慮每筆入金時點的內部報酬率，滿一個月才顯示。這是模擬，不是投資建議。</p>${refreshBtn}`;
+    msChart(L);
+    msLineCard(L);
+  }
+  if ($("#msRefresh")) $("#msRefresh").onclick = () => renderMySim(true);
+  msTradeCard(R, L);
+}
+function msChart(L) {
+  const ks = MS_LINES.filter(([k]) => L[k] && (L[k].nav || []).length >= 2);
+  if (!ks.length || !window.Chart) { $("#msChartCard").hidden = true; return; }
+  $("#msChartCard").hidden = false;
+  const dates = [...new Set(ks.flatMap(([k]) => L[k].nav.map((r) => r[0])))].sort();
+  const ser = ks.map(([k, lab, c]) => { const m = new Map(L[k].nav.map((r) => [r[0], r[1]])); return { label: lab, color: cssVar(c), data: dates.map((d) => m.get(d) ?? null) }; });
+  const inv = new Map(L[ks[0][0]].nav.map((r) => [r[0], r[2]]));
+  ser.push({ label: "累計投入", color: cssVar("--text-3") || "#888", dash: [4, 4], width: 1.5, data: dates.map((d) => inv.get(d) ?? null) });
+  destroyChart("ms");
+  S.charts.ms = lineChart($("#msChart"), dates.map((d) => d.slice(5)), ser, { yfmt: (v) => Math.round(v).toLocaleString() });
+  legend($("#msLegend"), ser.map((s) => [s.label, s.color]));
+}
+function msLineCard(L) {
+  const cur = S.msLine && L[S.msLine] ? S.msLine : "我的模擬", x = L[cur];
+  if (!x) { $("#msLineCard").hidden = true; return; }
+  $("#msLineCard").hidden = false;
+  const nm = (t) => esc(x.holdings.find((h) => h.ticker === t)?.name || zhInfo(/\.TWO?$/.test(t) ? "tw" : "us", t, "").n || "");
+  const code = (t) => esc(String(t).replace(/\.TWO?$/, ""));
+  const H = x.holdings || [], T = (x.trades || []).slice().reverse().slice(0, 40);
+  $("#msLineCard").innerHTML = `<h2>持股與交易</h2>
+    <div class="seg" id="msSeg" style="margin-bottom:10px;flex-wrap:wrap">${MS_LINES.filter(([k]) => L[k]).map(([k, lab]) => `<button data-k="${esc(k)}" class="${k === cur ? "on" : ""}">${esc(lab.replace("對照：", ""))}</button>`).join("")}</div>
+    ${x.empty ? `<p class="hint">還沒有資料。</p>` : `
+    <p class="hint">資產 ${fmt.ntd(x.value)}＝持股 ${fmt.ntd(x.value - x.cash)}＋現金 ${fmt.ntd(x.cash)}｜投入 ${fmt.ntd(x.invested)}｜累計手續費＋稅 ${fmt.ntd(x.fees)}</p>
+    ${H.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>股票</th><th class="num">現值</th><th class="num">比重</th><th class="num">報酬</th></tr></thead><tbody>${H.map((h) =>
+      `<tr><td><b>${code(h.ticker)}</b> ${nm(h.ticker)}</td><td class="num">${fmt.int(h.value)}</td><td class="num">${fmt.pct(h.weight, 0)}</td><td class="num ${h.ret == null ? "" : h.ret >= 0 ? "pos" : "neg"}">${h.ret == null ? "–" : fmt.pct(h.ret, 1)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">目前沒有持股（全是現金 ${fmt.ntd(x.cash)}）。</p>`}
+    <h3 class="mc-h">最近的成交</h3>
+    ${T.length ? `<div class="table-wrap"><table class="data compact"><thead><tr><th>日期</th><th>買賣</th><th>股票</th><th class="num">金額</th><th class="num">價格</th><th class="num">費用</th></tr></thead><tbody>${T.map((t) =>
+      `<tr><td>${esc(t.date.slice(5))}</td><td class="${t.side === "買" ? "pos" : "neg"}">${esc(t.side)}</td><td><b>${code(t.ticker)}</b> ${nm(t.ticker)}${t.pnl != null ? `<br><span class="hint">損益 ${t.pnl >= 0 ? "+" : ""}${fmt.int(t.pnl)}</span>` : ""}</td><td class="num">${fmt.int(t.amount)}</td><td class="num">${t.price == null ? "–" : fmt.price(t.price)}</td><td class="num">${t.fee}</td></tr>`).join("")}</tbody></table></div>` : `<p class="hint">還沒有成交。</p>`}`}`;
+  $$("#msSeg button").forEach((b) => (b.onclick = () => { S.msLine = b.dataset.k; msLineCard(L); }));
+}
+function msTradeCard(R, L) {
+  const card = $("#msTradeCard");
+  card.hidden = false;
+  const F = S.msForm || (S.msForm = { market: "tw", side: "buy" });
+  const st = (R && R.trade_status) || {}, my = L["我的模擬"] || {};
+  const H = (my.holdings || []);
+  const mine = (S.ms.trades || []).slice().reverse();
+  const stTag = (t) => {
+    const s = st[t.id];
+    if (!s) return `<span class="pill">已送出，等 Mac 計算</span>`;
+    const c = s.status === "已成交" ? "okp" : s.status === "待成交" ? "" : "neg";
+    return `<span class="pill ${c}">${esc(s.status)}</span>${s.date ? ` <span class="hint">${esc(s.date.slice(5))}${s.price ? " @" + fmt.price(s.price) : ""}</span>` : ""}${s.msg && s.status !== "已成交" ? `<br><span class="hint">${esc(s.msg)}</span>` : ""}`;
+  };
+  const canCancel = (t) => !st[t.id] || st[t.id].status !== "已成交";
+  const pendBuy = mine.filter((t) => t.side === "buy" && (!st[t.id] || st[t.id].status === "待成交")).reduce((a, t) => a + (+t.amount || 0), 0);
+  const cashNote = my.cash != null ? `可用現金約 ${fmt.ntd(Math.max(my.cash - pendBuy, 0))}（帳上 ${fmt.ntd(my.cash)}${pendBuy ? `，扣掉還沒成交的買單 ${fmt.ntd(pendBuy)}` : ""}；每月 1 日會再入金）` : "第一次計算後會顯示可用現金。";
+  const lbl = (t) => `<b>${esc(t.code)}</b> ${esc(zhInfo(t.market, t.code, "").n || "")}`;
+  card.innerHTML = `<h2>記錄我的買賣</h2>
+    <p class="hint">按下送出後，用<b>之後第一個收盤價</b>成交（台股 13:30、美股紐約 16:00 收盤）；不能補記過去的價格。手續費照永豐：台股 2 折、最低 1 元；美股買 0.08%、賣 0.18% 最低 3 美元。</p>
+    <div class="ms-form">
+      <div class="seg" id="msMkt"><button data-v="tw" class="${F.market === "tw" ? "on" : ""}">台股</button><button data-v="us" class="${F.market === "us" ? "on" : ""}">美股</button></div>
+      <div class="seg" id="msSide"><button data-v="buy" class="${F.side === "buy" ? "on" : ""}">買進</button><button data-v="sell" class="${F.side === "sell" ? "on" : ""}">賣出</button></div>
+      ${F.side === "buy" ? `<label>代號 <input id="msCode" autocapitalize="characters" autocomplete="off" placeholder="${F.market === "tw" ? "2330" : "NVDA"}" value="${esc(F.code || "")}"></label>
+        <span class="hint" id="msName"></span>
+        <label>金額 <input id="msAmt" type="number" inputmode="numeric" min="500" step="100" placeholder="台幣" value="${esc(F.amount || "")}"> 元</label>`
+      : (H.length ? `<label>股票 <select id="msHold">${H.map((h) => `<option value="${esc(h.ticker)}">${esc(String(h.ticker).replace(/\.TWO?$/, ""))} ${esc(h.name || "")}（${fmt.int(h.value)}）</option>`).join("")}</select></label>
+        <label>賣出 <select id="msFrac"><option value="1">全部</option><option value="0.5">一半</option><option value="0.25">四分之一</option></select></label>` : `<span class="hint">「我」這條線目前沒有持股可以賣。</span>`)}
+      <label>備註 <input id="msNote" maxlength="60" placeholder="選填：為什麼買賣" style="width:12em"></label>
+      <button class="chip on" id="msSend" ${F.side === "sell" && !H.length ? "disabled" : ""}>送出</button>
+    </div>
+    <p class="hint" id="msSendMsg">${cashNote}</p>
+    ${mine.length ? `<h3 class="mc-h">我送出的紀錄</h3><div class="ms-recs">${mine.slice(0, 50).map((t) =>
+      `<div class="ms-rec"><div><span class="hint">${esc(new Date(t.created).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }))}</span>　${t.side === "buy" ? `買 ${lbl(t)} ${fmt.int(t.amount)} 元` : `賣 ${lbl(t)} ${t.frac >= 1 ? "全部" : fmt.pct(t.frac, 0)}`}${t.note ? `<span class="hint">｜${esc(t.note)}</span>` : ""}</div>
+        <div class="ms-rec-st"><div>${stTag(t)}</div>${canCancel(t) ? `<button class="chip" data-cancel="${esc(t.id)}">取消</button>` : ""}</div></div>`).join("")}</div>` : ""}`;
+  const keep = () => { if ($("#msCode")) F.code = $("#msCode").value; if ($("#msAmt")) F.amount = $("#msAmt").value; };
+  $$("#msMkt button").forEach((b) => (b.onclick = () => { keep(); F.market = b.dataset.v; F.code = ""; msTradeCard(R, L); }));
+  $$("#msSide button").forEach((b) => (b.onclick = () => { keep(); F.side = b.dataset.v; msTradeCard(R, L); }));
+  const nameHint = () => {
+    if (!$("#msCode")) return;
+    const c = $("#msCode").value.trim().toUpperCase(), z = c ? zhInfo(F.market, c, "") : null;
+    $("#msName").textContent = !c ? "" : z.n ? z.n : "（系統清單裡沒有這個代號，送出後 Mac 抓不到股價會標「代號錯誤」）";
+  };
+  if ($("#msCode")) { $("#msCode").oninput = nameHint; nameHint(); }
+  const say = (t, bad) => { const el = $("#msSendMsg"); el.textContent = t; el.className = "hint " + (bad ? "neg" : ""); };
+  $("#msSend").onclick = async () => {
+    const t = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: new Date().toISOString(), market: F.market, side: F.side, note: $("#msNote").value.trim() };
+    if (F.side === "buy") {
+      t.code = $("#msCode").value.trim().toUpperCase();
+      t.amount = Math.round(+$("#msAmt").value);
+      if (!(F.market === "tw" ? /^[0-9]{4}[0-9A-Z]{0,2}$/ : /^[A-Z][A-Z0-9.\-]{0,9}$/).test(t.code)) return say("代號格式不對（台股例如 2330、00631L；美股例如 NVDA、BRK-B）。", true);
+      if (!(t.amount >= 500)) return say("金額至少 500 元（太小的金額手續費比例太高）。", true);
+    } else {
+      const tk = $("#msHold").value;
+      t.market = /\.TWO?$/.test(tk) ? "tw" : "us"; t.code = tk.replace(/\.TWO?$/, ""); t.frac = +$("#msFrac").value;
+    }
+    $("#msSend").disabled = true; say("送出中…");
+    try {
+      await msSaveTrades((list) => [...list, t], `網站：${t.side === "buy" ? "買" : "賣"} ${t.code}`);
+      S.msForm = { market: F.market, side: F.side };
+      msTradeCard(R, L);
+      say("✔ 已存到私人倉庫。收盤後 Mac 下一次計算（每小時）就會顯示成交。");
+    } catch (e) { $("#msSend").disabled = false; say("沒有存成功：" + e.message, true); }
+  };
+  $$("[data-cancel]", card).forEach((b) => (b.onclick = async () => {
+    if (!confirm("取消這筆紀錄？（還沒成交的才能取消）")) return;
+    b.disabled = true;
+    try { await msSaveTrades((list) => list.filter((x) => x.id !== b.dataset.cancel), "網站：取消一筆模擬交易"); msTradeCard(R, L); }
+    catch (e) { b.disabled = false; say("取消失敗：" + e.message, true); }
+  }));
 }
 
 function valuationCard(v, row, mkt) {

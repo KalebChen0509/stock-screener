@@ -140,6 +140,15 @@ def main(argv=None):
             msg.append(f"個股：新 {sres['new']}、重大寄出 {sres['major']}、彙整 {sres['digest']}")
         except Exception as e:  # noqa
             msg.append(f"個股失敗：{str(e)[:100]}")
+        # 模擬投資帳本（私人倉庫）：每小時算一次（收盤後成交、週六早上寄週報）
+        last_sim = rs.get("last_sim")
+        if not last_sim or (now.tz_localize(None) - pd.Timestamp(last_sim)) >= pd.Timedelta(minutes=55):
+            try:
+                import sim_book_run
+                sim_book_run.main([])
+            except Exception as e:  # noqa
+                msg.append(f"模擬帳本失敗：{str(e)[:100]}")
+            rs["last_sim"] = now.tz_localize(None).strftime("%Y-%m-%d %H:%M:%S")
     ares = {}
     if check_alerts:
         import alerts                                   # scripts/alerts.py；「今天已提醒」跟 GitHub 共用 events 分支

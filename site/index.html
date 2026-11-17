@@ -31,6 +31,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     <a href="#etf">ETF</a>
     <a href="#backtest">回測</a>
     <a href="#paper">並行模擬</a>
+    <a href="#mysim">我的模擬</a>
     <a href="#signals">市場訊號</a>
     <a href="#macro">總經指標</a>
     <a href="#earnings">財報</a>
@@ -225,6 +226,23 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     </div>
   </section>
 
+  <!-- ======================= 我的模擬（私人倉庫） ======================= -->
+  <section id="view-mysim" class="view">
+    <div class="card">
+      <h2>我的模擬投資</h2>
+      <p class="hint" id="msMeta"></p>
+      <div id="msBody"></div>
+    </div>
+    <div class="card" id="msChartCard" hidden>
+      <h2>資產走勢</h2>
+      <div class="legend" id="msLegend"></div>
+      <div style="height:260px"><canvas id="msChart"></canvas></div>
+    </div>
+    <div class="card" id="msTradeCard" hidden></div>
+    <div class="card" id="msLineCard" hidden></div>
+    <div class="card" id="msSetup"></div>
+  </section>
+
   <!-- ======================= 總經指標 ======================= -->
   <section id="view-macro" class="view">
     <div class="card">
@@ -315,6 +333,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     <a href="#etf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 5"/></svg>ETF</a>
     <a href="#backtest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>回測</a>
     <a href="#paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg>並行模擬</a>
+    <a href="#mysim"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>我的模擬</a>
     <a href="#signals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>市場訊號</a>
     <a href="#macro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>總經指標</a>
     <a href="#watchlist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>追蹤清單</a>

@@ -337,3 +337,18 @@ a.chip { text-decoration: none; display: inline-block; }
 .ai-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }
 .ai-row .hint { font-size: 12px; }
 .ai-text { width: 100%; box-sizing: border-box; min-height: 220px; font: 12px/1.5 ui-monospace, monospace; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
+
+/* 我的模擬 */
+.ms-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.ms-tile { padding: 10px 12px; }
+.ms-tile .v { font-size: 20px; }
+.ms-tile .d { font-size: 12.5px; }
+.ms-tile .d { margin-top: 3px; }
+.ms-form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 8px 0; }
+.ms-form input, .ms-form select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; max-width: 100%; }
+.ms-form input#msCode, .ms-form input#msAmt { width: 7.5em; }
+.ms-steps { padding-left: 1.3em; margin: 6px 0; }
+.ms-steps li { margin: 3px 0; }
+#msSetup summary { cursor: pointer; }
+.ms-rec { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ms-rec-st { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-top: 4px; }
