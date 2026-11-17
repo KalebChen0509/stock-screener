@@ -63,6 +63,9 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 
 - `security add-generic-password … -w` 互動輸入**最多 128 字元**，LINE token（約 170）會被截斷 → 401。長金鑰用 `security -i` 寫入（`scripts/setup_line.py`、`trader/setup_mail.py` 的做法）。
   11/14 Mac 的 LINE（stock-line）已用 setup_line.py 設好、測試成功。
+- **GitHub 推送權杖會到期**（11/17 發生：鑰匙圈的 github.com 項目被 git 自動刪掉 → 推送一直問 Password、GitHub 回 Invalid username or token）。
+  重設：GitHub → Settings → Personal access tokens（fine-grained）→ Regenerate／新建（只選 stock-screener、Contents＋Workflows Read and write、期限 1 年）→ `bash scripts/setup_github_token.sh`。
+  push_update.sh 已加 GIT_TERMINAL_PROMPT=0（不再卡在 Password:），權杖失效時會直接提示重設。11/17 使用者重設完成、推送成功。
 - Gmail 在帳號或應用程式密碼錯誤時會**直接斷線**（SMTPServerDisconnected），不會回「密碼錯誤」。先跑 `trader/mailtest.py`。
 - shioaji 1.7 的 `login()` 沒有 `contracts_timeout`；常數改放在 `sj.Action` 等（舊的 `shioaji.constant` 會出 DeprecationWarning）。
 - Cowork 連到 Mac 的環境不能刪檔案、不能上網；`tar` 解壓覆蓋既有檔案會失敗，要用 Python 讀寫檔案。
@@ -83,7 +86,7 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 
 ## 目前進度（做完請更新這一段）
 
-最後更新：2026-11-16（Code 分頁）
+最後更新：2026-11-17（Code 分頁）
 
 - ✔ 網站：中文公司名、三種主題、K 線（含法人副圖）、籌碼、分析師預估、資料品質檢查、盤中提醒、🔔 自訂價位。
 - ✔ 永豐 API 測試通過（證券帳戶）。
