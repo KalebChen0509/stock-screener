@@ -38,6 +38,7 @@ SCREENER_CACHE=/tmp/databr/cache .venv/bin/python research/factor_data.py
 | `sahm_us_verify.py` | 重驗美股趨勢＋薩姆（含息、國庫券、1960 起、隨機搬位置檢定） | 1990 後成立、1960～1989 樣本外沒有優勢 → 不採用（11/14） |
 | `derivs_d.py` | 槓桿（台指期、正2、SSO）與每月賣賣權（TXO、CBOE PutWrite） | 槓桿跌幅 −55%～−95%；賣賣權 3.6%／−31.5%；以使用者規模都不可行（11/14） |
 | `last_year.py` → `last_year_report.py`（`last_year_panel_check.py`） | 過去一年 6 個並行模擬版本的回測＋截斷測試（查證沒有預知未來） | 78 個比對持股全部相同；成長 +41.9%、只買 ETF +29.6%、0050 +65.4%（11/16） |
+| `rolling_year.py` | 10 年回測裡每個月當起點算一年（109 個視窗）＋滾動三年 | 任選一年贏只買 ETF：成長 54%、核心＋衛星 72%、價值 17%；下跌年幾乎都輸（11/17） |
 | `sahm_tw.py` | 「趨勢＋衰退指標（薩姆、CFNAI、初領）」用在台股 | 沒有用：台股空頭跟科技循環、比美國就業早崩（11/08） |
 | `macro_signals.py` | 總經轉折訊號：月底進出場＋大跌前有沒有預警（國發會、OECD、FRED） | 見 CLAUDE.md「總經指標」（11/07）；國發會／OECD 有回溯修正 → 偏樂觀 |
 
