@@ -21,7 +21,7 @@ fi
 
 git -c user.name="KalebChen0509" -c user.email="KalebChen0509@users.noreply.github.com" commit -qm "更新 $(date +%Y-%m-%d\ %H:%M)" || echo "沒有新的修改"
 # 你在 GitHub 網頁上改過的設定（例如網站「🔔 提醒」貼上的價位）先合併進來，再推送
-if ! git -c user.name="KalebChen0509" -c user.email="KalebChen0509@users.noreply.github.com" pull -q --rebase origin main; then
+if ! GIT_TERMINAL_PROMPT=0 git -c user.name="KalebChen0509" -c user.email="KalebChen0509@users.noreply.github.com" pull -q --rebase origin main; then
   if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
     git rebase --abort 2>/dev/null || true
     echo "GitHub 網頁上的修改和這台電腦的修改衝突（同一個檔案的同一段都改了）。請把上面的訊息貼給 Claude 處理。"
@@ -31,9 +31,15 @@ if ! git -c user.name="KalebChen0509" -c user.email="KalebChen0509@users.noreply
   exit 1
 fi
 # 就算沒有新的修改也推一次：上次推到一半斷線的版本會在這裡補推上去
-if git push -q origin main; then
+if out=$(GIT_TERMINAL_PROMPT=0 git push -q origin main 2>&1); then
   echo "已推送到 GitHub ✔"
 else
-  echo "推送失敗（可能是網路中斷）。網路恢復後再執行一次這個指令就好。"
+  echo "$out" | tail -3
+  if echo "$out" | grep -qiE "authentication|invalid username|could not read password|terminal prompts disabled|403"; then
+    # 權杖到期或被刪掉：git 不會再問密碼（避免停在 Password: 等輸入），直接告訴使用者怎麼重設
+    echo "推送失敗：GitHub 權杖無效或已到期。請到 GitHub 建一個新權杖，再執行：bash scripts/setup_github_token.sh"
+  else
+    echo "推送失敗（可能是網路中斷）。網路恢復後再執行一次這個指令就好。"
+  fi
   exit 1
 fi
