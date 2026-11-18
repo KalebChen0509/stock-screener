@@ -53,12 +53,12 @@ jobs:
         run: mkdir -p site/data/logs && set -o pipefail && python scripts/fetch_tw.py --max-calls 500 2>&1 | tee -a site/data/logs/fetch_tw.txt
         continue-on-error: true
       - name: 美股財報（SEC，距上次成功超過 6 天或尚無資料時才重抓，平日省 10～15 分鐘）
-        # 11/13：原本看「UTC 週一」，但排程延遲跨過午夜就變週二 → 10/23 之後三週都沒更新。改成看上次成功的日期。
+        # 11/18：還沒有 us_shares_fix.csv（多類別股票公司的股數）也重抓一次。11/13：原本看「UTC 週一」，但排程延遲跨過午夜就變週二 → 10/23 之後三週都沒更新。改成看上次成功的日期。
         if: ${{ github.event.inputs.skip_us != 'true' }}
         run: |
           last=$(cat databr/cache/us_fetched_at.txt 2>/dev/null || echo 2000-01-01)
           age=$(( ( $(date -u +%s) - $(date -u -d "$last" +%s) ) / 86400 ))
-          if [ "$age" -ge 6 ] || [ ! -f databr/cache/us_fundamentals.csv.gz ] || [ "${{ github.event.inputs.force_us }}" = "true" ]; then
+          if [ "$age" -ge 6 ] || [ ! -f databr/cache/us_fundamentals.csv.gz ] || [ ! -f databr/cache/us_shares_fix.csv ] || [ "${{ github.event.inputs.force_us }}" = "true" ]; then
             set -o pipefail
             python scripts/fetch_us.py 2>&1 | tee site/data/logs/fetch_us.txt && date -u +%F > databr/cache/us_fetched_at.txt
           else

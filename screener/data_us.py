@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import zipfile
 from pathlib import Path
 
@@ -26,6 +27,7 @@ SUBS_URL = "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.
 RAW_DIR = Path(os.environ.get("SEC_RAW_DIR", CACHE_DIR.parent / "sec_raw"))
 US_FUND_PATH = CACHE_DIR / "us_fundamentals.csv.gz"
 US_UNIVERSE_PATH = CACHE_DIR / "us_universe.csv"
+US_SHARES_FIX_PATH = CACHE_DIR / "us_shares_fix.csv"    # 多類別股票公司的等值股數（Yahoo 市值÷股價）
 US_EVENTS_PATH = CACHE_DIR / "us_events.csv.gz"
 
 FORMS = {"10-Q", "10-K", "10-Q/A", "10-K/A", "10-KT"}
@@ -400,9 +402,63 @@ def build_fundamentals(universe: pd.DataFrame, download: bool = True,
     cmap = dict(zip(universe["cik"].astype(int).astype(str), universe["ticker"]))
     df["cik"] = df["id"]
     df["id"] = df["id"].map(cmap)
+    df = fill_missing_shares(df)
     ensure_dir(US_FUND_PATH.parent)
     df.to_csv(US_FUND_PATH, index=False, compression="gzip")
     log.info("US fundamentals: %d rows, %d companies", len(df), df["id"].nunique())
+    return df
+
+
+def yahoo_equiv_shares(tickers: list[str], pause: float = 0.4) -> dict:
+    """Yahoo 的市值是整家公司（所有類別股票）→ 市值÷這個代號的股價＝以這個代號計的等值股數。"""
+    import yfinance as yf
+    out = {}
+    for tk in tickers:
+        try:
+            i = yf.Ticker(tk).info
+            mc = i.get("marketCap")
+            px = i.get("regularMarketPrice") or i.get("currentPrice") or i.get("previousClose")
+            if mc and px and mc > 0 and px > 0:
+                out[tk] = float(mc) / float(px)
+        except Exception as e:  # noqa
+            log.debug("yahoo shares %s: %s", tk, e)
+        time.sleep(pause)
+    return out
+
+
+def fill_missing_shares(df: pd.DataFrame, fetch: bool = True, recent_days: int = 400, fetcher=None,
+                        today: pd.Timestamp | None = None) -> pd.DataFrame:
+    """有 A／B 等多種股票類別的公司（波克夏、Visa、好時…），SEC companyfacts 只有分類別的股數 → 股數是空的 →
+    算不出市值，整家不會出現在網站（11/18 查到近一年約 240 家）。
+    (1) 近一年有股數、只是最新一季空白 → 用同一家前一季的股數往下補；
+    (2) 近一年完全沒有股數 → 用 Yahoo 市值÷股價的等值股數（每 6 天更新一次，存 us_shares_fix.csv），只補近一年的季度
+        （同一段期間都用同一個來源，「股數年增」才不會因為來源不同而跳動；更早的回測期間維持空白＝跟以前一樣不納入）。"""
+    if df.empty or "shares" not in df:
+        return df
+    today = pd.Timestamp(today or pd.Timestamp.today()).normalize()
+    cut = today - pd.Timedelta(days=recent_days)
+    df = df.sort_values(["id", "period_end"]).copy()
+    recent = df["available_date"] >= cut
+    has = df[recent].groupby("id")["shares"].apply(lambda s: s.notna().any())
+    ff_ids = set(has[has].index)
+    m1 = recent & df["id"].isin(ff_ids)
+    df.loc[m1, "shares"] = df[m1].groupby("id")["shares"].ffill()
+    need = sorted(set(has[~has].index) - {None})
+    cache = pd.read_csv(US_SHARES_FIX_PATH, dtype={"id": str}) if US_SHARES_FIX_PATH.exists() else \
+        pd.DataFrame(columns=["id", "shares", "date"])
+    fresh = set(cache[pd.to_datetime(cache["date"]) >= today - pd.Timedelta(days=6)]["id"]) if len(cache) else set()
+    todo = [x for x in need if x not in fresh]
+    if fetch and todo:
+        got = (fetcher or yahoo_equiv_shares)(todo)
+        log.info("US shares fix: %d companies without share count, Yahoo %d/%d", len(need), len(got), len(todo))
+        if got:
+            new = pd.DataFrame({"id": list(got), "shares": list(got.values()), "date": today.strftime("%Y-%m-%d")})
+            cache = pd.concat([cache[~cache["id"].isin(got)], new], ignore_index=True)
+            ensure_dir(US_SHARES_FIX_PATH.parent)
+            cache.to_csv(US_SHARES_FIX_PATH, index=False)
+    sh = dict(zip(cache["id"], cache["shares"].astype(float))) if len(cache) else {}
+    m2 = recent & df["shares"].isna() & df["id"].isin(set(need) & set(sh))
+    df.loc[m2, "shares"] = df.loc[m2, "id"].map(sh)
     return df
 
 

@@ -70,6 +70,8 @@ GitHub Actions：每日更新（台北週二～週六 06:30）、台股財報回
 - shioaji 1.7 的 `login()` 沒有 `contracts_timeout`；常數改放在 `sj.Action` 等（舊的 `shioaji.constant` 會出 DeprecationWarning）。
 - Yahoo 偶爾一口氣擋掉好幾批股價（11/18 每日更新：第 1350～2250 檔約 600 檔失敗，含通過篩選的股票 → 沿用舊價）。
   11/18 起 `prices.fetch_monthly`／`fetch_daily` 失敗的會等 30 秒、改小批補抓一次（`_retry_missing`，tests/test_prices_retry）。
+- 美股多類別股票公司（波克夏 BRK-B、Visa、Constellation…）SEC companyfacts 只有分類別股數 → 股數空白 → 沒有市值 → 整家不在網站（11/18 查到 289 家）。
+  `data_us.fill_missing_shares`：近一年有股數只是最新一季空白→前一季往下補；完全沒有→Yahoo 市值÷股價（`cache/us_shares_fix.csv`，6 天更新）、只補近一年（回測更早期間不變）。實測 289→4。
 - Cowork 連到 Mac 的環境不能刪檔案、不能上網；`tar` 解壓覆蓋既有檔案會失敗，要用 Python 讀寫檔案。
 
 ## 真錢投入標準（使用者 2026-11-06 事先定好；看到結果後不要改標準）
