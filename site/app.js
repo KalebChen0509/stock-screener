@@ -622,12 +622,24 @@ function renderOverview() {
     html += `<p class="hint">停損：${slc.basis === "vol" ? `個股自持有期間最高點回檔超過「月波動度 × ${slc.vol_mult}」（${fmt.pct(slc.vol_min, 0)}～${fmt.pct(slc.vol_max, 0)}）即賣出` : `個股自${slc.basis === "trailing" ? "持有期間最高點" : "買進價"}下跌 ${fmt.pct(slc.pct, 0)} 即賣出`}，含息計算；ETF 不設停損。實際成本可填在 config/positions.yaml。</p>` +
       (st ? `<ul>${st}</ul>` : "") + (cd ? `<p class="hint">冷卻期（暫不買回）：${cd}</p>` : "");
   }
-  $("#ovPortfolio").innerHTML = html;
+  // 11/19 使用者：總覽預設顯示「成長動能（月底停損）」版（並行模擬鎖定的月底決策）；可切回目前版（價值）
+  const gv = ((S.paper && S.paper.versions) || []).find((v) => v.name === OV_GROWTH);
+  const pv = gv && S.ovPortV !== "value" ? "growth" : "value";
+  const seg = gv ? `<div class="seg" id="ovPortSeg" style="margin-bottom:10px"><button data-v="growth" class="${pv === "growth" ? "on" : ""}">成長動能（月底停損）</button><button data-v="value" class="${pv === "value" ? "on" : ""}">目前版（價值）</button></div>` : "";
+  if (pv === "growth") {
+    $("#ovPortNote").innerHTML = `並行模擬「${esc(gv.name)}」${esc(gv.decision_month || "")} 月底鎖定的決策（下個月才會換股）。比重＝占整個組合；停損在月底收盤檢查。點個股看詳細。`;
+    $("#ovPortfolio").innerHTML = seg + growthPortHtml(gv);
+  } else {
+    $("#ovPortNote").innerHTML = "核心全球大盤＋台美個股，個股部位內等權重；名額不足時用大盤補位。⭐ = 由上而下與由下而上交叉比對皆優。";
+    $("#ovPortfolio").innerHTML = seg + html;
+  }
+  $$("#ovPortSeg button").forEach((b) => (b.onclick = () => { S.ovPortV = b.dataset.v; renderOverview(); }));
   $$("#ovPortfolio tr.clickable").forEach((tr) => (tr.onclick = () => openDetail(tr.dataset.m, tr.dataset.id)));
 
   $("#ovRegime").innerHTML = `<p class="hint">產業分數 = 6 個月相對強弱 50% + 產業估值（中位數 EBIT/EV）50%，占個股綜合分數 ${fmt.pct(S.cfg.ranking.top_down, 0)}。</p>`;
   { const nS = H.filter((h) => h.kind === "stock").length, O = S.orders || {}, ob = O.orders || [], N = S.news || {};
-    $("#ovPortSub").textContent = `${nS} 檔個股＋大盤`;
+    const gH = gv ? [...gv.holdings.tw || [], ...gv.holdings.us || []] : null;
+    $("#ovPortSub").textContent = pv === "growth" ? `成長動能（月底停損）・${gH.length} 檔個股` : `目前版（價值）・${nS} 檔個股＋大盤`;
     $("#ovOrdSub").textContent = ob.length ? `${O.month || ""}：買 ${ob.filter((o) => o.action === "buy").length}、賣 ${ob.filter((o) => o.action === "sell").length}` : "";
     $("#ovNewsSub").textContent = `事件 ${(N.events || []).length}・新聞 ${(N.news || []).length}`;
     $("#ovSysSub").textContent = `台股通過 ${c.tw ? c.tw.passed : "–"}・美股 ${c.us ? c.us.passed : "–"}・資料 ${String(m.updated || "").slice(5, 16)}`; }
@@ -639,6 +651,20 @@ function renderOverview() {
     .map((n) => `<li>${n.negative ? "⚠️ " : ""}<b>${esc(n.id)}</b> ${esc(zhInfo(n.market === "etf" ? "etf" : n.market || mktOf(n.id), n.id, "").n)} ${n.source ? `<span class="pill">${esc(n.source)}</span> ` : ""}<span class="hint">${esc(n.date)}</span> ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>` : esc(n.title)}</li>`).join("");
   const wsj = (N.wsj_headlines || []).slice(0, 15).map((n) => `<li>${n.negative ? "⚠️ " : ""}<span class="pill">${esc(n.category)}</span> <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a></li>`).join("");
   $("#ovNews").innerHTML = ((ev ? `<h3>重大事件</h3><ul>${ev}</ul>` : "") + (nw ? `<h3>近 3 天新聞（含華爾街日報提及持股的報導）</h3><ul>${nw}</ul>` : "") + (wsj ? `<h3>華爾街日報頭條（由上而下參考）</h3><ul>${wsj}</ul><p class="hint">標題與連結來自 WSJ 公開 RSS；點開後用你的訂閱帳號閱讀全文。</p>` : "")) || `<p class="hint">目前沒有資料</p>`;
+}
+const OV_GROWTH = "成長動能（上限 10%）＋月底檢查停損";
+function growthPortHtml(v) {
+  const H = v.holdings || {}, lab = { tw: "台股個股", us: "美股個股", etf: "ETF／大盤" };
+  return ["tw", "us", "etf"].map((mk) => {
+    const a = (H[mk] || []).slice().sort((x, y) => y[2] - x[2]);
+    if (!a.length) return "";
+    const w = a.reduce((t, x) => t + (x[2] || 0), 0);
+    const rows = a.map(([id, n, wt]) => {
+      const nm = mk === "etf" ? `${esc(zhInfo("etf", id, "").n || n)}` : nameCell(mk, id, n);
+      return `<tr class="${mk === "etf" ? "" : "clickable"}" data-m="${mk}" data-id="${esc(id)}"><td><b>${esc(id)}</b></td><td>${nm}</td><td class="num">${fmt.pct(wt, 1)}</td></tr>`;
+    }).join("");
+    return `<div class="sleeve-h"><span>${lab[mk]}　${fmt.pct(w, 0)}</span><span class="hint">${a.length} 檔</span></div><div class="table-wrap"><table class="data compact"><tbody>${rows}</tbody></table></div>`;
+  }).join("");
 }
 function renderSectors() {
   const sec = (S.meta.sectors || {})[S.secMkt] || [];
