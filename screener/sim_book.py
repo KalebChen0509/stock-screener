@@ -301,8 +301,12 @@ def summarize(b: Book, px: Prices, names: dict | None = None) -> dict:
             continue
         v = u * adj[t] * (1 if is_tw(t) else fx)
         c = b.cost.get(t, 0.0)
+        # 今天漲跌：這檔最後兩個收盤（含息還原價）；網站總覽用
+        a2 = px.adj[t].loc[:d_last].dropna() if t in px.adj else pd.Series(dtype=float)
+        day = float(a2.iloc[-1] / a2.iloc[-2] - 1) if len(a2) >= 2 and a2.iloc[-2] > 0 else None
         hold.append({"ticker": t, "name": (names or {}).get(t, ""), "value": round(v), "cost": round(c),
-                     "pnl": round(v - c), "ret": (v / c - 1) if c else None, "weight": v / s.iloc[-1] if s.iloc[-1] else 0})
+                     "pnl": round(v - c), "ret": (v / c - 1) if c else None, "weight": v / s.iloc[-1] if s.iloc[-1] else 0,
+                     "day": day, "day_date": a2.index[-1].strftime("%Y-%m-%d") if len(a2) else None})
     hold.sort(key=lambda x: -x["value"])
     return {"name": b.name, "as_of": d_last.strftime("%Y-%m-%d"), "value": round(float(s.iloc[-1])), "invested": round(float(inv.iloc[-1])),
             "cash": round(b.cash), "fees": round(b.fees), "pnl": round(float(s.iloc[-1] - inv.iloc[-1])),

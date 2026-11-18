@@ -71,6 +71,8 @@ def test_my_line_no_backdating_and_cash():
     assert b.log[0]["price"] == buy_px                              # 用記錄之後那個收盤價，不是更早、更便宜的價格
     s = S.summarize(b, px)
     assert s["value"] > 0 and s["invested"] == 20000 and abs(s["value"] - (s["cash"] + sum(h["value"] for h in s["holdings"]))) <= 2
+    h = next(x for x in s["holdings"] if x["ticker"] == "2330.TW")
+    assert abs(h["day"] - 0.01) < 1e-9 and h["day_date"] == s["as_of"]   # 今天漲跌＝最後兩個收盤（網站總覽用）
 
 
 def test_target_line_timing_and_rebalance():

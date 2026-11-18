@@ -45,34 +45,38 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
 <main>
   <!-- ======================= 總覽 ======================= -->
   <section id="view-overview" class="view">
-    <div id="ovEvents"></div>
-    <div id="ovToday"></div>
-    <div class="tiles" id="ovTiles"></div>
-    <div class="grid2">
-      <div class="card">
-        <h2>本月建議投資組合</h2>
-        <p class="hint">核心全球大盤＋台美個股，個股部位內等權重；名額不足時用大盤補位。⭐ = 由上而下與由下而上交叉比對皆優。</p>
-        <div id="ovPortfolio"></div>
-      </div>
-      <div class="card">
-        <h2>由上而下：大盤與產業</h2>
-        <div id="ovRegime"></div>
-        <div class="seg" id="ovSecSeg">
-          <button data-m="tw" class="on">台股產業</button><button data-m="us">美股產業</button>
-        </div>
-        <div id="ovSectors"></div>
-      </div>
+    <div class="dash">
+      <div class="card dash-card" id="ovHold"></div>
+      <div class="card dash-card" id="ovMarket"></div>
     </div>
-    <div class="card">
-      <div class="fp-head"><h2>本月下單清單</h2><button id="ordCsv" class="ghost small">下載 CSV</button></div>
-      <p class="hint" id="ordNote"></p>
+    <div class="card" id="ovTodo"></div>
+    <details class="card fold" id="foldPort">
+      <summary><span><b>本月建議投資組合</b><span class="fold-sub" id="ovPortSub"></span></span></summary>
+      <p class="hint">核心全球大盤＋台美個股，個股部位內等權重；名額不足時用大盤補位。⭐ = 由上而下與由下而上交叉比對皆優。</p>
+      <div id="ovPortfolio"></div>
+    </details>
+    <details class="card fold" id="foldOrd">
+      <summary><span><b>本月下單清單</b><span class="fold-sub" id="ovOrdSub"></span></span></summary>
+      <div class="fp-head"><p class="hint" id="ordNote" style="flex:1"></p><button id="ordCsv" class="ghost small">下載 CSV</button></div>
       <div class="table-wrap"><table id="ordTable" class="data compact"></table></div>
-    </div>
-    <div class="card">
-      <h2>持股與追蹤清單：重大事件與新聞</h2>
+    </details>
+    <details class="card fold" id="foldSec">
+      <summary><span><b>產業強弱</b><span class="fold-sub">由上而下的產業分數</span></span></summary>
+      <div id="ovRegime"></div>
+      <div class="seg" id="ovSecSeg">
+        <button data-m="tw" class="on">台股產業</button><button data-m="us">美股產業</button>
+      </div>
+      <div id="ovSectors"></div>
+    </details>
+    <details class="card fold" id="foldNews">
+      <summary><span><b>持股新聞與事件</b><span class="fold-sub" id="ovNewsSub"></span></span></summary>
       <p class="hint">⛔ = 觸發否決（暫時排除）；⚠️ = 負面關鍵字，請自行判斷。新聞只做提醒，不影響篩選。</p>
       <div id="ovNews"></div>
-    </div>
+    </details>
+    <details class="card fold" id="foldSys">
+      <summary><span><b>系統狀態</b><span class="fold-sub" id="ovSysSub"></span></span></summary>
+      <div class="tiles" id="ovTiles" style="margin:10px 0 0"></div>
+    </details>
   </section>
 
   <!-- ======================= 個股篩選 ======================= -->
@@ -324,7 +328,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
   <a href="#overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>總覽</a>
   <a href="#screener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M7 12h10M10 19h4"/></svg>篩選</a>
   <a href="#chart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M17 4v16"/><rect x="5" y="8" width="4" height="7" rx="1"/><rect x="15" y="6" width="4" height="9" rx="1"/></svg>看盤</a>
-  <a href="#earnings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 13h8M8 17h6"/></svg>財報</a>
+  <a href="#mysim"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2"/><path d="M6 6l9-3 1 3"/></svg>模擬</a>
   <button id="moreBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>更多</button>
 </nav>
 <div id="moreSheet" hidden>
@@ -333,7 +337,7 @@ document.documentElement.dataset.skin = (!sk || sk === "auto") ? (matchMedia("(p
     <a href="#etf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l6 5"/></svg>ETF</a>
     <a href="#backtest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>回測</a>
     <a href="#paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/></svg>並行模擬</a>
-    <a href="#mysim"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>我的模擬</a>
+    <a href="#earnings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 13h8M8 17h6"/></svg>財報</a>
     <a href="#signals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>市場訊號</a>
     <a href="#macro"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>總經指標</a>
     <a href="#watchlist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>追蹤清單</a>
