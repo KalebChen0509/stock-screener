@@ -50,7 +50,9 @@ def sync_repo() -> bool:
                 log.warning("私人倉庫 clone 失敗：%s", r.stderr.strip()[-200:])
                 return False
             git("config", "credential.helper", "osxkeychain")
-        r = git("pull", "-q", "--rebase", "origin", "HEAD", check=False)
+        if not git("ls-remote", "--heads", "origin", check=False).stdout.strip():
+            return True                                     # 空倉庫（建立時沒勾 README）：第一次推送時建立 main
+        r = git("pull", "-q", "--rebase", "origin", "main", check=False)
         if r.returncode:
             log.warning("私人倉庫 pull 失敗：%s", r.stderr.strip()[-200:])
             return False
@@ -65,10 +67,10 @@ def push_repo(msg: str) -> bool:
     if not git("status", "--porcelain").stdout.strip():
         return True
     git("-c", "user.name=sim-book", "-c", "user.email=sim-book@users.noreply.github.com", "commit", "-qm", msg)
-    r = git("push", "-q", "origin", "HEAD", check=False)
+    r = git("push", "-q", "origin", "HEAD:main", check=False)
     if r.returncode:                                          # 手機剛好也存了一筆：先合併再推
-        git("pull", "-q", "--rebase", "origin", "HEAD", check=False)
-        r = git("push", "-q", "origin", "HEAD", check=False)
+        git("pull", "-q", "--rebase", "origin", "main", check=False)
+        r = git("push", "-q", "origin", "HEAD:main", check=False)
     if r.returncode:
         log.warning("私人倉庫 push 失敗：%s", r.stderr.strip()[-200:])
     return r.returncode == 0
