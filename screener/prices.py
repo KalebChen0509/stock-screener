@@ -65,18 +65,39 @@ def _to_long(df: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
     return res
 
 
+def _retry_missing(frames: list, tickers: list[str], fetch, chunk: int, wait: float = 30.0) -> None:
+    """Yahoo 偶爾一口氣擋掉好幾批（11/18：第 1350～2250 檔約 600 檔失敗，連通過篩選的股票都沒更新）
+    → 等一下、改小批再補抓一次。下市股票也會被重試，但只有一次。"""
+    got = set().union(*(set(f["ticker"]) for f in frames)) if frames else set()
+    miss = [t for t in tickers if t not in got]
+    if not miss or len(miss) == len(tickers) and len(tickers) <= 3:
+        return
+    log.info("prices: %d tickers failed, retrying once after %.0fs", len(miss), wait)
+    time.sleep(wait)
+    step = max(chunk // 3, 1)
+    for i in range(0, len(miss), step):
+        lf = fetch(miss[i:i + step])
+        if not lf.empty:
+            frames.append(lf)
+        time.sleep(2.0)
+    got2 = set().union(*(set(f["ticker"]) for f in frames)) if frames else set()
+    log.info("prices: retry recovered %d of %d", len(set(miss) & got2), len(miss))
+
+
 def fetch_monthly(tickers: list[str], start: str = "2011-01-01", chunk: int = 150,
-                  save: bool = True) -> pd.DataFrame:
+                  save: bool = True, retry_wait: float = 30.0) -> pd.DataFrame:
     tickers = sorted(set(tickers))
     frames = []
+    get = lambda part: _to_long(_download(part, start=start, interval="1mo"), part)  # noqa: E731
     for i in range(0, len(tickers), chunk):
         part = tickers[i:i + chunk]
-        df = _download(part, start=start, interval="1mo")
-        lf = _to_long(df, part)
+        lf = get(part)
         if not lf.empty:
             frames.append(lf)
         log.info("monthly prices %d/%d", min(i + chunk, len(tickers)), len(tickers))
         time.sleep(1.0)
+    if retry_wait is not None:
+        _retry_missing(frames, tickers, get, chunk, retry_wait)
     if not frames:
         return pd.DataFrame(columns=["ticker", "close", "adj_close", "volume", "split", "month"])
     res = pd.concat(frames, ignore_index=True)
@@ -88,15 +109,18 @@ def fetch_monthly(tickers: list[str], start: str = "2011-01-01", chunk: int = 15
     return res
 
 
-def fetch_daily(tickers: list[str], period: str = "2y", chunk: int = 150) -> pd.DataFrame:
+def fetch_daily(tickers: list[str], period: str = "2y", chunk: int = 150, retry_wait: float = 30.0) -> pd.DataFrame:
     tickers = sorted(set(tickers))
     frames = []
+    get = lambda part: _to_long(_download(part, period=period, interval="1d"), part)  # noqa: E731
     for i in range(0, len(tickers), chunk):
         part = tickers[i:i + chunk]
-        lf = _to_long(_download(part, period=period, interval="1d"), part)
+        lf = get(part)
         if not lf.empty:
             frames.append(lf)
         time.sleep(1.0)
+    if retry_wait is not None:
+        _retry_missing(frames, tickers, get, chunk, retry_wait)
     if not frames:
         return pd.DataFrame()
     res = pd.concat(frames, ignore_index=True)
