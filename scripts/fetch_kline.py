@@ -67,15 +67,17 @@ def priority(ymap: dict) -> list[str]:
     return [t for t in dict.fromkeys(first + rest) if t and t in ymap]
 
 
-def main():
+def main(export_only: bool = False):
+    """export_only：不連網下載，只用快取重新產生網站檔（「部署網站」workflow 用；data 分支不存網站的 K 線檔）。"""
     ymap = ticker_map()
-    pri = priority(ymap)
-    tickers = pri + [t for t in ymap if t not in set(pri)]
-    log.info("kline tickers: %d (priority %d)", len(tickers), len(pri))
-    try:
-        kline.update(tickers, priority=pri, backfill_limit=int(os.environ.get("KLINE_BACKFILL", 1500)))
-    except Exception as e:  # noqa
-        log.warning("kline update failed: %s", e)
+    if not export_only:
+        pri = priority(ymap)
+        tickers = pri + [t for t in ymap if t not in set(pri)]
+        log.info("kline tickers: %d (priority %d)", len(tickers), len(pri))
+        try:
+            kline.update(tickers, priority=pri, backfill_limit=int(os.environ.get("KLINE_BACKFILL", 1500)))
+        except Exception as e:  # noqa
+            log.warning("kline update failed: %s", e)
     extra = {}
     try:   # 台股籌碼（法人買賣超、融資融券）放進同一個 K 線檔，給「法人」副圖用
         from screener import chips
@@ -86,4 +88,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(export_only="--export-only" in sys.argv)

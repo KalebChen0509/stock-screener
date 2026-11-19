@@ -29,6 +29,16 @@ jobs:
           fi
           # 設定檔一律用最新版（網站上的條件說明與篩選門檻）
           python3 -c "import yaml,json,re;c=yaml.safe_load(open('config/strategy.yaml'));f=lambda o:{k:f(v) for k,v in o.items()} if isinstance(o,dict) else [f(v) for v in o] if isinstance(o,list) else (float(o) if isinstance(o,str) and re.fullmatch(r'[-+]?\d+(\.\d+)?[eE][-+]?\d+',o) else o);json.dump(f(c),open('site/data/config.json','w'),ensure_ascii=False)"
+      # 11/19：data 分支不存網站的 K 線檔（太大），以前推程式碼重新部署時「看盤」會整個變成沒有資料 → 用快取重新產生
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - name: K 線網站檔（用快取產生，不下載）
+        run: |
+          if [ -d /tmp/databr/cache/kline ]; then
+            pip install -q -r requirements.txt
+            SCREENER_CACHE=/tmp/databr/cache python scripts/fetch_kline.py --export-only
+          fi
+        continue-on-error: true
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
