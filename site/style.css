@@ -418,3 +418,49 @@ details.fold > summary b { font-size: 15px; }
 @media (max-width: 640px) { .big { font-size: 28px; } .mk-v { font-size: 15px; } }
 .cyc-steps span.on.ph-recovery { background: var(--s3); } .cyc-steps span.on.ph-expansion { background: var(--s1); }
 .cyc-steps span.on.ph-slowdown { background: var(--warn); } .cyc-steps span.on.ph-recession { background: var(--bad); }
+
+/* ================================================================ 第三次改版（11/19）：手機卡片、方案排行、說明收合 */
+#stockCards { display: none; }
+@media (max-width: 760px) {
+  #view-screener .table-wrap { display: none; }
+  #stockCards { display: block; }
+  #paperBody > .table-wrap { display: none; }
+}
+@media (min-width: 761px) { .pv-cards { display: none; } }
+.sc-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.sc-bar select { padding: 4px 8px; }
+.sc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+.sc.dim { opacity: .78; }
+.sc-top { display: flex; align-items: flex-start; gap: 10px; }
+.sc-rank { color: var(--muted); font-size: 12px; min-width: 1.6em; padding-top: 2px; font-variant-numeric: tabular-nums; }
+.sc-name { flex: 1; min-width: 0; }
+.sc-name .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-score { text-align: right; font-family: var(--font-num); font-size: 20px; font-weight: 750; line-height: 1.1; }
+.sc-kv, .pv-kv, .vr-kv { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--text-2); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.sc-st { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+.pv-cards { display: grid; gap: 8px; margin-bottom: 12px; }
+.pv { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface); }
+.pv-etf { background: var(--surface-2); }
+.pv-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 13.5px; }
+.pv-h .pill { white-space: nowrap; flex: none; }
+.pv-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.pv-big { font-family: var(--font-num); font-size: 24px; font-weight: 750; }
+#varRank { display: grid; gap: 6px; margin-bottom: 10px; }
+.vr-legend { margin: 0 0 4px; }
+.vr { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; background: var(--surface); }
+.vr-etf { background: var(--surface-2); border-color: var(--accent); }
+.vr-h { display: flex; gap: 8px; font-size: 13px; font-weight: 600; }
+.vr-i { color: var(--muted); min-width: 1.4em; font-variant-numeric: tabular-nums; }
+.vr-bar { position: relative; height: 6px; border-radius: 3px; background: var(--surface-2); margin: 6px 0 2px; }
+.vr-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+.vr-bar s { position: absolute; top: -3px; bottom: -3px; border-left: 2px dashed var(--text-2); }
+.vr-kv { margin-top: 4px; align-items: center; }
+.vr-kv b { font-family: var(--font-num); font-size: 15px; color: var(--text); }
+.vr-tag { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+.vr-tag.ok { color: var(--good-ink); background: color-mix(in srgb, var(--good) 13%, transparent); }
+.vr-tag.over { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+details.info { margin: 4px 0 10px; }
+details.info > summary { cursor: pointer; color: var(--accent); font-size: 12.5px; font-weight: 600; list-style: none; display: inline-block; }
+details.info > summary::-webkit-details-marker { display: none; }
+details.info[open] > summary { margin-bottom: 4px; }
+@media (min-width: 1000px) { #varRank { grid-template-columns: 1fr 1fr; } #varRank .vr-legend { grid-column: 1 / -1; } }

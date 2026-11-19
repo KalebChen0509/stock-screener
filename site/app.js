@@ -167,6 +167,7 @@ async function init() {
   bindUI();
   route();
   window.addEventListener("hashchange", route);
+  FOLD_VIEWS.forEach((id) => { const el = document.getElementById(id); if (el) foldObs.observe(el, { childList: true, subtree: true }); });
 }
 
 function defaultSettings() {
@@ -179,6 +180,19 @@ function defaultSettings() {
 }
 
 // ---------------------------------------------------------------- 路由
+const FOLD_VIEWS = ["view-signals", "view-backtest", "view-paper", "view-macro", "view-mysim", "view-etf", "view-earnings"];
+function foldHints(root) {
+  for (const p of $$("p.hint", root)) {
+    if (p.closest("details.info") || p.dataset.keep != null || p.closest(".fp-head")) continue;
+    if ((p.textContent || "").trim().length < 90) continue;
+    const d = document.createElement("details");
+    d.className = "info";
+    d.innerHTML = `<summary>ⓘ 說明</summary>`;
+    p.replaceWith(d); d.appendChild(p);
+  }
+}
+let foldTimer = null;
+const foldObs = new MutationObserver(() => { clearTimeout(foldTimer); foldTimer = setTimeout(() => FOLD_VIEWS.forEach((id) => { const el = document.getElementById(id); if (el && el.classList.contains("on")) foldHints(el); }), 60); });
 function route() {
   const [v0, ...args] = (location.hash || "#overview").slice(1).split("/");
   const views = { overview: renderOverview, screener: renderScreener, chart: () => renderChartView(args), etf: renderEtf, backtest: renderBacktest,
@@ -769,6 +783,30 @@ function renderScreener() {
     renderScreener();
   }));
   $$("#stockTable tr.clickable").forEach((tr) => (tr.onclick = () => openDetail(S.mkt, tr.dataset.id)));
+  renderStockCards(shown, q);
+}
+// 手機：一檔一張卡（表格太寬，分數、股價要往右滑才看得到）
+const CARD_SORTS = [["score", "綜合分數"], ["mos", "安全邊際"], ["market_cap", "市值"], ["failed", "差幾條"], ["id", "代號"]];
+function renderStockCards(shown, q) {
+  const box = $("#stockCards");
+  if (!box) return;
+  const sel = `<div class="sc-bar"><label class="hint" style="margin:0">排序 <select id="scSort">${CARD_SORTS.map(([k, l]) => `<option value="${k}" ${S.sort.key === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    <button class="chip" id="scDir">${S.sort.dir > 0 ? "小→大" : "大→小"}</button></div>`;
+  const card = (r, i) => {
+    const z = zhInfo(S.mkt, r.id, r.name);
+    const st = r.pass ? `<span class="pill okp">✔ 通過</span>` : `<span class="pill">差 ${r.failed.length} 條</span> <span class="hint" style="margin:0">${esc(r.failed.slice(0, 2).map(fname).join("、"))}</span>`;
+    const mos = r.mos == null ? "–" : `<b class="${r.mos >= 0.3 ? "pos" : r.mos <= -0.2 ? "neg" : ""}">${fmt.pct(r.mos, 0)}</b>`;
+    return `<div class="sc ${r.pass ? "" : "dim"}" data-id="${esc(r.id)}">
+      <div class="sc-top"><span class="sc-rank">${i + 1}</span><div class="sc-name"><b>${esc(r.id)}</b> ${esc(z.n || r.name)}<div class="hint" style="margin:0">${esc(z.d || r.industry || "")}</div></div>
+        <div class="sc-score">${r.cross ? "⭐ " : ""}${r.score == null ? "–" : r.score.toFixed(1)}<div class="hint" style="margin:0">分數</div></div></div>
+      <div class="sc-kv"><span>收盤 <b>${fmt.price(r.close)}</b></span><span>合理價 <b>${r.fair_base == null ? "–" : fmt.price(r.fair_base)}</b></span><span>安全邊際 ${mos}</span></div>
+      <div class="sc-st">${st}</div></div>`;
+  };
+  box.innerHTML = sel + (shown.length ? shown.slice(0, 200).map(card).join("") + (shown.length > 200 ? `<p class="hint">只顯示前 200 檔，用搜尋找其他股票。</p>` : "")
+    : `<p class="hint">${q ? `找不到「${esc(q.toUpperCase())}」。${extLinks(S.mkt, q)}` : "沒有股票符合目前條件。可勾選「顯示差 1–2 條的股票」。"}</p>`);
+  $("#scSort").onchange = (e) => { const k = e.target.value; S.sort = { key: k, dir: ["id", "failed"].includes(k) ? 1 : -1 }; renderScreener(); };
+  $("#scDir").onclick = () => { S.sort = { ...S.sort, dir: -S.sort.dir }; renderScreener(); };
+  $$("#stockCards .sc").forEach((el) => (el.onclick = () => openDetail(S.mkt, el.dataset.id)));
 }
 
 function unitOf(f) {
@@ -1106,6 +1144,18 @@ function renderBacktest() {
       return sep + `<tr><td><b>${esc(k)}</b></td><td class="num">${fmt.pct(v.full.cagr)}</td><td class="num">${fmt.pct(v.y5.cagr)}</td><td class="num">${fmt.ntd(v.full.final_amount)}</td><td class="num">${fmt.pct(v.full.max_drawdown)}</td><td class="num">${fmt.x(v.full.sharpe, 2)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bear, 0)}</td><td class="num">${fmt.pct(v.regimes.rolling12_beat_rate_bull, 0)}</td><td class="num">${h.h1 ? fmt.pct(h.h1.cagr) : "–"}</td><td class="num">${h.h2 ? fmt.pct(h.h2.cagr) : "–"}</td><td class="num">${v.avg_tw.toFixed(1)}／${v.avg_us.toFixed(1)}</td><td class="num">${v.n_stops != null ? v.n_stops : "–"}</td></tr>`;
     }).join("");
     const h0 = (Object.values(V)[0] || {}).halves || {};
+    // 排行：依 10 年年化；標出你的「最大跌幅 −20% 左右」標準（真錢投入標準第 3 條）
+    const etf = Object.entries(V).find(([k]) => k.startsWith("只買 ETF"));
+    const ec = etf ? etf[1].full.cagr : null;
+    const rk = Object.entries(V).filter(([, v]) => v.full && v.full.cagr != null).sort((a, b) => b[1].full.cagr - a[1].full.cagr);
+    const mx = Math.max(...rk.map(([, v]) => v.full.cagr), 0.01);
+    $("#varRank").innerHTML = `<div class="vr-legend hint">長條＝10 年年化；<span class="vr-tag ok">跌幅 OK</span> 最大跌幅在 −22% 以內（你的標準：−20% 左右）；<span class="vr-tag over">跌幅超標</span> 超過 −22%。${ec != null ? `虛線＝只買 ETF ${fmt.pct(ec)}。` : ""}</div>` +
+      rk.map(([k, v], i) => {
+        const dd = v.full.max_drawdown, over = dd < -0.22, isE = k.startsWith("只買 ETF");
+        return `<div class="vr ${isE ? "vr-etf" : ""}"><div class="vr-h"><span class="vr-i">${i + 1}</span><span class="vr-n">${esc(k)}</span></div>
+          <div class="vr-bar"><i style="width:${Math.max(2, (100 * v.full.cagr) / mx).toFixed(1)}%"></i>${ec != null ? `<s style="left:${((100 * ec) / mx).toFixed(1)}%"></s>` : ""}</div>
+          <div class="vr-kv"><b>${fmt.pct(v.full.cagr)}</b><span>最大跌 ${fmt.pct(dd)}</span><span class="vr-tag ${over ? "over" : "ok"}">${over ? "跌幅超標" : "跌幅 OK"}</span>${ec != null && !isE ? `<span class="${v.full.cagr >= ec ? "pos" : "neg"}">${v.full.cagr >= ec ? "贏" : "輸"} ETF ${fmt.pct(Math.abs(v.full.cagr - ec), 1)}</span>` : ""}</div></div>`;
+      }).join("");
     $("#varTable").innerHTML = `<thead><tr><th>方案</th><th class="num">10年年化</th><th class="num">近5年年化</th><th class="num">期末金額</th><th class="num">最大回撤</th><th class="num">夏普</th><th class="num">空頭年勝率</th><th class="num">多頭年勝率</th><th class="num">前半${h0.h1 ? `<br><span class="hint">${h0.h1.from}～${h0.h1.to}</span>` : ""}</th><th class="num">後半${h0.h2 ? `<br><span class="hint">${h0.h2.from}～${h0.h2.to}</span>` : ""}</th><th class="num">平均檔數 台／美</th><th class="num">停損次數</th></tr></thead><tbody>${rows}
       <tr class="dim"><td>混合基準</td><td class="num">${fmt.pct(bf.cagr)}</td><td class="num">${fmt.pct(b5.cagr)}</td><td class="num">${fmt.ntd(bf.final_amount)}</td><td class="num">${fmt.pct(bf.max_drawdown)}</td><td class="num">${fmt.x(bf.sharpe, 2)}</td><td></td><td></td><td class="num">${h0.h1 && h0.h1.bench_cagr != null ? fmt.pct(h0.h1.bench_cagr) : ""}</td><td class="num">${h0.h2 && h0.h2.bench_cagr != null ? fmt.pct(h0.h2.bench_cagr) : ""}</td><td></td><td></td></tr></tbody>`;
   }
@@ -1434,6 +1484,12 @@ function renderPaper() {
   box.innerHTML = `<div class="table-wrap"><table class="data compact"><thead><tr><th>版本</th><th class="num">累計（含本月估計）</th><th class="num">比只買 ETF</th><th class="num">已完成月份</th><th class="num">本月至今${mtdTo ? `<br><span class="hint">估計到 ${esc(mtdTo)}</span>` : ""}</th><th class="num">台股部位</th><th class="num">美股部位</th><th class="num">停損次數</th></tr></thead><tbody>${V.map((v) =>
     `<tr><td><b>${esc(v.name)}</b>${v.changed_since_locked ? ` <span class="pill" title="用最新資料重算，這個月的決策跟當初鎖定的不同；網站顯示鎖定的版本">決策有變動</span>` : ""}</td><td class="num ${cls(v.cum)}">${pc(v.cum)}</td><td class="num ${cls(v.vs_etf)}">${v.name.startsWith("只買 ETF") ? "（對照組）" : pc(v.vs_etf)}</td><td class="num">${pc(v.cum_closed)}<br><span class="hint">${(v.months || []).length} 個月</span></td><td class="num ${cls(v.mtd)}">${pc(v.mtd)}</td><td class="num">${sl(v, "tw", "0050")}</td><td class="num">${sl(v, "us", "SPY")}</td><td class="num">${v.n_stops}</td></tr>`).join("")}</tbody></table></div>
     <p class="hint">開始：${esc(P.start)}（第一次決策 ${esc(P.first_decision)}）；更新：${esc(P.as_of)}。台股、美股部位只算已完成的月份。這只是模擬，實際下單仍照「總覽」的下單清單。</p>`;
+  // 手機：每個版本一張卡，依累計報酬排序（表格在手機只看得到版本名稱）
+  const isEtf = (v) => v.name.startsWith("只買 ETF");
+  box.insertAdjacentHTML("afterbegin", `<div class="pv-cards">${V.slice().sort((a, b) => (b.cum ?? -9) - (a.cum ?? -9)).map((v) => `
+    <div class="pv ${isEtf(v) ? "pv-etf" : ""}"><div class="pv-h"><b>${esc(v.name)}</b>${isEtf(v) ? `<span class="pill">對照組</span>` : ""}</div>
+      <div class="pv-row"><span class="pv-big ${cls(v.cum)}">${pc(v.cum)}</span><span class="hint" style="margin:0">累計（含本月估計）</span></div>
+      <div class="pv-kv"><span>比只買 ETF <b class="${isEtf(v) ? "" : cls(v.vs_etf)}">${isEtf(v) ? "–" : pc(v.vs_etf)}</b></span><span>本月 <b class="${cls(v.mtd)}">${pc(v.mtd)}</b></span><span>停損 ${v.n_stops} 次</span></div></div>`).join("")}</div>`);
   // 累計績效（已完成月份）
   const months = (V[0] || {}).months || [];
   if (months.length >= 2 && window.Chart) {
