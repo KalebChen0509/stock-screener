@@ -210,6 +210,9 @@ function skinMenu() {
 }
 function initTheme() {
   applySkin(false);
+  // 左側選單從頁首下面開始：頁首高度會因字型、換行而不同，用實際高度
+  const headH = () => document.documentElement.style.setProperty("--head-h", $("header.top").offsetHeight + "px");
+  headH(); addEventListener("resize", headH);
   darkMQ.addEventListener("change", () => { if (store.get("vs_skin", "auto") === "auto") applySkin(); });
   $("#themeBtn").onclick = (e) => { e.stopPropagation(); const pop = $("#skinPop"); if (pop.hidden) skinMenu(); pop.hidden = !pop.hidden; };
   document.addEventListener("click", (e) => { const pop = $("#skinPop"); if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true; });

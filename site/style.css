@@ -75,10 +75,19 @@ header.top {
 .logo svg { width: 20px; height: 20px; }
 .brand h1 span { color: var(--accent); }
 .sub { margin: 0; color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-nav#tabs { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; }
-nav#tabs a { padding: 6px 11px; border-radius: 999px; color: var(--text-2); text-decoration: none; font-weight: 600; font-size: 13.5px; }
-nav#tabs a:hover { background: var(--surface-2); }
-nav#tabs a.on { background: var(--accent); color: var(--accent-ink); }
+/* 電腦／平板：左側圖示選單（圖示在上、文字在下，像財報狗）；手機改用底部分頁列 */
+:root { --side-w: 84px; }
+nav#tabs { position: fixed; z-index: 15; left: 0; top: var(--head-h, 61px); bottom: 0; width: var(--side-w); overflow-y: auto; scrollbar-width: none;
+  background: var(--surface); border-right: 1px solid var(--border); padding: 8px 6px 16px; }
+nav#tabs::-webkit-scrollbar { display: none; }
+.side-g { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; }
+.side-g + .side-g { border-top: 1px solid var(--border); }
+nav#tabs a { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px 7px; border-radius: 12px;
+  color: var(--muted); text-decoration: none; font-weight: 600; font-size: 11.5px; line-height: 1.2; text-align: center; }
+nav#tabs a svg { width: 22px; height: 22px; }
+nav#tabs a:hover { background: var(--surface-2); color: var(--text); }
+nav#tabs a.on { color: var(--accent); background: var(--accent-soft); }
+nav#tabs a.on::before { content: ""; position: absolute; left: -6px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
 .icon-btn { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); border-radius: 999px; width: 38px; height: 38px; padding: 0; display: grid; place-items: center; flex: none; margin-left: auto; }
 .icon-btn svg { width: 19px; height: 19px; }
 
@@ -100,6 +109,7 @@ nav#tabs a.on { background: var(--accent); color: var(--accent-ink); }
 
 /* ================================================================ 版面 */
 main { max-width: 1280px; margin: 0 auto; padding: 18px 20px 60px; }
+@media (min-width: 761px) { main { margin-left: max(var(--side-w), calc((100vw - 1280px) / 2)); } }
 .view { display: none; }
 .view.on { display: block; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow); min-width: 0; }
