@@ -194,7 +194,7 @@ def export_site(out_dir: Path, ymap: dict, df: pd.DataFrame | None = None, mon: 
     df = load_daily() if df is None else df
     mon = load_monthly() if mon is None else mon
     out_dir = Path(out_dir)
-    idx = {"tw": [], "us": [], "etf": []}
+    idx = {"tw": [], "us": [], "etf": [], "idx": []}
     mg = dict(tuple(mon.groupby("ticker"))) if len(mon) else {}
     for t, g in df.groupby("ticker"):
         if t not in ymap:

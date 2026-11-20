@@ -15,6 +15,10 @@ from screener.common import CACHE_DIR, SITE_DATA, load_etf_universe, load_watchl
 from screener.loaders import load_infos  # noqa: E402
 
 
+# 指數（Yahoo 代號 → 網站代號；網站檔名不能有 ^）
+INDICES = {"^VIX": "VIX", "^VIX3M": "VIX3M", "^TWII": "TWII", "^GSPC": "GSPC", "^IXIC": "IXIC", "^SOX": "SOX"}
+
+
 def ticker_map() -> dict:
     """Yahoo 代號 → (市場, 網站代號)：台股、有財報的美股、ETF 清單。"""
     have = prices.monthly_tickers() if prices.MONTHLY_PATH.exists() else None
@@ -34,13 +38,15 @@ def ticker_map() -> dict:
         ymap[e["ticker"]] = ("etf", e["ticker"])
     for t in ("0050.TW", "SPY", "VT"):
         ymap.setdefault(t, ("etf", t))
+    for y, sid in INDICES.items():   # 11/20：看盤也能看 VIX 與大盤指數
+        ymap[y] = ("idx", sid)
     return ymap
 
 
 def priority(ymap: dict) -> list[str]:
     """先回填你會看的：持股、追蹤清單、模擬持股、財報快報追蹤的公司、ETF，其餘依成交值。"""
     back = {(m, i): y for y, (m, i) in ymap.items()}
-    first = [t for t, (m, _) in ymap.items() if m == "etf"]
+    first = [t for t, (m, _) in ymap.items() if m in ("idx", "etf")]
     try:
         st = json.loads((CACHE_DIR / "notify_state.json").read_text())
         first += [back.get((m, i)) for m, ids in (st.get("held") or {}).items() for i in ids]

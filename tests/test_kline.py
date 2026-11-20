@@ -70,7 +70,7 @@ def main():
     # 輸出網站檔
     out = Path(_TMP) / "site_kline"
     idx = K.export_site(out, {"AAA": ("us", "AAA"), "0050.TW": ("etf", "0050.TW"), "NEW": ("tw", "6999")})
-    assert idx == {"tw": ["6999"], "us": ["AAA"], "etf": ["0050.TW"]}
+    assert idx == {"tw": ["6999"], "us": ["AAA"], "etf": ["0050.TW"], "idx": []}
     doc = json.loads((out / "us" / "AAA.json").read_text())
     assert len(doc["t"]) == len(doc["c"]) == len(doc["v"]) and doc["t"] == sorted(doc["t"])
     assert pd.Timestamp(doc["t"][-1], unit="D") <= TODAY + pd.Timedelta(days=2) and "m" in doc and doc["m"]["t"][-1] < doc["t"][0]

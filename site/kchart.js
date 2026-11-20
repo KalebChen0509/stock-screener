@@ -37,6 +37,7 @@ const KC = (() => {
     return doc;
   }
   function benchOf(mkt, id) {
+    if (mkt === "idx") return null;     // 指數本身就是大盤
     if (mkt === "tw" || String(id).endsWith(".TW") || String(id).endsWith(".TWO")) return id === "0050.TW" ? null : "0050.TW";
     return id === "SPY" ? null : "SPY";
   }
@@ -203,7 +204,7 @@ const KC = (() => {
         benchBars = bars(bdoc, P.iv);
         benchSeries = chart.addSeries(LW.LineSeries, { color: css("--muted"), lineWidth: 2, lineStyle: LW.LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: benchOf(mkt, id) === "SPY" ? "SPY" : "0050" });
       }
-      if (P.on.vol) {
+      if (P.on.vol && B.some((b) => b.volume > 0)) {   // VIX 這類指數沒有成交量
         pane++;
         const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: "volume" }, priceLineVisible: false, lastValueVisible: false }, pane);
         v.setData(B.map((b, i) => ({ time: b.time, value: b.volume || 0, color: (i && b.close < B[i - 1].close) || b.close < b.open ? dn + "99" : up + "99" })));

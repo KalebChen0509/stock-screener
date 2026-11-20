@@ -120,8 +120,18 @@ const toObjs = (t) => (t ? t.rows.map((r) => Object.fromEntries(t.cols.map((c, i
 
 // ---------------------------------------------------------------- 公司中文名稱與一句話說明（data/names.json）
 const mktOf = (id) => (/^\d/.test(String(id)) ? "tw" : "us");
+// 11/20：看盤的指數（網站代號 → 名稱、說明）
+const IDX_NAMES = {
+  VIX: ["VIX 恐慌指數", "S&P 500 選擇權隱含的未來 30 天波動；越高越恐慌（20 以上偏高、30 以上恐慌）"],
+  VIX3M: ["VIX 3 個月", "未來 3 個月的隱含波動；VIX 高於它＝短期恐慌（倒掛）"],
+  TWII: ["台股加權指數", "台灣證交所發行量加權股價指數"],
+  GSPC: ["S&P 500", "美國 500 大公司指數"],
+  IXIC: ["那斯達克綜合指數", "美國那斯達克交易所全部股票"],
+  SOX: ["費城半導體指數", "美國上市的 30 家半導體公司"],
+};
 function zhInfo(m, id, name) {
   const N = S.names || {}, k = String(id ?? "");
+  if (m === "idx") { const x = IDX_NAMES[k]; return x ? { n: x[0], d: x[1] } : { n: name || k, d: "" }; }
   const x = (m === "etf" ? null : (N[m] || {})[k]) || (N.etf || {})[k] || (m === "tw" ? (N.tw || {})[k.replace(/\.TWO?$/, "")] : null);
   return x ? { n: x[0] || name || k, d: x[1] || "" } : { n: name || "", d: "" };
 }
@@ -458,7 +468,7 @@ function renderMarketCard() {
   const idx = (k, name) => {
     const r = Rd[k];
     if (!r) return "";
-    return `<div class="mk"><div class="hint" style="margin:0">${name}</div><div class="mk-v">${fmt.int(r.price)}</div>
+    return `<div class="mk" style="cursor:pointer" onclick="location.hash='#chart/idx/${k.slice(1)}'" title="看 K 線"><div class="hint" style="margin:0">${name}</div><div class="mk-v">${fmt.int(r.price)}</div>
       <div class="${c(r.day_chg)}">${sgn(r.day_chg)}${fmt.pct(r.day_chg, 2)}</div></div>`;
   };
   const trend = (mk, name) => {
@@ -480,7 +490,7 @@ function renderMarketCard() {
       <div class="cyc-steps">${PH.map(([p, l]) => `<span class="${p === x.phase ? "on ph-" + p : ""}">${l}</span>`).join("")}</div></div>`;
   };
   const cr = S.meta && S.meta.credit, v = Rd["^VIX"];
-  const vix = v ? `<div class="mk"><div class="hint" style="margin:0">VIX 恐慌</div><div class="mk-v">${(+v.price).toFixed(1)}</div><div class="hint" style="margin:0">${v.price >= 30 ? "恐慌" : v.price >= 20 ? "偏高" : "平靜"}</div></div>` : "";
+  const vix = v ? `<div class="mk" style="cursor:pointer" onclick="location.hash='#chart/idx/VIX'" title="看 VIX K 線"><div class="hint" style="margin:0">VIX 恐慌</div><div class="mk-v">${(+v.price).toFixed(1)}</div><div class="hint" style="margin:0">${v.price >= 30 ? "恐慌" : v.price >= 20 ? "偏高" : "平靜"}</div></div>` : "";
   el.innerHTML = `<div class="dash-h"><span>大盤訊號</span><a href="#signals">市場訊號 ›</a></div>
     <div class="mk-row">${idx("^TWII", "台股加權")}${idx("^GSPC", "S&P 500")}${vix}</div>
     <div class="sub-h">趨勢（10 個月均線）</div>${trend("tw", "台股")}${trend("us", "美股")}
@@ -1971,7 +1981,7 @@ function valuationCard(v, row, mkt) {
 
 // ---------------------------------------------------------------- 看盤
 function kctx(mkt, id) {
-  const row = mkt === "etf" ? null : ((S.stocks || {})[mkt] || []).find((r) => r.id === id) || null;
+  const row = mkt === "etf" || mkt === "idx" ? null : ((S.stocks || {})[mkt] || []).find((r) => r.id === id) || null;
   return { row, port: S.port, earn: S.earn, bt: S.bt };
 }
 async function kIndex() {
@@ -1982,8 +1992,12 @@ function kSearchList(q) {
   q = q.trim().toLowerCase(); if (!q) return [];
   const N = S.names || {}, out = [], seen = new Set();
   const idx = S.kidx || { tw: [], us: [], etf: [] };
-  const has = { tw: new Set(idx.tw), us: new Set(idx.us), etf: new Set(idx.etf) };
+  const has = { tw: new Set(idx.tw), us: new Set(idx.us), etf: new Set(idx.etf), idx: new Set(idx.idx || []) };
   const push = (m, id, x) => { const k = m + ":" + id; if (seen.has(k)) return; seen.add(k); out.push({ m, id, n: (x && x[0]) || id, d: (x && x[1]) || "", ok: has[m].has(id) }); };
+  // 指數：代號或名稱（VIX、加權、費半、那斯達克…）都找得到
+  const IDX_ALIAS = { TWII: "加權 大盤 taiex", GSPC: "sp500 s&p spx 標普", IXIC: "nasdaq 納斯達克", SOX: "費半 半導體 sox", VIX: "恐慌 波動", VIX3M: "恐慌 波動" };
+  for (const [id, x] of Object.entries(IDX_NAMES))
+    if (has.idx.has(id) && (id.toLowerCase().startsWith(q) || x[0].toLowerCase().includes(q) || (IDX_ALIAS[id] || "").toLowerCase().includes(q))) push("idx", id, x);
   for (const m of ["tw", "us", "etf"]) {
     const E = N[m] || {};
     if (E[q.toUpperCase()]) push(m, q.toUpperCase(), E[q.toUpperCase()]);
@@ -2027,15 +2041,16 @@ async function renderChartView(args) {
   store.set("vs_kline_recent", [{ m: mkt, id }, ...recent.filter((x) => !(x.m === mkt && x.id === id))].slice(0, 12));
   // 快速切換：持股＋最近看過
   const H = ((S.port || {}).holdings || []).filter((h) => h.kind === "stock").map((h) => ({ m: h.market, id: h.id }));
-  const quick = [...H, ...store.get("vs_kline_recent", [])].filter((x, i, a) => a.findIndex((y) => y.m === x.m && y.id === x.id) === i).slice(0, 20);
-  $("#kQuick").innerHTML = quick.map((x) => `<button class="chip ${x.m === mkt && x.id === id ? "on" : ""}" data-m="${x.m}" data-id="${esc(x.id)}">${esc(x.id.replace(/\.TWO?$/, ""))} ${esc(zhInfo(x.m, x.id, "").n || "")}</button>`).join("");
+  const IQ = ["VIX", "TWII", "GSPC"].filter((i) => (S.kidx.idx || []).includes(i)).map((i) => ({ m: "idx", id: i }));
+  const quick = [...IQ, ...H, ...store.get("vs_kline_recent", [])].filter((x, i, a) => a.findIndex((y) => y.m === x.m && y.id === x.id) === i).slice(0, 23);
+  $("#kQuick").innerHTML = quick.map((x) => `<button class="chip ${x.m === mkt && x.id === id ? "on" : ""}" data-m="${x.m}" data-id="${esc(x.id)}">${x.m === "idx" ? "" : esc(x.id.replace(/\.TWO?$/, "")) + " "}${esc(zhInfo(x.m, x.id, "").n || "")}</button>`).join("");
   $$("#kQuick [data-id]").forEach((b) => (b.onclick = () => { location.hash = `#chart/${b.dataset.m}/${encodeURIComponent(b.dataset.id)}`; }));
   const z = zhInfo(mkt, id, "");
-  const mlabel_ = { tw: "台股", us: "美股", etf: "ETF" }[mkt] || "";
-  $("#kTitle").innerHTML = `<div><div class="t">${esc(id.replace(/\.TWO?$/, ""))} ${esc(z.n || "")}</div><div class="s">${esc(z.d || "")}　<span class="pill">${mlabel_}</span> ${mkt !== "etf" ? `<a href="javascript:void 0" id="kDetail">財報與條件 ›</a>` : ""} <button class="chip" id="kBell">🔔 提醒</button></div></div><div><div class="px" id="kPx">–</div><div class="pc" id="kPc"></div></div>`;
+  const mlabel_ = { tw: "台股", us: "美股", etf: "ETF", idx: "指數" }[mkt] || "";
+  $("#kTitle").innerHTML = `<div><div class="t">${mkt === "idx" ? "" : esc(id.replace(/\.TWO?$/, "")) + " "}${esc(z.n || "")}</div><div class="s">${esc(z.d || "")}　<span class="pill">${mlabel_}</span> ${mkt !== "etf" && mkt !== "idx" ? `<a href="javascript:void 0" id="kDetail">財報與條件 ›</a>` : ""} ${mkt !== "idx" ? `<button class="chip" id="kBell">🔔 提醒</button>` : ""}</div></div><div><div class="px" id="kPx">–</div><div class="pc" id="kPc"></div></div>`;
   if ($("#kDetail")) $("#kDetail").onclick = () => openDetail(mkt, id);
   $("#kAlert").hidden = true;
-  $("#kBell").onclick = () => { const b = $("#kAlert"); b.hidden = !b.hidden; if (!b.hidden) { renderAlertPanel(mkt, id); b.scrollIntoView({ behavior: "smooth", block: "nearest" }); } };
+  if ($("#kBell")) $("#kBell").onclick = () => { const b = $("#kAlert"); b.hidden = !b.hidden; if (!b.hidden) { renderAlertPanel(mkt, id); b.scrollIntoView({ behavior: "smooth", block: "nearest" }); } };
   if (S.kc) S.kc.destroy();
   S.kc = KC.mount($("#kChart"), { mkt, id, ctx: kctx(mkt, id) });
   const doc = await KC.load(mkt, id);
