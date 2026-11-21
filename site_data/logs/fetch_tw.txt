@@ -1,0 +1,8 @@
+2026-11-21 03:19:44,782 INFO screener: TW universe: 2152 common stocks
+2026-11-21 03:19:44,782 INFO screener: FinMind budget: 500 calls (fundamentals 499, month revenue reserve 0)
+2026-11-21 03:19:45,339 INFO screener: TW delisted since 2016-01-01: 145 stocks (prices fetched now 0, with prices 145, waiting for retry 0, code reused 0)
+2026-11-21 03:19:45,788 INFO screener: TW fundamentals: 1 stocks need update (expected latest 2026-09-30)
+2026-11-21 03:19:47,254 INFO screener: TW fundamentals updated: 1 stocks, 5 API calls
+2026-11-21 03:19:51,006 INFO screener: month revenue OpenAPI: 1989 rows (2026-10-31)
+2026-11-21 03:19:53,219 INFO screener: month revenue backfill: {'have': 2195, 'total': 2195, 'done_now': 0}
+2026-11-21 03:19:53,223 INFO screener: TW backfill progress: {'have': 2152, 'total': 2152}

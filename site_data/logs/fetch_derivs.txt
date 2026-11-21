@@ -1,0 +1,4 @@
+2026-11-21 03:27:07,613 WARNING yfinance: Crumb fetch rate-limited (HTTP 429), continuing without crumb
+2026-11-21 03:30:58,527 INFO screener: derivs: did {'us_vol': 10008, 'fut_TX': 2, 'fut_MTX': 1, 'fut_TMF': 2, 'opt_TXO': 2, 'pcr': 2, 'insti': 2}; progress {'fut_TX': {'have': 237, 'total': 237}, 'fut_MTX': {'have': 237, 'total': 237}, 'fut_TMF': {'have': 27, 'total': 27}, 'opt_TXO': {'have': 237, 'total': 237}, 'pcr': {'have': 237, 'total': 237}, 'insti': {'have': 100, 'total': 100}, 'complete': True}
+2026-11-21 03:30:58,527 INFO screener: derivs update: {'did': {'us_vol': 10008, 'fut_TX': 2, 'fut_MTX': 1, 'fut_TMF': 2, 'opt_TXO': 2, 'pcr': 2, 'insti': 2}, 'progress': {'fut_TX': {'have': 237, 'total': 237}, 'fut_MTX': {'have': 237, 'total': 237}, 'fut_TMF': {'have': 27, 'total': 27}, 'opt_TXO': {'have': 237, 'total': 237}, 'pcr': {'have': 237, 'total': 237}, 'insti': {'have': 100, 'total': 100}, 'complete': True}, 'requests_left': 27}
+complete=1

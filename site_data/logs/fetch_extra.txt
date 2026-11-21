@@ -1,0 +1,24 @@
+2026-11-21 03:26:51,574 INFO screener: chips: {'days_fetched': ['2026-11-20'], 'days_total': 65, 'stocks': 2020}
+2026-11-21 03:26:56,516 WARNING yfinance: Crumb fetch rate-limited (HTTP 429), continuing without crumb
+2026-11-21 03:26:56,666 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:56,773 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:56,878 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:58,127 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:58,237 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:58,347 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:59,689 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:59,841 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:26:59,961 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:01,179 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:01,307 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:01,422 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:02,702 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:02,854 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:02,968 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:04,141 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:04,262 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:04,373 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:05,626 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:05,759 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:05,888 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-21 03:27:06,933 INFO screener: estimates: 7/7 updated (full=False)
