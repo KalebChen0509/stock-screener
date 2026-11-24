@@ -4,15 +4,36 @@ set -euo pipefail
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
 pull_into() {  # $1 = 目的資料夾
+  # 11/24：原本 ls-remote 一失敗（網路暫時出錯）就當成「沒有 data 分支」，拿空資料夾繼續，
+  # 之後 push 會把整個快取蓋成空的。現在分清楚：真的沒有分支（代碼 2）才從空的開始，其他錯誤重試 3 次後停止。
   rm -rf "$1"
-  if git ls-remote --exit-code --heads "$REMOTE" data >/dev/null 2>&1; then
-    git clone -q --depth 1 --branch data "$REMOTE" "$1"
+  local rc=1 i
+  for i in 1 2 3; do
+    rc=0; git ls-remote --exit-code --heads "$REMOTE" data >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] && break
+    echo "data 分支查詢失敗（代碼 $rc），第 $i 次，30 秒後重試" >&2; sleep 30
+  done
+  if [ "$rc" -eq 0 ]; then
+    for i in 1 2 3; do
+      git clone -q --depth 1 --branch data "$REMOTE" "$1" && break
+      echo "data 分支下載失敗，第 $i 次" >&2; rm -rf "$1"; sleep 30
+      [ "$i" -eq 3 ] && { echo "無法下載 data 分支，停止（避免用空快取覆蓋）" >&2; exit 1; }
+    done
     rm -rf "$1/.git"
+  elif [ "$rc" -ne 2 ]; then
+    echo "無法確認 data 分支（代碼 $rc），停止（避免用空快取覆蓋）" >&2; exit 1
   fi
   mkdir -p "$1/cache" "$1/site_data"
 }
 
+guard() {  # $1 = 要推上去的資料夾：原本有完整快取，這次卻少了股價檔 → 不推
+  if [ ! -f "$1/cache/prices_monthly.csv.gz" ] && git ls-remote --exit-code --heads "$REMOTE" data >/dev/null 2>&1; then
+    echo "要推的快取裡沒有 prices_monthly.csv.gz，疑似快取不完整，取消推送" >&2; exit 1
+  fi
+}
+
 push_dir() {  # $1 = 要推上去的資料夾
+  guard "$1"
   cd "$1"
   rm -rf .git
   git init -q -b data
