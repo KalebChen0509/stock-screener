@@ -1,0 +1,240 @@
+2026-11-28 04:14:48,227 INFO screener: kline tickers: 6650 (priority 6486)
+2026-11-28 04:14:52,981 WARNING yfinance: Crumb fetch rate-limited (HTTP 429), continuing without crumb
+2026-11-28 04:14:56,258 INFO screener: kline 1d 150/5848
+2026-11-28 04:15:00,882 INFO screener: kline 1d 300/5848
+2026-11-28 04:15:05,359 INFO screener: kline 1d 450/5848
+2026-11-28 04:15:09,881 INFO screener: kline 1d 600/5848
+2026-11-28 04:15:14,477 INFO screener: kline 1d 750/5848
+2026-11-28 04:15:18,990 INFO screener: kline 1d 900/5848
+2026-11-28 04:15:23,448 INFO screener: kline 1d 1050/5848
+2026-11-28 04:15:27,763 INFO screener: kline 1d 1200/5848
+2026-11-28 04:15:29,263 ERROR yfinance: $ITGR: possibly delisted; no price data found  (1d 2026-11-18 -> 2026-11-27)
+2026-11-28 04:15:31,821 ERROR yfinance: 
+1 Failed download:
+2026-11-28 04:15:31,821 ERROR yfinance: ['ITGR']: possibly delisted; no price data found  (1d 2026-11-18 -> 2026-11-27)
+2026-11-28 04:15:32,147 INFO screener: kline 1d 1350/5848
+2026-11-28 04:15:36,467 INFO screener: kline 1d 1500/5848
+2026-11-28 04:15:40,858 INFO screener: kline 1d 1650/5848
+2026-11-28 04:15:45,121 INFO screener: kline 1d 1800/5848
+2026-11-28 04:15:49,387 INFO screener: kline 1d 1950/5848
+2026-11-28 04:15:53,583 INFO screener: kline 1d 2100/5848
+2026-11-28 04:15:56,634 ERROR yfinance: $NWE: possibly delisted; no price data found  (1d 2026-11-18 -> 2026-11-27)
+2026-11-28 04:15:57,572 ERROR yfinance: 
+1 Failed download:
+2026-11-28 04:15:57,572 ERROR yfinance: ['NWE']: possibly delisted; no price data found  (1d 2026-11-18 -> 2026-11-27)
+2026-11-28 04:15:57,885 INFO screener: kline 1d 2250/5848
+2026-11-28 04:16:02,198 INFO screener: kline 1d 2400/5848
+2026-11-28 04:16:06,430 INFO screener: kline 1d 2550/5848
+2026-11-28 04:16:10,647 INFO screener: kline 1d 2700/5848
+2026-11-28 04:16:14,768 INFO screener: kline 1d 2850/5848
+2026-11-28 04:16:18,958 INFO screener: kline 1d 3000/5848
+2026-11-28 04:16:23,231 INFO screener: kline 1d 3150/5848
+2026-11-28 04:16:27,489 INFO screener: kline 1d 3300/5848
+2026-11-28 04:16:31,821 INFO screener: kline 1d 3450/5848
+2026-11-28 04:16:36,003 INFO screener: kline 1d 3600/5848
+2026-11-28 04:16:40,207 INFO screener: kline 1d 3750/5848
+2026-11-28 04:16:44,390 INFO screener: kline 1d 3900/5848
+2026-11-28 04:16:48,595 INFO screener: kline 1d 4050/5848
+2026-11-28 04:16:52,738 INFO screener: kline 1d 4200/5848
+2026-11-28 04:16:56,833 INFO screener: kline 1d 4350/5848
+2026-11-28 04:17:00,925 INFO screener: kline 1d 4500/5848
+2026-11-28 04:17:05,071 INFO screener: kline 1d 4650/5848
+2026-11-28 04:17:09,197 INFO screener: kline 1d 4800/5848
+2026-11-28 04:17:13,331 INFO screener: kline 1d 4950/5848
+2026-11-28 04:17:17,451 INFO screener: kline 1d 5100/5848
+2026-11-28 04:17:21,611 INFO screener: kline 1d 5250/5848
+2026-11-28 04:17:25,666 INFO screener: kline 1d 5400/5848
+2026-11-28 04:17:29,758 INFO screener: kline 1d 5550/5848
+2026-11-28 04:17:33,760 INFO screener: kline 1d 5700/5848
+2026-11-28 04:17:37,715 INFO screener: kline 1d 5848/5848
+2026-11-28 04:17:41,416 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-28 04:17:41,551 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"User is unable to access this feature - https://bit.ly/yahoo-finance-api-feedback"}}}
+2026-11-28 04:17:41,642 ERROR yfinance: $8183.TWO: possibly delisted; no timezone found
+2026-11-28 04:17:43,680 ERROR yfinance: 
+1 Failed download:
+2026-11-28 04:17:43,680 ERROR yfinance: ['8183.TWO']: possibly delisted; no timezone found
+2026-11-28 04:17:44,025 INFO screener: kline 1d 150/804
+2026-11-28 04:17:49,082 INFO screener: kline 1d 300/804
+2026-11-28 04:17:54,124 INFO screener: kline 1d 450/804
+2026-11-28 04:17:59,826 INFO screener: kline 1d 600/804
+2026-11-28 04:18:00,965 ERROR yfinance: $1520.TW: possibly delisted; no timezone found
+2026-11-28 04:18:00,969 ERROR yfinance: $2867.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,004 ERROR yfinance: $1716.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,077 ERROR yfinance: $2823.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,079 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"Invalid Crumb"}}}
+2026-11-28 04:18:01,100 ERROR yfinance: $2311.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,109 ERROR yfinance: $3642.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:01,229 ERROR yfinance: HTTP Error 401: {"finance":{"result":null,"error":{"code":"Unauthorized","description":"User is unable to access this feature - https://bit.ly/yahoo-finance-api-feedback"}}}
+2026-11-28 04:18:01,232 ERROR yfinance: $2391.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,234 ERROR yfinance: $4803.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:01,282 ERROR yfinance: $3573.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,306 ERROR yfinance: $2888.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,345 ERROR yfinance: $1262.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,514 ERROR yfinance: $3142.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,587 ERROR yfinance: $2452.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,591 ERROR yfinance: $2418.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,662 ERROR yfinance: $2341.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,788 ERROR yfinance: $2479.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,802 ERROR yfinance: $4144.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,806 ERROR yfinance: $4725.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,911 ERROR yfinance: $3061.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,912 ERROR yfinance: $2854.TW: possibly delisted; no timezone found
+2026-11-28 04:18:01,914 ERROR yfinance: $2499.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,037 ERROR yfinance: $2494.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,061 ERROR yfinance: $3080.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,144 ERROR yfinance: $3698.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,147 ERROR yfinance: $3426.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:02,157 ERROR yfinance: $2475.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,295 ERROR yfinance: $3599.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,298 ERROR yfinance: $3007.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,451 ERROR yfinance: $3514.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,453 ERROR yfinance: $1469.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,461 ERROR yfinance: $1724.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,561 ERROR yfinance: $1230.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,599 ERROR yfinance: $2463.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,632 ERROR yfinance: $3598.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,681 ERROR yfinance: $1704.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,689 ERROR yfinance: $3579.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,707 ERROR yfinance: $2928.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:02,766 ERROR yfinance: $3020.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,868 ERROR yfinance: $1613.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,872 ERROR yfinance: $3697.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,872 ERROR yfinance: $3474.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,950 ERROR yfinance: $2403.TW: possibly delisted; no timezone found
+2026-11-28 04:18:02,990 ERROR yfinance: $3638.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,020 ERROR yfinance: $2831.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,022 ERROR yfinance: $1592.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,098 ERROR yfinance: $2336.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,100 ERROR yfinance: $2443.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,114 ERROR yfinance: $2447.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,116 ERROR yfinance: $3144.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:03,232 ERROR yfinance: $1107.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,235 ERROR yfinance: $2448.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,236 ERROR yfinance: $3561.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,355 ERROR yfinance: $2456.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,360 ERROR yfinance: $3614.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,362 ERROR yfinance: $3271.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,465 ERROR yfinance: $2469.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,468 ERROR yfinance: $3519.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,469 ERROR yfinance: $2856.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,566 ERROR yfinance: $2936.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,621 ERROR yfinance: $1258.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:03,709 ERROR yfinance: $4429.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:03,709 ERROR yfinance: $2809.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,714 ERROR yfinance: $1902.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,790 ERROR yfinance: $2446.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,803 ERROR yfinance: $2384.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,839 ERROR yfinance: $4733.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,915 ERROR yfinance: $1523.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,918 ERROR yfinance: $3559.TW: possibly delisted; no timezone found
+2026-11-28 04:18:03,962 ERROR yfinance: $1729.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,028 ERROR yfinance: $3682.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,030 ERROR yfinance: $2837.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,057 ERROR yfinance: $3534.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,123 ERROR yfinance: $2381.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,140 ERROR yfinance: $2473.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,197 ERROR yfinance: $3584.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,283 ERROR yfinance: $2807.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,285 ERROR yfinance: $3367.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,285 ERROR yfinance: $3053.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,412 ERROR yfinance: $2325.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,502 ERROR yfinance: $1701.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,504 ERROR yfinance: $1507.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,521 ERROR yfinance: $2358.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,657 ERROR yfinance: $3009.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,660 ERROR yfinance: $2437.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,662 ERROR yfinance: $2411.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,765 ERROR yfinance: $3315.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,768 ERROR yfinance: $4152.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:04,769 ERROR yfinance: $3089.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:04,798 ERROR yfinance: $2847.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,887 ERROR yfinance: $1601.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,890 ERROR yfinance: $2350.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,891 ERROR yfinance: $3063.TW: possibly delisted; no timezone found
+2026-11-28 04:18:04,894 ERROR yfinance: $2361.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,011 ERROR yfinance: $1715.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,013 ERROR yfinance: $2315.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,111 ERROR yfinance: $3383.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,114 ERROR yfinance: $4130.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:05,115 ERROR yfinance: $3454.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,146 ERROR yfinance: $3536.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,252 ERROR yfinance: $1311.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,254 ERROR yfinance: $2396.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,283 ERROR yfinance: $2526.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,361 ERROR yfinance: $2827.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,366 ERROR yfinance: $4712.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:05,368 ERROR yfinance: $4141.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,414 ERROR yfinance: $1606.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,488 ERROR yfinance: $2841.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,489 ERROR yfinance: $2833.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,559 ERROR yfinance: $3202.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:05,563 ERROR yfinance: $3214.TW: possibly delisted; no timezone found
+2026-11-28 04:18:05,564 ERROR yfinance: 
+110 Failed downloads:
+2026-11-28 04:18:05,564 ERROR yfinance: ['1520.TW', '2867.TW', '1716.TW', '2823.TW', '2311.TW', '3642.TWO', '2391.TW', '4803.TWO', '3573.TW', '2888.TW', '1262.TW', '3142.TW', '2452.TW', '2418.TW', '2341.TW', '2479.TW', '4144.TW', '4725.TW', '3061.TW', '2854.TW', '2499.TW', '2494.TW', '3080.TW', '3698.TW', '3426.TWO', '2475.TW', '3599.TW', '3007.TW', '3514.TW', '1469.TW', '1724.TW', '1230.TW', '2463.TW', '3598.TW', '1704.TW', '3579.TW', '2928.TWO', '3020.TW', '1613.TW', '3697.TW', '3474.TW', '2403.TW', '3638.TW', '2831.TW', '1592.TW', '2336.TW', '2443.TW', '2447.TW', '3144.TWO', '1107.TW', '2448.TW', '3561.TW', '2456.TW', '3614.TW', '3271.TW', '2469.TW', '3519.TW', '2856.TW', '2936.TW', '1258.TWO', '4429.TWO', '2809.TW', '1902.TW', '2446.TW', '2384.TW', '4733.TW', '1523.TW', '3559.TW', '1729.TW', '3682.TW', '2837.TW', '3534.TW', '2381.TW', '2473.TW', '3584.TW', '2807.TW', '3367.TW', '3053.TW', '2325.TW', '1701.TW', '1507.TW', '2358.TW', '3009.TW', '2437.TW', '2411.TW', '3315.TW', '4152.TWO', '3089.TWO', '2847.TW', '1601.TW', '2350.TW', '3063.TW', '2361.TW', '1715.TW', '2315.TW', '3383.TW', '4130.TWO', '3454.TW', '3536.TW', '1311.TW', '2396.TW', '2526.TW', '2827.TW', '4712.TWO', '4141.TW', '1606.TW', '2841.TW', '2833.TW', '3202.TWO', '3214.TW']: possibly delisted; no timezone found
+2026-11-28 04:18:05,733 INFO screener: kline 1d 750/804
+2026-11-28 04:18:06,876 ERROR yfinance: $8497.TW: possibly delisted; no timezone found
+2026-11-28 04:18:06,884 ERROR yfinance: $8008.TW: possibly delisted; no timezone found
+2026-11-28 04:18:06,886 ERROR yfinance: $6280.TW: possibly delisted; no timezone found
+2026-11-28 04:18:06,906 ERROR yfinance: $6497.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,031 ERROR yfinance: $6404.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,033 ERROR yfinance: $6286.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,035 ERROR yfinance: $6457.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,037 ERROR yfinance: $8199.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,183 ERROR yfinance: $6747.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,186 ERROR yfinance: $6514.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,186 ERROR yfinance: $6238.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,189 ERROR yfinance: $9922.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,303 ERROR yfinance: $8406.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,306 ERROR yfinance: $4944.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,306 ERROR yfinance: $9801.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,337 ERROR yfinance: $9915.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,428 ERROR yfinance: $5854.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,431 ERROR yfinance: $5102.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,432 ERROR yfinance: $5304.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,434 ERROR yfinance: $5349.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,553 ERROR yfinance: $6452.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,555 ERROR yfinance: $8418.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,557 ERROR yfinance: $5383.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,590 ERROR yfinance: $6145.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,717 ERROR yfinance: $4945.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,720 ERROR yfinance: $5281.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,727 ERROR yfinance: $6287.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,747 ERROR yfinance: $6289.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,842 ERROR yfinance: $6119.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,844 ERROR yfinance: $6247.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:07,846 ERROR yfinance: $8480.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,849 ERROR yfinance: $6251.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,972 ERROR yfinance: $5305.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,975 ERROR yfinance: $6288.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,976 ERROR yfinance: $6004.TW: possibly delisted; no timezone found
+2026-11-28 04:18:07,979 ERROR yfinance: $6131.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,103 ERROR yfinance: $6806.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,116 ERROR yfinance: $4987.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:08,118 ERROR yfinance: $6255.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,135 ERROR yfinance: $6422.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,220 ERROR yfinance: $5264.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,222 ERROR yfinance: $8078.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,227 ERROR yfinance: $5820.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:08,260 ERROR yfinance: $6172.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,346 ERROR yfinance: $8934.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:08,350 ERROR yfinance: $5259.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,350 ERROR yfinance: $4984.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,353 ERROR yfinance: $8420.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:08,468 ERROR yfinance: $6012.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,471 ERROR yfinance: $8427.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,474 ERROR yfinance: $5280.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,484 ERROR yfinance: $6594.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:08,590 ERROR yfinance: $6702.TW: possibly delisted; no timezone found
+2026-11-28 04:18:08,594 ERROR yfinance: $5371.TWO: possibly delisted; no timezone found
+2026-11-28 04:18:08,595 ERROR yfinance: 
+54 Failed downloads:
+2026-11-28 04:18:08,595 ERROR yfinance: ['8497.TW', '8008.TW', '6280.TW', '6497.TWO', '6404.TWO', '6286.TW', '6457.TWO', '8199.TW', '6747.TWO', '6514.TWO', '6238.TWO', '9922.TW', '8406.TWO', '4944.TWO', '9801.TW', '9915.TW', '5854.TW', '5102.TWO', '5304.TWO', '5349.TWO', '6452.TW', '8418.TWO', '5383.TWO', '6145.TW', '4945.TWO', '5281.TWO', '6287.TWO', '6289.TW', '6119.TW', '6247.TWO', '8480.TW', '6251.TW', '5305.TW', '6288.TW', '6004.TW', '6131.TW', '6806.TW', '4987.TWO', '6255.TW', '6422.TW', '5264.TW', '8078.TW', '5820.TWO', '6172.TW', '8934.TWO', '5259.TW', '4984.TW', '8420.TWO', '6012.TW', '8427.TW', '5280.TW', '6594.TWO', '6702.TW', '5371.TWO']: possibly delisted; no timezone found
+2026-11-28 04:18:08,604 INFO screener: kline 1d 804/804
+2026-11-28 04:18:15,269 INFO screener: kline 1mo 150/639
+2026-11-28 04:18:19,705 INFO screener: kline 1mo 300/639
+2026-11-28 04:18:24,136 INFO screener: kline 1mo 450/639
+2026-11-28 04:18:28,809 INFO screener: kline 1mo 600/639
+2026-11-28 04:18:30,755 INFO screener: kline 1mo 639/639
+2026-11-28 07:43:47,261 INFO screener: kline: {'tickers': 6650, 'with_daily': 6485, 'backfilled': 639, 'remaining': 165, 'refetched_splits': ['PFSA', 'SGLY']}
+2026-11-28 07:45:09,665 INFO screener: kline site files: {'tw': 1988, 'us': 4448, 'etf': 43, 'idx': 6}

@@ -1,0 +1,4 @@
+2026-11-28 04:12:40,989 WARNING yfinance: Crumb fetch rate-limited (HTTP 429), continuing without crumb
+2026-11-28 04:14:44,194 INFO screener: derivs: did {'us_vol': 10019, 'fut_TX': 39}; progress {'fut_TX': {'have': 195, 'total': 237}, 'fut_MTX': {'have': 0, 'total': 237}, 'fut_TMF': {'have': 0, 'total': 27}, 'opt_TXO': {'have': 0, 'total': 237}, 'pcr': {'have': 0, 'total': 237}, 'insti': {'have': 0, 'total': 100}, 'complete': False}
+2026-11-28 04:14:44,194 INFO screener: derivs update: {'did': {'us_vol': 10019, 'fut_TX': 39}, 'progress': {'fut_TX': {'have': 195, 'total': 237}, 'fut_MTX': {'have': 0, 'total': 237}, 'fut_TMF': {'have': 0, 'total': 27}, 'opt_TXO': {'have': 0, 'total': 237}, 'pcr': {'have': 0, 'total': 237}, 'insti': {'have': 0, 'total': 100}, 'complete': False}, 'requests_left': 0}
+complete=0

@@ -1,0 +1,16 @@
+2026-11-24 06:23:20,338 INFO screener: downloading https://www.sec.gov/files/company_tickers_exchange.json
+2026-11-24 06:23:20,478 INFO screener:   -> /tmp/sec/company_tickers_exchange.json (1 MB)
+2026-11-24 06:23:20,495 INFO screener: downloading https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip
+2026-11-24 06:23:27,259 INFO screener:   -> /tmp/sec/submissions.zip (1578 MB)
+2026-11-24 06:23:42,575 INFO screener: US 8-K events: 765120
+2026-11-24 06:23:42,599 INFO screener: US universe: 6004 companies
+2026-11-24 06:23:42,853 INFO screener: downloading https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip
+2026-11-24 06:24:08,255 INFO screener:   -> /tmp/sec/companyfacts.zip (1429 MB)
+2026-11-24 06:24:08,315 INFO screener: parsing 5851 companyfacts files
+2026-11-24 06:32:54,775 INFO screener:   ... 1000/5851
+2026-11-24 06:40:18,419 INFO screener:   ... 2000/5851
+2026-11-24 06:46:37,466 INFO screener:   ... 3000/5851
+2026-11-24 06:51:14,761 INFO screener:   ... 4000/5851
+2026-11-24 06:54:02,060 INFO screener:   ... 5000/5851
+2026-11-24 06:57:17,226 INFO screener: US shares fix: 239 companies without share count, Yahoo 235/239
+2026-11-24 06:57:33,155 INFO screener: US fundamentals: 186050 rows, 4448 companies
